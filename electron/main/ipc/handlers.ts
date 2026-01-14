@@ -1,6 +1,7 @@
 import { dialog, ipcMain, BrowserWindow } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
+import { randomUUID } from 'crypto'
 import { Chapter, ProjectType } from '../../src/common/ipc'
 
 // 获取主窗口
@@ -50,7 +51,7 @@ ipcMain.handle('project:create', async (_, params: { name: string; path: string;
   fs.mkdirSync(path.join(projectDir, 'chapters'), { recursive: true })
 
   const projectData = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name,
     path: formatFilePath(projectDir),
     type,
@@ -82,7 +83,7 @@ ipcMain.handle('project:open', async (_, projectPath: string) => {
   })
 
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name: config.name,
     path: formatFilePath(projectPath),
     type: config.type,
