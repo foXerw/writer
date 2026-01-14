@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons'
 import MonacoEditor from '../../components/Editor/MonacoEditor'
 import EditorToolbar from '../../components/Editor/EditorToolbar'
+import EditorTabs from '../../components/Layout/EditorTabs'
 import type { Chapter } from '../../common/ipc'
 import { useChapter } from '../../hooks/useIPC'
 
@@ -30,6 +31,7 @@ function Workspace() {
   const { getAllChapters, createChapter, updateChapter } = useChapter()
 
   const [chapters, setChapters] = useState<Chapter[]>([])
+  const [openedChapters, setOpenedChapters] = useState<Chapter[]>([])
   const [currentChapter, setCurrentChapter] = useState<Chapter | null>(null)
   const [editorContent, setEditorContent] = useState('')
   const [chapterTitle, setChapterTitle] = useState('')
@@ -54,14 +56,45 @@ function Workspace() {
     try {
       const data = await getAllChapters(projectPath)
       setChapters(data)
+      // 默认打开第一个章节
       if (data.length > 0) {
-        selectChapter(data[0])
+        const firstChapter = data[0]
+        setOpenedChapters([firstChapter])
+        selectChapter(firstChapter)
       }
     } catch (error) {
       console.error('加载章节失败:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  // 打开章节（添加到Tab栏）
+  const handleOpenChapter = (chapter: Chapter) => {
+    setOpenedChapters(prev => {
+      if (prev.find(c => c.id === chapter.id)) {
+        return prev
+      }
+      return [...prev, chapter]
+    })
+    selectChapter(chapter)
+  }
+
+  // 关闭章节（从Tab栏移除）
+  const handleCloseChapter = (chapterId: string) => {
+    setOpenedChapters(prev => {
+      const filtered = prev.filter(c => c.id !== chapterId)
+      // 如果关闭的是当前章节，切换到下一个
+      if (currentChapter?.id === chapterId && filtered.length > 0) {
+        selectChapter(filtered[0])
+      }
+      return filtered
+    })
+  }
+
+  // 保存章节
+  const handleSaveChapter = (chapter: Chapter) => {
+    handleSave()
   }
 
   // 选择章节
@@ -167,7 +200,7 @@ function Workspace() {
               selectedKeys={currentChapter ? [currentChapter.id] : []}
               onSelect={([key]) => {
                 const chapter = chapters.find(c => c.id === key)
-                if (chapter) selectChapter(chapter)
+                if (chapter) handleOpenChapter(chapter)
               }}
               style={{ padding: '0 8px' }}
             />
@@ -177,6 +210,14 @@ function Workspace() {
 
       {/* 主内容区 */}
       <Layout>
+        {/* Tab栏 */}
+        <EditorTabs
+          chapters={openedChapters}
+          currentChapter={currentChapter}
+          onSelectChapter={handleOpenChapter}
+          onCloseChapter={handleCloseChapter}
+          onSaveChapter={handleSaveChapter}
+        />
         {/* 工具栏 */}
         <Header style={{
           padding: 0,
