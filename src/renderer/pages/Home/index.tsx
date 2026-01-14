@@ -1,23 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Layout, Button, Card, Empty, List, Typography, Space, Modal, Input, message } from 'antd'
+import { Layout, Button, Card, Empty, List, Typography, Space } from 'antd'
 import { PlusOutlined, FolderOpenOutlined, FileOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import type { RecentProject } from '../../common/ipc'
-import { useProject, useDialog } from '../../hooks/useIPC'
+import { useProject } from '../../hooks/useIPC'
+import ProjectDialog from '../../components/Dialogs/ProjectDialog'
 
 const { Header, Content, Sider } = Layout
 const { Title, Text } = Typography
 
 function Home() {
   const navigate = useNavigate()
-  const { getRecentProjects, createProject } = useProject()
-  const { openDirectory } = useDialog()
+  const { getRecentProjects } = useProject()
 
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
-  const [isModalVisible, setIsModalVisible] = useState(false)
-  const [newProjectName, setNewProjectName] = useState('')
-  const [newProjectPath, setNewProjectPath] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [createDialogVisible, setCreateDialogVisible] = useState(false)
+  const [openDialogVisible, setOpenDialogVisible] = useState(false)
 
   // 加载最近项目
   useEffect(() => {
@@ -33,43 +31,19 @@ function Home() {
     }
   }
 
-  // 选择项目路径
-  const handleSelectPath = async () => {
-    const path = await openDirectory()
-    if (path) {
-      setNewProjectPath(path)
-    }
-  }
-
-  // 创建新项目
-  const handleCreateProject = async () => {
-    if (!newProjectName.trim()) {
-      message.warning('请输入项目名称')
-      return
-    }
-    if (!newProjectPath) {
-      message.warning('请选择项目路径')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const project = await createProject(newProjectName, newProjectPath, 'novel')
-      message.success('项目创建成功')
-      setIsModalVisible(false)
-      setNewProjectName('')
-      setNewProjectPath('')
-      navigate('/workspace', { state: { project } })
-    } catch (error) {
-      message.error('项目创建失败')
-      console.error(error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   // 打开最近项目
   const handleOpenProject = (projectPath: string) => {
+    navigate('/workspace', { state: { projectPath } })
+  }
+
+  // 项目创建成功后跳转
+  const handleProjectCreated = (projectPath: string) => {
+    navigate('/workspace', { state: { projectPath } })
+    loadRecentProjects()
+  }
+
+  // 项目打开成功后跳转
+  const handleProjectOpened = (projectPath: string) => {
     navigate('/workspace', { state: { projectPath } })
   }
 
@@ -97,9 +71,16 @@ function Home() {
               size="small"
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => setIsModalVisible(true)}
+              onClick={() => setCreateDialogVisible(true)}
             >
               新建项目
+            </Button>
+            <Button
+              size="small"
+              icon={<FolderOpenOutlined />}
+              onClick={() => setOpenDialogVisible(true)}
+            >
+              打开项目
             </Button>
           </Space>
         </Header>
@@ -152,7 +133,7 @@ function Home() {
                 description="暂无最近项目"
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
               >
-                <Button type="primary" onClick={() => setIsModalVisible(true)}>
+                <Button type="primary" onClick={() => setCreateDialogVisible(true)}>
                   创建第一个项目
                 </Button>
               </Empty>
@@ -174,10 +155,18 @@ function Home() {
               <Button
                 block
                 icon={<PlusOutlined />}
-                onClick={() => setIsModalVisible(true)}
+                onClick={() => setCreateDialogVisible(true)}
                 style={{ height: '48px', textAlign: 'left' }}
               >
                 新建项目
+              </Button>
+              <Button
+                block
+                icon={<FolderOpenOutlined />}
+                onClick={() => setOpenDialogVisible(true)}
+                style={{ height: '48px', textAlign: 'left' }}
+              >
+                打开项目
               </Button>
             </Space>
           </Card>
@@ -185,39 +174,20 @@ function Home() {
       </Layout>
 
       {/* 新建项目对话框 */}
-      <Modal
-        title="新建项目"
-        open={isModalVisible}
-        onOk={handleCreateProject}
-        onCancel={() => setIsModalVisible(false)}
-        confirmLoading={loading}
-        okText="创建"
-        cancelText="取消"
-      >
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <div>
-            <Text strong style={{ color: '#d4d4d4' }}>项目名称</Text>
-            <Input
-              placeholder="输入项目名称"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              style={{ marginTop: '8px' }}
-            />
-          </div>
-          <div>
-            <Text strong style={{ color: '#d4d4d4' }}>项目路径</Text>
-            <Space style={{ width: '100%', marginTop: '8px' }}>
-              <Input
-                placeholder="选择项目路径"
-                value={newProjectPath}
-                readOnly
-                style={{ flex: 1 }}
-              />
-              <Button onClick={handleSelectPath}>浏览</Button>
-            </Space>
-          </div>
-        </Space>
-      </Modal>
+      <ProjectDialog
+        open={createDialogVisible}
+        mode="create"
+        onClose={() => setCreateDialogVisible(false)}
+        onProjectCreated={handleProjectCreated}
+      />
+
+      {/* 打开项目对话框 */}
+      <ProjectDialog
+        open={openDialogVisible}
+        mode="open"
+        onClose={() => setOpenDialogVisible(false)}
+        onProjectOpened={handleProjectOpened}
+      />
     </Layout>
   )
 }

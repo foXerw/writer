@@ -4,6 +4,13 @@ import { setApplicationMenu } from './menu'
 import { createTray, destroyTray } from './tray'
 import './ipc/handlers'
 
+// 开发环境禁用安全限制
+if (import.meta.env.DEV) {
+  app.commandLine.appendSwitch('disable-web-security')
+  app.commandLine.appendSwitch('allow-running-insecure-content')
+  app.commandLine.appendSwitch('allow-file-access-from-files')
+}
+
 app.whenReady().then(() => {
   // 创建主窗口
   createMainWindow()

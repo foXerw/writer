@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Layout, Button, Space, Tree, Typography, message } from 'antd'
+import { Layout, Button, Space, Tree, Typography, App } from 'antd'
 import {
   FileTextOutlined,
   PlusOutlined,
@@ -27,6 +27,7 @@ function Workspace() {
   const location = useLocation()
   const navigate = useNavigate()
   const state = location.state as WorkspaceState
+  const { message } = App.useApp()
 
   const { getAllChapters, createChapter, updateChapter } = useChapter()
 

@@ -3,9 +3,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
 import Workspace from './pages/Workspace'
 import Settings from './pages/Settings'
-import './styles/global.css'
 
-function App() {
+function AppRouter() {
   return (
     <BrowserRouter
       future={{
@@ -22,4 +21,4 @@ function App() {
   )
 }
 
-export default App
+export default AppRouter

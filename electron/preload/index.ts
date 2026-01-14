@@ -78,6 +78,17 @@ contextBridge.exposeInMainWorld('novelWriter', {
   }
 })
 
+// 新版 electronAPI 风格的 API
+contextBridge.exposeInMainWorld('electronAPI', {
+  // 通用 invoke/send/on/off
+  invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
+  send: (channel: string, ...args: unknown[]) => ipcRenderer.send(channel, ...args),
+  on: (channel: string, listener: (...args: unknown[]) => void) => {
+    ipcRenderer.on(channel, (_event, ...args) => listener(...args))
+  },
+  off: (channel: string) => ipcRenderer.removeAllListeners(channel)
+})
+
 // 类型导出
 export type NovelWriterAPI = {
   project: {

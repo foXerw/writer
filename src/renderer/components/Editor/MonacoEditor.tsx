@@ -1,16 +1,8 @@
-import React, { useRef, useEffect, useCallback } from 'react'
-import Editor, { OnMount, OnChange } from '@monaco-editor/react'
+import { useRef, useEffect, useState } from 'react'
 import type { editor } from 'monaco-editor'
 
-interface MonacoEditorProps {
-  value: string
-  language?: string
-  theme?: 'vs-dark' | 'vs-light' | 'novel-dark'
-  onChange?: (value: string) => void
-  onSave?: () => void
-  readOnly?: boolean
-  wordCount?: boolean
-}
+// 动态导入 Monaco（避免 SSR 问题）
+let monaco: typeof import('monaco-editor') | null = null
 
 // 写作主题配置
 const novelDarkTheme = {
@@ -39,101 +31,159 @@ const novelDarkTheme = {
   }
 }
 
+interface MonacoEditorProps {
+  value: string
+  language?: string
+  theme?: 'vs-dark' | 'vs-light' | 'novel-dark'
+  onChange?: (value: string) => void
+  onSave?: () => void
+  readOnly?: boolean
+  wordCount?: boolean
+}
+
+// Monaco Editor 容器组件
 function MonacoEditor({
   value,
   language = 'markdown',
-  theme = 'novel-dark',
   onChange,
   onSave,
   readOnly = false,
   wordCount = true
 }: MonacoEditorProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
-  const monacoRef = useRef<typeof import('monaco-editor') | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // 编辑器挂载
-  const handleEditorMount: OnMount = useCallback((editor, monaco) => {
-    editorRef.current = editor
-    monacoRef.current = monaco
+  useEffect(() => {
+    let mounted = true
 
-    // 注册写作主题
-    monaco.editor.defineTheme('novel-dark', novelDarkTheme)
-    monaco.editor.setTheme('theme' in novelDarkTheme ? 'novel-dark' : 'vs-dark')
+    const initMonaco = async () => {
+      try {
+        // 动态导入 Monaco
+        monaco = await import('monaco-editor')
 
-    // 配置编辑器选项适合写作
-    editor.updateOptions({
-      fontSize: 16,
-      fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
-      lineHeight: 28,
-      wordWrap: 'on',
-      minimap: { enabled: false },
-      lineNumbers: 'off',
-      folding: false,
-      lineDecorationsWidth: 0,
-      lineNumbersMinChars: 0,
-      renderLineHighlight: 'none',
-      scrollBeyondLastLine: false,
-      automaticLayout: true,
-      cursorStyle: 'line',
-      cursorBlinking: 'smooth',
-      cursorSmoothCaretAnimation: 'on',
-      smoothScrolling: true,
-      contextmenu: true,
-      bracketPairColorization: { enabled: false },
-      guides: {
-        bracketPairs: false,
-        indentation: false
+        if (!mounted || !containerRef.current) return
+
+        // 注册写作主题
+        monaco.editor.defineTheme('novel-dark', novelDarkTheme)
+
+        // 创建编辑器
+        const editor = monaco.editor.create(containerRef.current, {
+          value,
+          language,
+          theme: 'novel-dark',
+          fontSize: 16,
+          fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
+          lineHeight: 28,
+          wordWrap: 'on',
+          minimap: { enabled: false },
+          lineNumbers: 'off',
+          folding: false,
+          lineDecorationsWidth: 0,
+          lineNumbersMinChars: 0,
+          renderLineHighlight: 'none',
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+          cursorStyle: 'line',
+          cursorBlinking: 'smooth',
+          cursorSmoothCaretAnimation: 'on',
+          smoothScrolling: true,
+          contextmenu: true,
+          bracketPairColorization: { enabled: false },
+          guides: {
+            bracketPairs: false,
+            indentation: false
+          },
+          readOnly
+        })
+
+        editorRef.current = editor
+
+        // 快捷键：保存
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+          onSave?.()
+        })
+
+        // 快捷键：粗体
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyB, () => {
+          const model = editor.getModel()
+          if (model) {
+            const selection = editor.getSelection()
+            if (selection && !selection.isEmpty()) {
+              const selectedText = model.getValueInRange(selection)
+              editor.executeEdits('', [{
+                range: selection,
+                text: `**${selectedText}**`,
+                forceMoveMarkers: true
+              }])
+            }
+          }
+        })
+
+        // 快捷键：斜体
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyI, () => {
+          const model = editor.getModel()
+          if (model) {
+            const selection = editor.getSelection()
+            if (selection && !selection.isEmpty()) {
+              const selectedText = model.getValueInRange(selection)
+              editor.executeEdits('', [{
+                range: selection,
+                text: `*${selectedText}*`,
+                forceMoveMarkers: true
+              }])
+            }
+          }
+        })
+
+        // 监听内容变化
+        editor.onDidChangeModelContent(() => {
+          const newValue = editor.getValue()
+          onChange?.(newValue)
+          updateWordCount(newValue)
+        })
+
+        // 初始字数统计
+        updateWordCount(value)
+        setIsLoading(false)
+      } catch (error) {
+        console.error('Failed to load Monaco:', error)
       }
-    })
-
-    // 快捷键：保存
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      onSave?.()
-    })
-
-    // 快捷键：粗体
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyB, () => {
-      const model = editor.getModel()
-      if (model) {
-        const selection = editor.getSelection()
-        if (selection && !selection.isEmpty()) {
-          const selectedText = model.getValueInRange(selection)
-          editor.executeEdits('', [{
-            range: selection,
-            text: `**${selectedText}**`,
-            forceMoveMarkers: true
-          }])
-        }
-      }
-    })
-
-    // 快捷键：斜体
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyI, () => {
-      const model = editor.getModel()
-      if (model) {
-        const selection = editor.getSelection()
-        if (selection && !selection.isEmpty()) {
-          const selectedText = model.getValueInRange(selection)
-          editor.executeEdits('', [{
-            range: selection,
-            text: `*${selectedText}*`,
-            forceMoveMarkers: true
-          }])
-        }
-      }
-    })
-
-    // 初始字数统计
-    updateWordCount(editor.getValue())
-  }, [onSave])
-
-  // 监听内容变化
-  const handleChange: OnChange = useCallback((newValue) => {
-    onChange?.(newValue || '')
-    if (editorRef.current) {
-      updateWordCount(newValue || '')
     }
-  }, [onChange])
+
+    initMonaco()
+
+    return () => {
+      mounted = false
+      if (editorRef.current) {
+        editorRef.current.dispose()
+      }
+    }
+  }, [])
+
+  // 更新内容
+  useEffect(() => {
+    if (editorRef.current && value !== editorRef.current.getValue()) {
+      editorRef.current.setValue(value)
+    }
+  }, [value])
+
+  // 更新语言
+  useEffect(() => {
+    if (editorRef.current && monaco) {
+      const model = editorRef.current.getModel()
+      if (model) {
+        monaco.editor.setModelLanguage(model, language)
+      }
+    }
+  }, [language])
+
+  // 更新只读状态
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({ readOnly })
+    }
+  }, [readOnly])
 
   // 更新字数统计
   const updateWordCount = (text: string) => {
@@ -145,39 +195,28 @@ function MonacoEditor({
     }
   }
 
-  // 监听值变化
-  useEffect(() => {
-    if (editorRef.current && value !== editorRef.current.getValue()) {
-      // 只在初始化或外部强制更新时设置值
-      // 避免编辑时循环更新
-    }
-  }, [value])
-
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Editor
-        height="calc(100% - 24px)"
-        language={language}
-        value={value}
-        theme="novel-dark"
-        onChange={handleChange}
-        onMount={handleEditorMount}
-        options={{
-          readOnly,
-          automaticLayout: true
-        }}
-        loading={
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            color: '#888'
-          }}>
-            加载编辑器...
-          </div>
-        }
+      <div
+        ref={containerRef}
+        style={{ height: 'calc(100% - 24px)' }}
       />
+      {isLoading && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 24,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#1e1e1e',
+          color: '#888'
+        }}>
+          加载编辑器...
+        </div>
+      )}
       {wordCount && (
         <div
           id="editor-word-count"
