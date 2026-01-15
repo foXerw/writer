@@ -142,6 +142,37 @@ function ProjectDialog({
       onClose()
     } catch (error) {
       console.error('打开项目失败:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorMessage.includes('INVALID_PROJECT')) {
+        Modal.error({
+          title: '无效的项目文件夹',
+          content: '该文件夹不是有效的 Novel Writer 项目。请选择包含 .novelwriter.json 配置文件的文件夹。',
+          okText: '确定',
+          width: 400,
+          styles: {
+            content: { background: '#1e1e1e', color: '#d4d4d4' },
+            header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4' },
+            body: { background: '#1e1e1e', color: '#d4d4d4' }
+          },
+          okButtonProps: {
+            style: { background: '#0d419d', borderColor: '#1f6feb', color: '#fff' }
+          }
+        })
+      } else {
+        Modal.error({
+          title: '打开项目失败',
+          content: errorMessage,
+          okText: '确定',
+          styles: {
+            content: { background: '#1e1e1e', color: '#d4d4d4' },
+            header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4' },
+            body: { background: '#1e1e1e', color: '#d4d4d4' }
+          },
+          okButtonProps: {
+            style: { background: '#0d419d', borderColor: '#1f6feb', color: '#fff' }
+          }
+        })
+      }
     } finally {
       setLoading(false)
     }

@@ -70,7 +70,7 @@ ipcMain.handle('project:open', async (_, projectPath: string) => {
   const configPath = path.join(projectPath, '.novelwriter.json')
 
   if (!fs.existsSync(configPath)) {
-    throw new Error('项目配置文件不存在')
+    throw new Error('INVALID_PROJECT: Project configuration file not found. Please select a valid Novel Writer project folder.')
   }
 
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
