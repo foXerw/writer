@@ -24,6 +24,21 @@ const projectAPI: RendererToMainRequests = {
   'chapter:create': (params) => ipcRenderer.invoke('chapter:create', params),
   'chapter:update': (params) => ipcRenderer.invoke('chapter:update', params),
   'chapter:delete': (params) => ipcRenderer.invoke('chapter:delete', params),
+  'chapter:rename': (params) => ipcRenderer.invoke('chapter:rename', params),
+  'chapter:reorder': (params) => ipcRenderer.invoke('chapter:reorder', params),
+  'chapter:getById': (params) => ipcRenderer.invoke('chapter:getById', params),
+
+  'character:getAll': (projectPath) => ipcRenderer.invoke('character:getAll', projectPath),
+  'character:getById': (params) => ipcRenderer.invoke('character:getById', params),
+  'character:create': (params) => ipcRenderer.invoke('character:create', params),
+  'character:update': (params) => ipcRenderer.invoke('character:update', params),
+  'character:delete': (params) => ipcRenderer.invoke('character:delete', params),
+
+  'setting:getAll': (projectPath) => ipcRenderer.invoke('setting:getAll', projectPath),
+  'setting:getById': (params) => ipcRenderer.invoke('setting:getById', params),
+  'setting:create': (params) => ipcRenderer.invoke('setting:create', params),
+  'setting:update': (params) => ipcRenderer.invoke('setting:update', params),
+  'setting:delete': (params) => ipcRenderer.invoke('setting:delete', params),
 
   'dialog:openDirectory': () => ipcRenderer.invoke('dialog:openDirectory'),
   'dialog:openFile': (filters) => ipcRenderer.invoke('dialog:openFile', filters),
@@ -107,6 +122,23 @@ export type NovelWriterAPI = {
     create: (params: { projectPath: string; title: string }) => Promise<Chapter>
     update: (params: { projectPath: string; chapter: Chapter }) => Promise<Chapter>
     delete: (params: { projectPath: string; chapterId: string }) => Promise<boolean>
+    rename: (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
+    reorder: (params: { projectPath: string; fromId: string; toId: string }) => Promise<boolean>
+    getById: (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
+  }
+  character: {
+    getAll: (projectPath: string) => Promise<Chapter[]>
+    getById: (params: { projectPath: string; characterId: string }) => Promise<Chapter | null>
+    create: (params: { projectPath: string; character: Partial<Chapter> }) => Promise<Chapter>
+    update: (params: { projectPath: string; character: Chapter }) => Promise<Chapter>
+    delete: (params: { projectPath: string; characterId: string }) => Promise<boolean>
+  }
+  setting: {
+    getAll: (projectPath: string) => Promise<Chapter[]>
+    getById: (params: { projectPath: string; settingId: string }) => Promise<Chapter | null>
+    create: (params: { projectPath: string; setting: Partial<Chapter> }) => Promise<Chapter>
+    update: (params: { projectPath: string; setting: Chapter }) => Promise<Chapter>
+    delete: (params: { projectPath: string; settingId: string }) => Promise<boolean>
   }
   dialog: {
     openDirectory: () => Promise<string | null>
@@ -140,6 +172,23 @@ declare global {
         create: (params: { projectPath: string; title: string }) => Promise<Chapter>
         update: (params: { projectPath: string; chapter: Chapter }) => Promise<Chapter>
         delete: (params: { projectPath: string; chapterId: string }) => Promise<boolean>
+        rename: (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
+        reorder: (params: { projectPath: string; fromId: string; toId: string }) => Promise<boolean>
+        getById: (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
+      }
+      character: {
+        getAll: (projectPath: string) => Promise<Chapter[]>
+        getById: (params: { projectPath: string; characterId: string }) => Promise<Chapter | null>
+        create: (params: { projectPath: string; character: Partial<Chapter> }) => Promise<Chapter>
+        update: (params: { projectPath: string; character: Chapter }) => Promise<Chapter>
+        delete: (params: { projectPath: string; characterId: string }) => Promise<boolean>
+      }
+      setting: {
+        getAll: (projectPath: string) => Promise<Chapter[]>
+        getById: (params: { projectPath: string; settingId: string }) => Promise<Chapter | null>
+        create: (params: { projectPath: string; setting: Partial<Chapter> }) => Promise<Chapter>
+        update: (params: { projectPath: string; setting: Chapter }) => Promise<Chapter>
+        delete: (params: { projectPath: string; settingId: string }) => Promise<boolean>
       }
       dialog: {
         openDirectory: () => Promise<string | null>

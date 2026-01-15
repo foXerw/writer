@@ -1,5 +1,6 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import type { editor } from 'monaco-editor'
+import { useEditorStore } from '@/stores'
 
 // 动态导入 Monaco（避免 SSR 问题）
 let monaco: typeof import('monaco-editor') | null = null
@@ -31,6 +32,17 @@ const novelDarkTheme = {
   }
 }
 
+// 打字机模式装饰样式
+const typewriterDecorationCss = `
+  .typewriter-center-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    pointer-events: none;
+  }
+`
+
 interface MonacoEditorProps {
   value: string
   language?: string
@@ -39,6 +51,9 @@ interface MonacoEditorProps {
   onSave?: () => void
   readOnly?: boolean
   wordCount?: boolean
+  focusMode?: boolean
+  typewriterMode?: boolean
+  fontSize?: number
 }
 
 // Monaco Editor 容器组件
@@ -48,11 +63,57 @@ function MonacoEditor({
   onChange,
   onSave,
   readOnly = false,
-  wordCount = true
+  wordCount = true,
+  focusMode = false,
+  typewriterMode = false,
+  fontSize = 16
 }: MonacoEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const decorationRef = useRef<string[]>([])
+
+  // 打字机模式：保持光标在屏幕中央
+  const centerCursorInTypewriterMode = useCallback(() => {
+    if (!editorRef.current || !monaco) return
+
+    const editor = editorRef.current
+    const position = editor.getPosition()
+    if (!position) return
+
+    // 获取编辑器可见区域
+    const scrollTop = editor.getScrollTop()
+    const editorHeight = editor.getLayoutInfo().height
+    const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight)
+    const cursorHeight = lineHeight
+
+    // 计算目标滚动位置（光标居中）
+    const targetScrollTop = scrollTop
+
+    // 使用 revealLine 将光标行滚动到视图中央
+    editor.revealLineInCenter(position.lineNumber)
+  }, [])
+
+  // 监听光标位置变化（打字机模式）
+  useEffect(() => {
+    if (!editorRef.current || !monaco) return
+
+    const editor = editorRef.current
+
+    if (typewriterMode) {
+      // 首次居中
+      centerCursorInTypewriterMode()
+
+      // 监听光标位置变化
+      const disposable = editor.onDidChangeCursorPosition(() => {
+        centerCursorInTypewriterMode()
+      })
+
+      return () => {
+        disposable.dispose()
+      }
+    }
+  }, [typewriterMode, centerCursorInTypewriterMode])
 
   useEffect(() => {
     let mounted = true
@@ -72,7 +133,7 @@ function MonacoEditor({
           value,
           language,
           theme: 'novel-dark',
-          fontSize: 16,
+          fontSize,
           fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
           lineHeight: 28,
           wordWrap: 'on',
@@ -85,14 +146,20 @@ function MonacoEditor({
           scrollBeyondLastLine: false,
           automaticLayout: true,
           cursorStyle: 'line',
-          cursorBlinking: 'smooth',
-          cursorSmoothCaretAnimation: 'on',
-          smoothScrolling: true,
-          contextmenu: true,
+          cursorBlinking: typewriterMode ? 'solid' : 'smooth',
+          cursorSmoothCaretAnimation: typewriterMode ? 'off' : 'on',
+          smoothScrolling: !typewriterMode,
+          contextmenu: !focusMode,
           bracketPairColorization: { enabled: false },
           guides: {
             bracketPairs: false,
             indentation: false
+          },
+          renderWhitespace: 'none',
+          scrollbar: {
+            vertical: 'visible',
+            horizontal: 'hidden',
+            verticalScrollbarSize: 10
           },
           readOnly
         })
@@ -184,6 +251,34 @@ function MonacoEditor({
       editorRef.current.updateOptions({ readOnly })
     }
   }, [readOnly])
+
+  // 更新专注模式
+  useEffect(() => {
+    if (editorRef.current && monaco) {
+      editorRef.current.updateOptions({
+        contextmenu: !focusMode,
+        renderWhitespace: focusMode ? 'none' : 'none'
+      })
+    }
+  }, [focusMode])
+
+  // 更新打字机模式
+  useEffect(() => {
+    if (editorRef.current && monaco) {
+      editorRef.current.updateOptions({
+        cursorBlinking: typewriterMode ? 'solid' : 'smooth',
+        cursorSmoothCaretAnimation: typewriterMode ? 'off' : 'on',
+        smoothScrolling: !typewriterMode
+      })
+    }
+  }, [typewriterMode])
+
+  // 更新字体大小
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({ fontSize })
+    }
+  }, [fontSize])
 
   // 更新字数统计
   const updateWordCount = (text: string) => {

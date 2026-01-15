@@ -26,6 +26,23 @@ export type RendererToMainRequests = {
   'chapter:create': (params: { projectPath: string; title: string }) => Promise<Chapter>
   'chapter:update': (params: { projectPath: string; chapter: Chapter }) => Promise<Chapter>
   'chapter:delete': (params: { projectPath: string; chapterId: string }) => Promise<boolean>
+  'chapter:rename': (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
+  'chapter:reorder': (params: { projectPath: string; fromId: string; toId: string }) => Promise<boolean>
+  'chapter:getById': (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
+
+  // 角色相关
+  'character:getAll': (projectPath: string) => Promise<Character[]>
+  'character:getById': (params: { projectPath: string; characterId: string }) => Promise<Character | null>
+  'character:create': (params: { projectPath: string; character: Partial<Character> }) => Promise<Character>
+  'character:update': (params: { projectPath: string; character: Character }) => Promise<Character>
+  'character:delete': (params: { projectPath: string; characterId: string }) => Promise<boolean>
+
+  // 世界观设定相关
+  'setting:getAll': (projectPath: string) => Promise<Setting[]>
+  'setting:getById': (params: { projectPath: string; settingId: string }) => Promise<Setting | null>
+  'setting:create': (params: { projectPath: string; setting: Partial<Setting> }) => Promise<Setting>
+  'setting:update': (params: { projectPath: string; setting: Setting }) => Promise<Setting>
+  'setting:delete': (params: { projectPath: string; settingId: string }) => Promise<boolean>
 
   // 系统相关
   'dialog:openDirectory': () => Promise<string | null>
@@ -87,4 +104,70 @@ export interface WritingStats {
 export interface FileFilter {
   name: string
   extensions: string[]
+}
+
+// 角色性别
+export type CharacterGender = 'male' | 'female' | 'other'
+
+// 角色定位
+export type CharacterRole = 'protagonist' | 'antagonist' | 'supporting' | 'minor'
+
+// 角色关系
+export interface CharacterRelationship {
+  id: string
+  characterId: string
+  characterName: string
+  relationship: string
+  description?: string
+}
+
+// 角色标签
+export interface CharacterTag {
+  id: string
+  name: string
+  color?: string
+}
+
+// 角色
+export interface Character {
+  id: string
+  name: string
+  gender: CharacterGender
+  age: number
+  role: CharacterRole
+  avatar?: string
+  appearance: string
+  personality: string
+  background: string
+  goals?: string
+  flaws?: string
+  relationships: CharacterRelationship[]
+  tags: CharacterTag[]
+  notes?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+// 角色创建参数
+export interface CharacterCreateParams {
+  projectPath: string
+  name: string
+  gender: CharacterGender
+  role: CharacterRole
+}
+
+// 世界观设定分类
+export type SettingCategory = 'location' | 'history' | 'magic' | 'culture' | 'other'
+
+// 世界观设定
+export interface Setting {
+  id: string
+  title: string
+  category: SettingCategory
+  content: string
+  parentId?: string
+  order: number
+  tags: string[]
+  createdAt: Date
+  updatedAt: Date
 }

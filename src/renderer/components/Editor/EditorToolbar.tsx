@@ -8,7 +8,9 @@ import {
   ColumnWidthOutlined,
   SaveOutlined,
   UndoOutlined,
-  RedoOutlined
+  RedoOutlined,
+  EyeOutlined,
+  EditOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 
@@ -158,17 +160,34 @@ function EditorToolbar({
 
       {/* 右侧：模式切换和保存 */}
       <Space size="small">
-        {/* 专注模式 */}
-        <Segmented
-          size="small"
-          options={[
-            { label: '专注', value: false },
-            { label: '打字机', value: true }
-          ]}
-          value={typewriterMode}
-          onChange={(val) => onToggleTypewriter?.(val === true)}
-          style={{ background: '#1e1e1e' }}
-        />
+        {/* 专注模式开关 */}
+        <Tooltip title="专注模式 (F8)">
+          <Button
+            type="text"
+            icon={<EyeOutlined />}
+            onClick={() => onToggleFocus?.(!focusMode)}
+            style={{
+              color: focusMode ? '#1890ff' : '#d4d4d4',
+              background: focusMode ? 'rgba(24, 144, 255, 0.1)' : 'transparent'
+            }}
+          />
+        </Tooltip>
+
+        {/* 打字机模式开关 */}
+        <Tooltip title="打字机模式 (F9)">
+          <Button
+            type="text"
+            icon={<EditOutlined />}
+            onClick={() => onToggleTypewriter?.(!typewriterMode)}
+            style={{
+              color: typewriterMode ? '#1890ff' : '#d4d4d4',
+              background: typewriterMode ? 'rgba(24, 144, 255, 0.1)' : 'transparent'
+            }}
+          />
+        </Tooltip>
+
+        {/* 分隔线 */}
+        <div style={{ width: 1, height: 20, background: '#444', margin: '0 8px' }} />
 
         {/* 保存按钮 */}
         <Tooltip title="保存 (Ctrl+S)">

@@ -82,6 +82,18 @@ export async function deleteChapter(projectPath: string, chapterId: string): Pro
   return invoke<boolean>('chapter:delete', { projectPath, chapterId })
 }
 
+export async function renameChapter(projectPath: string, chapterId: string, newTitle: string): Promise<Chapter> {
+  return invoke<Chapter>('chapter:rename', { projectPath, chapterId, newTitle })
+}
+
+export async function reorderChapters(projectPath: string, fromId: string, toId: string): Promise<boolean> {
+  return invoke<boolean>('chapter:reorder', { projectPath, fromId, toId })
+}
+
+export async function getChapterById(projectPath: string, chapterId: string): Promise<Chapter | null> {
+  return invoke<Chapter | null>('chapter:getById', { projectPath, chapterId })
+}
+
 // ==================== 对话框相关 ====================
 
 export async function openDirectoryDialog(): Promise<string | null> {

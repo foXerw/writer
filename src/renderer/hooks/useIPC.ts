@@ -19,6 +19,9 @@ interface IPCAPI {
     create: (params: { projectPath: string; title: string }) => Promise<Chapter>
     update: (params: { projectPath: string; chapter: Chapter }) => Promise<Chapter>
     delete: (params: { projectPath: string; chapterId: string }) => Promise<boolean>
+    rename: (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
+    reorder: (params: { projectPath: string; fromId: string; toId: string }) => Promise<boolean>
+    getById: (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
   }
   dialog: {
     openDirectory: () => Promise<string | null>
@@ -127,11 +130,37 @@ export function useChapter() {
     return ipc.chapter.delete({ projectPath, chapterId })
   }, [ipc])
 
+  const renameChapter = useCallback(async (
+    projectPath: string,
+    chapterId: string,
+    newTitle: string
+  ): Promise<Chapter> => {
+    return ipc.chapter.rename({ projectPath, chapterId, newTitle })
+  }, [ipc])
+
+  const reorderChapters = useCallback(async (
+    projectPath: string,
+    fromId: string,
+    toId: string
+  ): Promise<boolean> => {
+    return ipc.chapter.reorder({ projectPath, fromId, toId })
+  }, [ipc])
+
+  const getChapterById = useCallback(async (
+    projectPath: string,
+    chapterId: string
+  ): Promise<Chapter | null> => {
+    return ipc.chapter.getById({ projectPath, chapterId })
+  }, [ipc])
+
   return {
     getAllChapters,
     createChapter,
     updateChapter,
-    deleteChapter
+    deleteChapter,
+    renameChapter,
+    reorderChapters,
+    getChapterById
   }
 }
 
