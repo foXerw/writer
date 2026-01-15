@@ -151,9 +151,9 @@ function ProjectDialog({
           width: 400,
           className: 'dark-modal',
           styles: {
-            content: { background: '#1e1e1e', color: '#d4d4d4', borderRadius: 8 },
-            header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4', borderRadius: '8px 8px 0 0' },
-            body: { background: '#1e1e1e', color: '#d4d4d4' }
+            content: { background: '#000000', color: '#ffffff', borderRadius: 8 },
+            header: { background: '#000000', borderBottom: '1px solid #333', color: 'transparent', borderRadius: '8px 8px 0 0' },
+            body: { background: '#000000', color: '#ffffff' }
           },
           maskStyle: { background: 'rgba(0, 0, 0, 0.7)' },
           okButtonProps: {
@@ -167,9 +167,9 @@ function ProjectDialog({
           okText: '确定',
           className: 'dark-modal',
           styles: {
-            content: { background: '#1e1e1e', color: '#d4d4d4', borderRadius: 8 },
-            header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4', borderRadius: '8px 8px 0 0' },
-            body: { background: '#1e1e1e', color: '#d4d4d4' }
+            content: { background: '#000000', color: '#ffffff', borderRadius: 8 },
+            header: { background: '#000000', borderBottom: '1px solid #333', color: 'transparent', borderRadius: '8px 8px 0 0' },
+            body: { background: '#000000', color: '#ffffff' }
           },
           maskStyle: { background: 'rgba(0, 0, 0, 0.7)' },
           okButtonProps: {

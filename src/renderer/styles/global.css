@@ -168,18 +168,18 @@ body {
 
 /* Ant Design Modal 深色主题 */
 .dark-modal .ant-modal-content {
-  background: #1e1e1e !important;
+  background: #000000 !important;
   border: 1px solid #333;
 }
 
 .dark-modal .ant-modal-header {
-  background: #1e1e1e !important;
+  background: #000000 !important;
   border-bottom: 1px solid #333 !important;
 }
 
 .dark-modal .ant-modal-body {
-  background: #1e1e1e !important;
-  color: #d4d4d4 !important;
+  background: #000000 !important;
+  color: #ffffff !important;
 }
 
 .dark-modal .ant-modal-close {
