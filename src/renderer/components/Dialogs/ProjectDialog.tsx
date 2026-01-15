@@ -153,9 +153,9 @@ function ProjectDialog({
           styles: {
             content: { background: '#000000', color: '#ffffff', borderRadius: 8 },
             header: { background: '#000000', borderBottom: '1px solid #333', color: 'transparent', borderRadius: '8px 8px 0 0' },
-            body: { background: '#000000', color: '#ffffff' }
+            body: { background: '#000000', color: '#ffffff' },
+            mask: { background: 'rgba(0, 0, 0, 0.7)' }
           },
-          maskStyle: { background: 'rgba(0, 0, 0, 0.7)' },
           okButtonProps: {
             style: { background: '#0d419d', borderColor: '#1f6feb', color: '#fff' }
           }
@@ -169,9 +169,9 @@ function ProjectDialog({
           styles: {
             content: { background: '#000000', color: '#ffffff', borderRadius: 8 },
             header: { background: '#000000', borderBottom: '1px solid #333', color: 'transparent', borderRadius: '8px 8px 0 0' },
-            body: { background: '#000000', color: '#ffffff' }
+            body: { background: '#000000', color: '#ffffff' },
+            mask: { background: 'rgba(0, 0, 0, 0.7)' }
           },
-          maskStyle: { background: 'rgba(0, 0, 0, 0.7)' },
           okButtonProps: {
             style: { background: '#0d419d', borderColor: '#1f6feb', color: '#fff' }
           }
