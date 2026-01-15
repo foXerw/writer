@@ -84,7 +84,7 @@ body {
   border-radius: 0;
   padding: 6px 8px !important;
   margin-left: 0 !important;
-  width: calc(100% - 24px) !important;
+  width: 100% !important;
   border-left: 2px solid transparent;
 }
 

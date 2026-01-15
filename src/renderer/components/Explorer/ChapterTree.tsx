@@ -127,12 +127,15 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
     key: chapter.id,
     title: (
       <Dropdown menu={getRightClickMenu(chapter)} trigger={['contextMenu']}>
-        <span className="chapter-tree-title">
-          {getStatusIcon(chapter.status)} {chapter.title}
+        <span className="chapter-tree-title" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <FileTextOutlined style={{ color: '#58a6ff', fontSize: 12 }} />
+          {getStatusIcon(chapter.status)}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {chapter.title}
+          </span>
         </span>
       </Dropdown>
     ),
-    icon: <FileTextOutlined />,
     isLeaf: true,
     // 存储完整数据
     data: chapter
