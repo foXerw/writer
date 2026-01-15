@@ -92,12 +92,13 @@ function EditorTabs({
   const items: TabsProps['items'] = chapters.map((chapter, index) => ({
     key: chapter.id,
     label: (
-      <span style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 8px', height: 32 }}>
         <span style={{
-          maxWidth: 120,
+          maxWidth: 100,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap'
+          whiteSpace: 'nowrap',
+          fontSize: 12
         }}>
           {chapter.title || '无标题'}
         </span>
@@ -198,15 +199,15 @@ function EditorTabs({
           margin-bottom: 0 !important;
         }
         .ant-tabs-tab {
-          background: #2d2d2d !important;
+          background: transparent !important;
           border: none !important;
-          margin-right: 2px !important;
-          padding: '4px 8px !important;
+          margin-right: 0 !important;
+          padding: 0 !important;
           min-width: unset !important;
+          height: 32px;
         }
         .ant-tabs-tab-active {
           background: #1e1e1e !important;
-          border-bottom: 2px solid #58a6ff !important;
         }
         .ant-tabs-tab .anticon {
           color: #888;

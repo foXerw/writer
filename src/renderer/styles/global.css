@@ -73,34 +73,39 @@ body {
 }
 
 .chapter-tree .ant-tree-treenode {
-  padding: 2px 8px;
+  padding: 0;
   width: 100%;
   background: #252526 !important;
 }
 
 .chapter-tree .ant-tree-node-content-wrapper {
   color: #d4d4d4 !important;
-  background: #2d2d2d !important;
-  border-radius: 4px;
-  padding: 6px 10px;
-  margin-left: 4px !important;
+  background: transparent !important;
+  border-radius: 0;
+  padding: 6px 8px !important;
+  margin-left: 0 !important;
+  width: calc(100% - 24px) !important;
+  border-left: 2px solid transparent;
 }
 
 .chapter-tree .ant-tree-node-content-wrapper:hover {
-  background: #37373d !important;
+  background: #2d2d2d !important;
 }
 
 .chapter-tree .ant-tree-node-selected .ant-tree-node-content-wrapper {
   background: #37373d !important;
   color: #fff !important;
+  border-left-color: #58a6ff;
 }
 
 .chapter-tree .ant-tree-switcher {
   color: #888;
+  width: 24px;
 }
 
 .chapter-tree .ant-tree-iconEle {
   color: #58a6ff;
+  width: 20px;
 }
 
 .chapter-tree .chapter-tree-title {
@@ -109,6 +114,9 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+  overflow: hidden;
+  textOverflow: ellipsis;
+  whiteSpace: nowrap;
 }
 
 /* 章节树头部 */
