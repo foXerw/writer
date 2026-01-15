@@ -67,6 +67,8 @@ function ProjectDialog({
   const [projectPath, setProjectPath] = useState('')
   const [loading, setLoading] = useState(false)
   const [recentList, setRecentList] = useState<RecentProject[]>([])
+  const [errorModalOpen, setErrorModalOpen] = useState(false)
+  const [errorModalContent, setErrorModalContent] = useState('')
 
   useEffect(() => {
     if (open && mode === 'open') {
@@ -144,39 +146,11 @@ function ProjectDialog({
       console.error('打开项目失败:', error)
       const errorMessage = error instanceof Error ? error.message : String(error)
       if (errorMessage.includes('INVALID_PROJECT')) {
-        Modal.error({
-          title: '无效的项目文件夹',
-          content: '该文件夹不是有效的 Novel Writer 项目。请选择包含 .novelwriter.json 配置文件的文件夹。',
-          okText: '确定',
-          width: 400,
-          className: 'dark-modal',
-          styles: {
-            content: { background: '#000000', color: '#ffffff', borderRadius: 8 },
-            header: { background: '#000000', borderBottom: '1px solid #333', color: 'transparent', borderRadius: '8px 8px 0 0' },
-            body: { background: '#000000', color: '#ffffff' },
-            mask: { background: 'rgba(0, 0, 0, 0.7)' }
-          },
-          okButtonProps: {
-            style: { background: '#0d419d', borderColor: '#1f6feb', color: '#fff' }
-          }
-        })
+        setErrorModalContent('该文件夹不是有效的 Novel Writer 项目。请选择包含 .novelwriter.json 配置文件的文件夹。')
       } else {
-        Modal.error({
-          title: '打开项目失败',
-          content: errorMessage,
-          okText: '确定',
-          className: 'dark-modal',
-          styles: {
-            content: { background: '#000000', color: '#ffffff', borderRadius: 8 },
-            header: { background: '#000000', borderBottom: '1px solid #333', color: 'transparent', borderRadius: '8px 8px 0 0' },
-            body: { background: '#000000', color: '#ffffff' },
-            mask: { background: 'rgba(0, 0, 0, 0.7)' }
-          },
-          okButtonProps: {
-            style: { background: '#0d419d', borderColor: '#1f6feb', color: '#fff' }
-          }
-        })
+        setErrorModalContent(errorMessage)
       }
+      setErrorModalOpen(true)
     } finally {
       setLoading(false)
     }
@@ -354,7 +328,33 @@ function ProjectDialog({
   }
 
   return (
-    <Modal
+    <>
+      {/* 错误提示弹窗 */}
+      <Modal
+        title={<span style={{ color: '#ffffff' }}>无效的项目文件夹</span>}
+        open={errorModalOpen}
+        onOk={() => setErrorModalOpen(false)}
+        onCancel={() => setErrorModalOpen(false)}
+        okText="确定"
+        width={400}
+        className="dark-modal"
+        styles={{
+          content: { background: '#000000', color: '#ffffff', borderRadius: 8 },
+          header: { background: '#000000', borderBottom: '1px solid #333', color: '#ffffff' },
+          body: { background: '#000000', color: '#ffffff' },
+          mask: { background: 'rgba(0, 0, 0, 0.7)' }
+        }}
+        okButtonProps={{
+          style: { background: '#0d419d', borderColor: '#1f6feb', color: '#fff' }
+        }}
+      >
+        <div style={{ color: '#ffffff', fontSize: 14 }}>
+          {errorModalContent}
+        </div>
+      </Modal>
+
+      {/* 主弹窗 */}
+      <Modal
       title={<span style={{ color: '#d4d4d4' }}>{getTitle()}</span>}
       open={open}
       onOk={handleOk}
@@ -385,6 +385,7 @@ function ProjectDialog({
     >
       {mode === 'create' ? renderCreateContent() : renderOpenContent()}
     </Modal>
+    </>
   )
 }
 
