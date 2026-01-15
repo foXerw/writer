@@ -191,7 +191,7 @@ body {
 }
 
 .dark-modal .ant-modal-title {
-  color: #d4d4d4 !important;
+  color: transparent !important;
 }
 
 .dark-modal .ant-modal-footer {
