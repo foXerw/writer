@@ -62,7 +62,8 @@ function Home() {
           display: 'flex',
           alignItems: 'center',
           marginRight: 0,
-          height: 40
+          height: 32,
+          WebkitAppRegion: 'drag'
         }}>
           <Space size="small">
             <FileOutlined style={{ color: '#58a6ff' }} />
@@ -74,7 +75,8 @@ function Home() {
               style={{
                 background: '#0d419d',
                 borderColor: '#1f6feb',
-                color: '#fff'
+                color: '#fff',
+                WebkitAppRegion: 'no-drag'
               }}
             >
               新建项目
@@ -86,7 +88,8 @@ function Home() {
               style={{
                 background: '#2d2d2d',
                 borderColor: '#444',
-                color: '#d4d4d4'
+                color: '#d4d4d4',
+                WebkitAppRegion: 'no-drag'
               }}
             >
               打开项目

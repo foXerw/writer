@@ -57,3 +57,12 @@ body {
 .ant-modal .ant-modal-close:hover {
   color: #d4d4d4;
 }
+
+/* Electron 窗口拖动区域 */
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+}
