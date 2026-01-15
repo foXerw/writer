@@ -31,7 +31,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
   onSelectChapter,
   onChapterChange
 }) => {
-  const { deleteChapter, reorderChapters } = useChapter()
+  const { createChapter, deleteChapter, reorderChapters } = useChapter()
   const [messageApi, contextHolder] = message.useMessage()
   const [modal, contextModalHolder] = Modal.useModal()
 
@@ -162,6 +162,41 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
     }
   }
 
+  // 新建章节
+  const handleCreateChapter = () => {
+    let newTitle = ''
+    modal.confirm({
+      title: '新建章节',
+      content: (
+        <Input
+          autoFocus
+          placeholder="请输入章节标题"
+          onChange={(e) => { newTitle = e.target.value }}
+          onPressEnter={() => {
+            if (newTitle.trim()) {
+              modal.confirm({})
+              confirmCreateChapter(newTitle)
+            }
+          }}
+        />
+      ),
+      okText: '创建',
+      cancelText: '取消',
+      onOk: () => confirmCreateChapter(newTitle)
+    })
+  }
+
+  const confirmCreateChapter = async (title: string) => {
+    if (!title.trim()) return
+    try {
+      await createChapter(projectPath, title.trim())
+      messageApi.success('章节已创建')
+      onChapterChange()
+    } catch (error) {
+      messageApi.error('创建失败')
+    }
+  }
+
   return (
     <>
       {contextHolder}
@@ -179,10 +214,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
             <Button
               type="dashed"
               icon={<PlusOutlined />}
-              onClick={() => {
-                // 触发新建章节事件
-                onChapterChange()
-              }}
+              onClick={handleCreateChapter}
               block
               style={{ borderColor: '#444', color: '#888' }}
             >
