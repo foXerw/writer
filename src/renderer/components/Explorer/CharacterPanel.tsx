@@ -26,7 +26,7 @@ import {
   QuestionOutlined
 } from '@ant-design/icons'
 import type { Character, CharacterGender, CharacterRole } from '@/common/ipc'
-import { useChapter } from '@/hooks/useIPC'
+import { useChapter } from '../../hooks/useIPC'
 
 const { Text, Title } = Typography
 const { TextArea } = Input
@@ -114,8 +114,8 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
   // 删除角色
   const handleDelete = async (characterId: string) => {
     try {
-      // await deleteChapter(projectPath, characterId.success('角色已)
-      messageApi删除')
+      await window.electronAPI.invoke('character:delete', { projectPath, characterId })
+      messageApi.success('角色已删除')
       loadCharacters()
     } catch (error) {
       messageApi.error('删除失败')

@@ -12,7 +12,7 @@ import {
   DragOutlined
 } from '@ant-design/icons'
 import type { Chapter } from '@/common/ipc'
-import { useChapter } from '@/hooks/useIPC'
+import { useChapter } from '../../hooks/useIPC'
 
 const { Text } = Typography
 

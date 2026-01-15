@@ -74,7 +74,28 @@ contextBridge.exposeInMainWorld('novelWriter', {
     getAll: projectAPI['chapter:getAll'],
     create: projectAPI['chapter:create'],
     update: projectAPI['chapter:update'],
-    delete: projectAPI['chapter:delete']
+    delete: projectAPI['chapter:delete'],
+    rename: projectAPI['chapter:rename'],
+    reorder: projectAPI['chapter:reorder'],
+    getById: projectAPI['chapter:getById']
+  },
+
+  // 角色相关
+  character: {
+    getAll: projectAPI['character:getAll'],
+    getById: projectAPI['character:getById'],
+    create: projectAPI['character:create'],
+    update: projectAPI['character:update'],
+    delete: projectAPI['character:delete']
+  },
+
+  // 设定相关
+  setting: {
+    getAll: projectAPI['setting:getAll'],
+    getById: projectAPI['setting:getById'],
+    create: projectAPI['setting:create'],
+    update: projectAPI['setting:update'],
+    delete: projectAPI['setting:delete']
   },
 
   // 对话框
