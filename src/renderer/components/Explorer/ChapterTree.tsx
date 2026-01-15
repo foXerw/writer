@@ -204,23 +204,21 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
       <div className="chapter-tree">
         {/* 头部工具栏 */}
         <div className="chapter-tree-header">
-          <Space direction="vertical" style={{ width: '100%' }} size="small">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ color: '#888', fontSize: 12 }}>章节</Text>
-              <Text style={{ color: '#666', fontSize: 11 }}>
-                {chapters.length} 篇
-              </Text>
-            </div>
-            <Button
-              type="dashed"
-              icon={<PlusOutlined />}
-              onClick={handleCreateChapter}
-              block
-              style={{ borderColor: '#444', color: '#888' }}
-            >
-              新建章节
-            </Button>
-          </Space>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text strong style={{ color: '#d4d4d4', fontSize: 13 }}>章节</Text>
+            <Text style={{ color: '#666', fontSize: 12 }}>
+              {chapters.length} 篇
+            </Text>
+          </div>
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            onClick={handleCreateChapter}
+            block
+            style={{ borderColor: '#444', color: '#888' }}
+          >
+            新建章节
+          </Button>
         </div>
 
         {/* 章节树 */}
@@ -232,7 +230,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
           onDragEnd={handleDragEnd}
           blockNode
           showIcon
-          style={{ padding: '8px 0' }}
+          style={{ padding: '8px 12px' }}
         />
       </div>
     </>

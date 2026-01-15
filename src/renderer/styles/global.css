@@ -113,8 +113,23 @@ body {
 
 /* 章节树头部 */
 .chapter-tree-header {
-  padding: 12px 16px;
+  padding: 8px 12px;
   border-bottom: 1px solid #333;
+}
+
+.chapter-tree-header .ant-space {
+  gap: 8px !important;
+}
+
+.chapter-tree-header .ant-btn-dashed {
+  border-color: #444;
+  color: #888;
+  height: 32px;
+}
+
+.chapter-tree-header .ant-btn-dashed:hover {
+  border-color: #58a6ff;
+  color: #58a6ff;
 }
 
 /* Ant Design Button 深色主题 - 移除3D边框效果 */
