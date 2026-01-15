@@ -68,26 +68,31 @@ body {
 }
 
 /* Ant Design Tree 深色主题 */
+.chapter-tree {
+  background: #252526;
+}
+
 .chapter-tree .ant-tree-treenode {
   padding: 2px 8px;
   width: 100%;
+  background: #252526 !important;
 }
 
 .chapter-tree .ant-tree-node-content-wrapper {
-  color: #d4d4d4;
-  background: #2d2d2d;
+  color: #d4d4d4 !important;
+  background: #2d2d2d !important;
   border-radius: 4px;
-  padding: 4px 8px;
-  width: calc(100% - 24px);
+  padding: 6px 10px;
+  margin-left: 4px !important;
 }
 
 .chapter-tree .ant-tree-node-content-wrapper:hover {
-  background: #37373d;
+  background: #37373d !important;
 }
 
 .chapter-tree .ant-tree-node-selected .ant-tree-node-content-wrapper {
-  background: #37373d;
-  color: #fff;
+  background: #37373d !important;
+  color: #fff !important;
 }
 
 .chapter-tree .ant-tree-switcher {
