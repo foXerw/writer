@@ -163,9 +163,7 @@ function EditorTabs({
         activeKey={activeTabId || ''}
         items={items}
         onChange={handleChange}
-        onEdit={handleClose}
         hideAdd
-        type="editable-card"
         size="small"
         style={{ width: 'calc(100% - 80px)', marginBottom: 0 }}
         tabBarStyle={{
