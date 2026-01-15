@@ -149,11 +149,13 @@ function ProjectDialog({
           content: '该文件夹不是有效的 Novel Writer 项目。请选择包含 .novelwriter.json 配置文件的文件夹。',
           okText: '确定',
           width: 400,
+          className: 'dark-modal',
           styles: {
-            content: { background: '#1e1e1e', color: '#d4d4d4' },
-            header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4' },
+            content: { background: '#1e1e1e', color: '#d4d4d4', borderRadius: 8 },
+            header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4', borderRadius: '8px 8px 0 0' },
             body: { background: '#1e1e1e', color: '#d4d4d4' }
           },
+          maskStyle: { background: 'rgba(0, 0, 0, 0.7)' },
           okButtonProps: {
             style: { background: '#0d419d', borderColor: '#1f6feb', color: '#fff' }
           }
@@ -163,11 +165,13 @@ function ProjectDialog({
           title: '打开项目失败',
           content: errorMessage,
           okText: '确定',
+          className: 'dark-modal',
           styles: {
-            content: { background: '#1e1e1e', color: '#d4d4d4' },
-            header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4' },
+            content: { background: '#1e1e1e', color: '#d4d4d4', borderRadius: 8 },
+            header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4', borderRadius: '8px 8px 0 0' },
             body: { background: '#1e1e1e', color: '#d4d4d4' }
           },
+          maskStyle: { background: 'rgba(0, 0, 0, 0.7)' },
           okButtonProps: {
             style: { background: '#0d419d', borderColor: '#1f6feb', color: '#fff' }
           }
