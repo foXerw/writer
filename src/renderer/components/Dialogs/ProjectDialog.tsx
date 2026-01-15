@@ -212,7 +212,16 @@ function ProjectDialog({
               readOnly
               style={{ flex: 1, background: '#2d2d2d', color: '#d4d4d4', borderColor: '#444' }}
             />
-            <Button onClick={handleSelectPath}>浏览</Button>
+            <Button
+              onClick={handleSelectPath}
+              style={{
+                background: '#0d419d',
+                borderColor: '#1f6feb',
+                color: '#fff'
+              }}
+            >
+              浏览
+            </Button>
           </Space>
         </div>
       </Space>
@@ -226,6 +235,11 @@ function ProjectDialog({
           type="primary"
           icon={<FolderOpenOutlined />}
           onClick={handleOpenCustom}
+          style={{
+            background: '#0d419d',
+            borderColor: '#1f6feb',
+            color: '#fff'
+          }}
         >
           选择文件夹
         </Button>
@@ -318,6 +332,20 @@ function ProjectDialog({
         content: { background: '#1e1e1e', color: '#d4d4d4' },
         header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4' },
         body: { background: '#1e1e1e' }
+      }}
+      okButtonProps={{
+        style: {
+          background: '#0d419d',
+          borderColor: '#1f6feb',
+          color: '#fff'
+        }
+      }}
+      cancelButtonProps={{
+        style: {
+          background: '#2d2d2d',
+          borderColor: '#444',
+          color: '#d4d4d4'
+        }
       }}
     >
       {mode === 'create' ? renderCreateContent() : renderOpenContent()}
