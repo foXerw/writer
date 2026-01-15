@@ -6,7 +6,7 @@ import type { RecentProject } from '../../common/ipc'
 import { useProject } from '../../hooks/useIPC'
 import ProjectDialog from '../../components/Dialogs/ProjectDialog'
 
-const { Header, Content, Sider } = Layout
+const { Header, Content } = Layout
 const { Title, Text } = Typography
 
 function Home() {
@@ -49,9 +49,6 @@ function Home() {
 
   return (
     <Layout style={{ height: '100vh' }}>
-      {/* 左侧边栏 */}
-      <Sider width={48} theme="dark" style={{ background: '#252526' }}>
-      </Sider>
 
       {/* 主内容区 */}
       <Layout>
@@ -98,25 +95,29 @@ function Home() {
         </Header>
 
         <Content style={{
-          padding: '24px',
+          padding: '32px 48px',
           background: '#1e1e1e',
-          overflow: 'auto'
+          overflow: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center'
         }}>
-          {/* 最近项目 */}
-          <Card
-            title={
-              <Space>
-                <ClockCircleOutlined />
-                <span>最近打开</span>
-              </Space>
-            }
-            style={{
-              background: '#252526',
-              borderColor: '#333',
-              maxWidth: 800
-            }}
-            styles={{ header: { color: '#d4d4d4', borderBottom: '1px solid #333' } }}
-          >
+          <div style={{ width: '100%', maxWidth: 900 }}>
+            {/* 最近项目 */}
+            <Card
+              title={
+                <Space>
+                  <ClockCircleOutlined />
+                  <span>最近打开</span>
+                </Space>
+              }
+              style={{
+                background: '#252526',
+                borderColor: '#333',
+                marginBottom: 24
+              }}
+              styles={{ header: { color: '#d4d4d4', borderBottom: '1px solid #333' } }}
+            >
             {recentProjects.length > 0 ? (
               <List
                 dataSource={recentProjects}
@@ -160,16 +161,14 @@ function Home() {
           </Card>
 
           {/* 快捷操作 */}
-          <Card
-            title="开始创作"
-            style={{
-              marginTop: '24px',
-              background: '#252526',
-              borderColor: '#333',
-              maxWidth: 800
-            }}
-            styles={{ header: { color: '#d4d4d4', borderBottom: '1px solid #333' } }}
-          >
+            <Card
+              title="开始创作"
+              style={{
+                background: '#252526',
+                borderColor: '#333'
+              }}
+              styles={{ header: { color: '#d4d4d4', borderBottom: '1px solid #333' } }}
+            >
             <Space direction="vertical" style={{ width: '100%' }}>
               <Button
                 block
@@ -201,6 +200,7 @@ function Home() {
               </Button>
             </Space>
           </Card>
+          </div>
         </Content>
       </Layout>
 
