@@ -202,3 +202,40 @@ body {
 .dark-modal + .ant-modal-mask {
   background: rgba(0, 0, 0, 0.7) !important;
 }
+
+/* Modal.error 特殊样式 - 覆盖 Ant Design 默认 */
+.dark-modal.ant-modal.confirm .ant-modal-body {
+  padding: 24px !important;
+}
+
+.dark-modal.ant-modal.confirm .ant-modal-body > .anticon {
+  color: #ff4d4f !important;
+}
+
+.dark-modal.ant-modal.confirm .ant-modal-body .ant-confirm-content {
+  color: #ffffff !important;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.dark-modal.ant-modal.confirm .ant-confirm-title {
+  color: #ffffff !important;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.dark-modal.ant-modal.confirm .ant-confirm-btns {
+  margin-top: 16px;
+}
+
+.dark-modal.ant-modal.confirm .ant-confirm-btns .ant-btn {
+  background: #2d2d2d;
+  border-color: #444;
+  color: #d4d4d4;
+}
+
+.dark-modal.ant-modal.confirm .ant-confirm-btns .ant-btn-primary {
+  background: #0d419d;
+  border-color: #1f6feb;
+  color: #ffffff;
+}
