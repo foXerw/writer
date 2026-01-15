@@ -93,7 +93,6 @@ function ProjectDialog({
 
   const handleSelectTemplate = (template: ProjectType) => {
     setSelectedTemplate(template)
-    setStep('config')
   }
 
   const handleSelectPath = async () => {
@@ -274,15 +273,19 @@ function ProjectDialog({
   }
 
   const getOkText = () => {
-    if (mode === 'create' && step === 'config') {
-      return '创建'
+    if (mode === 'create') {
+      return step === 'templates' ? '下一步' : '创建'
     }
     return undefined
   }
 
   const handleOk = () => {
-    if (mode === 'create' && step === 'config') {
-      handleCreate()
+    if (mode === 'create') {
+      if (step === 'templates') {
+        setStep('config')
+      } else {
+        handleCreate()
+      }
     }
   }
 
@@ -294,6 +297,13 @@ function ProjectDialog({
     }
   }
 
+  const getCancelText = () => {
+    if (mode === 'create' && step === 'config') {
+      return '上一步'
+    }
+    return '取消'
+  }
+
   return (
     <Modal
       title={<span style={{ color: '#d4d4d4' }}>{getTitle()}</span>}
@@ -302,9 +312,7 @@ function ProjectDialog({
       onCancel={handleCancel}
       confirmLoading={loading}
       okText={getOkText()}
-      cancelButtonProps={{
-        style: mode === 'create' && step === 'config' ? { display: 'none' } : undefined
-      }}
+      cancelText={getCancelText()}
       width={mode === 'create' ? 600 : 500}
       styles={{
         content: { background: '#1e1e1e', color: '#d4d4d4' },

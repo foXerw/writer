@@ -69,9 +69,13 @@ function Home() {
             <Title level={4} style={{ margin: 0, color: '#d4d4d4', fontSize: 14 }}>Novel Writer</Title>
             <Button
               size="small"
-              type="primary"
               icon={<PlusOutlined />}
               onClick={() => setCreateDialogVisible(true)}
+              style={{
+                background: '#0d419d',
+                borderColor: '#1f6feb',
+                color: '#fff'
+              }}
             >
               新建项目
             </Button>
@@ -79,6 +83,11 @@ function Home() {
               size="small"
               icon={<FolderOpenOutlined />}
               onClick={() => setOpenDialogVisible(true)}
+              style={{
+                background: '#2d2d2d',
+                borderColor: '#444',
+                color: '#d4d4d4'
+              }}
             >
               打开项目
             </Button>
@@ -130,10 +139,17 @@ function Home() {
               />
             ) : (
               <Empty
-                description="暂无最近项目"
+                description={<Text style={{ color: '#888' }}>暂无最近项目</Text>}
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
               >
-                <Button type="primary" onClick={() => setCreateDialogVisible(true)}>
+                <Button
+                  onClick={() => setCreateDialogVisible(true)}
+                  style={{
+                    background: '#0d419d',
+                    borderColor: '#1f6feb',
+                    color: '#fff'
+                  }}
+                >
                   创建第一个项目
                 </Button>
               </Empty>
@@ -156,7 +172,13 @@ function Home() {
                 block
                 icon={<PlusOutlined />}
                 onClick={() => setCreateDialogVisible(true)}
-                style={{ height: '48px', textAlign: 'left' }}
+                style={{
+                  height: '48px',
+                  textAlign: 'left',
+                  background: '#2d2d2d',
+                  borderColor: '#444',
+                  color: '#d4d4d4'
+                }}
               >
                 新建项目
               </Button>
@@ -164,7 +186,13 @@ function Home() {
                 block
                 icon={<FolderOpenOutlined />}
                 onClick={() => setOpenDialogVisible(true)}
-                style={{ height: '48px', textAlign: 'left' }}
+                style={{
+                  height: '48px',
+                  textAlign: 'left',
+                  background: '#2d2d2d',
+                  borderColor: '#444',
+                  color: '#d4d4d4'
+                }}
               >
                 打开项目
               </Button>
