@@ -121,7 +121,7 @@ function ProjectDialog({
         path: project.path,
         lastOpened: new Date()
       })
-      onProjectCreated?.(project.path)
+      onProjectCreated?.(project.path, project.name)
       onClose()
     } catch (error) {
       console.error('创建项目失败:', error)
@@ -140,7 +140,7 @@ function ProjectDialog({
         path: project.path,
         lastOpened: new Date()
       })
-      onProjectOpened?.(project.path)
+      onProjectOpened?.(project.path, project.name)
       onClose()
     } catch (error) {
       console.error('打开项目失败:', error)

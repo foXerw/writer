@@ -37,14 +37,14 @@ function Home() {
   }
 
   // 项目创建成功后跳转
-  const handleProjectCreated = (projectPath: string) => {
-    navigate('/workspace', { state: { projectPath } })
+  const handleProjectCreated = (projectPath: string, projectName: string) => {
+    navigate('/workspace', { state: { project: { name: projectName, path: projectPath } } })
     loadRecentProjects()
   }
 
   // 项目打开成功后跳转
-  const handleProjectOpened = (projectPath: string) => {
-    navigate('/workspace', { state: { projectPath } })
+  const handleProjectOpened = (projectPath: string, projectName: string) => {
+    navigate('/workspace', { state: { project: { name: projectName, path: projectPath } } })
   }
 
   return (
@@ -210,13 +210,6 @@ function Home() {
         mode="create"
         onClose={() => setCreateDialogVisible(false)}
         onProjectCreated={handleProjectCreated}
-      />
-
-      {/* 打开项目对话框 */}
-      <ProjectDialog
-        open={openDialogVisible}
-        mode="open"
-        onClose={() => setOpenDialogVisible(false)}
         onProjectOpened={handleProjectOpened}
       />
     </Layout>
