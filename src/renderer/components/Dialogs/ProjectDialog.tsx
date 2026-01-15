@@ -201,7 +201,7 @@ function ProjectDialog({
             placeholder="输入项目名称"
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
-            style={{ marginTop: 8, background: '#2d2d2d' }}
+            style={{ marginTop: 8, background: '#2d2d2d', color: '#d4d4d4', borderColor: '#444' }}
           />
         </div>
         <div>
@@ -211,7 +211,7 @@ function ProjectDialog({
               placeholder="选择项目路径"
               value={projectPath}
               readOnly
-              style={{ flex: 1, background: '#2d2d2d' }}
+              style={{ flex: 1, background: '#2d2d2d', color: '#d4d4d4', borderColor: '#444' }}
             />
             <Button onClick={handleSelectPath}>浏览</Button>
           </Space>
@@ -296,7 +296,7 @@ function ProjectDialog({
 
   return (
     <Modal
-      title={getTitle()}
+      title={<span style={{ color: '#d4d4d4' }}>{getTitle()}</span>}
       open={open}
       onOk={handleOk}
       onCancel={handleCancel}
@@ -307,8 +307,9 @@ function ProjectDialog({
       }}
       width={mode === 'create' ? 600 : 500}
       styles={{
-        content: { background: '#1e1e1e' },
-        header: { background: '#1e1e1e', borderBottom: '1px solid #333' }
+        content: { background: '#1e1e1e', color: '#d4d4d4' },
+        header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4' },
+        body: { background: '#1e1e1e' }
       }}
     >
       {mode === 'create' ? renderCreateContent() : renderOpenContent()}

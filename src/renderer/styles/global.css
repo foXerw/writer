@@ -42,3 +42,18 @@ body {
   background: #264f78;
   color: #ffffff;
 }
+
+/* Ant Design Input placeholder 样式 */
+.ant-input::placeholder,
+.ant-input-affix-wrapper input::placeholder {
+  color: #666 !important;
+}
+
+/* Ant Design Modal 深色主题 */
+.ant-modal .ant-modal-close {
+  color: #888;
+}
+
+.ant-modal .ant-modal-close:hover {
+  color: #d4d4d4;
+}
