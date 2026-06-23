@@ -75,8 +75,8 @@
 **交付物**:
 - [x] `electron/main/index.ts` 主进程入口
 - [x] `electron/main/window.ts` 窗口管理
-- [x] `electron.vite.config.ts` Vite配置
-- [x] `vite.config.ts` 前端Vite配置
+- [x] `electron.vite.config.ts` Vite配置（实际生效的构建配置）
+- [x] `vite.config.ts` 前端Vite配置（⚠️ 历史残留：无 npm 脚本引用，仅 tsconfig 用于类型检查；构建实际走 electron.vite.config.ts）
 - [x] 基础Electron窗口
 - [x] React页面基础结构
 

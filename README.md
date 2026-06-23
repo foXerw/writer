@@ -9,7 +9,7 @@
 - **TypeScript** - 类型安全
 - **Vite 5** - 快速构建工具
 - **Monaco Editor** - VSCode同款编辑器内核
-- **SQLite + Prisma** - 本地数据存储
+- **本地文件存储** - 项目数据以 JSON 配置 + Markdown 文件保存，通过 IPC 读写（无数据库依赖）
 - **Zustand** - 轻量状态管理
 - **Ant Design 5** - UI组件库
 
@@ -48,42 +48,37 @@ novel-writer/
 ├── electron/
 │   ├── main/
 │   │   ├── index.ts              # 主进程入口
-│   │   ├── app.ts                # 应用生命周期
-│   │   ├── ipc/                  # IPC通信处理
-│   │   │   ├── fileHandler.ts
-│   │   │   ├── projectHandler.ts
-│   │   │   └── searchHandler.ts
-│   │   ├── services/             # 主进程服务
-│   │   │   ├── fileService.ts
-│   │   │   ├── dbService.ts
-│   │   │   └── backupService.ts
-│   │   └── window/               # 窗口管理
-│   │       ├── WindowManager.ts
-│   │       └── preload.ts
+│   │   ├── window.ts             # 窗口管理（BrowserWindow）
+│   │   ├── menu.ts               # 应用菜单
+│   │   ├── tray.ts               # 系统托盘
+│   │   └── ipc/
+│   │       └── handlers.ts       # IPC 处理（项目/文件/章节/角色/设定）
 │   └── preload/
-│       └── index.ts
+│       └── index.ts              # 预加载脚本（contextBridge 暴露 IPC）
 ├── src/
-│   ├── renderer/
-│   │   ├── components/           # React组件
-│   │   │   ├── Layout/           # 布局组件
-│   │   │   ├── Editor/           # 编辑器组件
-│   │   │   ├── Explorer/         # 资源管理器
-│   │   │   ├── Dialogs/          # 对话框
-│   │   │   └── Common/           # 通用组件
-│   │   ├── pages/                # 页面
-│   │   │   ├── Home/             # 首页
-│   │   │   ├── Workspace/        # 工作区
-│   │   │   └── Settings/         # 设置
-│   │   ├── stores/               # 状态管理
-│   │   ├── hooks/                # 自定义钩子
-│   │   ├── services/             # 前端服务
-│   │   ├── utils/                # 工具函数
-│   │   ├── styles/               # 样式文件
-│   │   └── types/                # 类型定义
-│   └── resources/                # 静态资源
-├── scripts/                      # 构建脚本
-├── vite.config.ts
-├── electron.vite.config.ts
+│   ├── common/
+│   │   └── ipc.ts                # IPC 类型定义与通道常量
+│   └── renderer/
+│       ├── App.tsx               # 应用根组件
+│       ├── index.tsx             # 渲染进程入口
+│       ├── index.html            # HTML 模板
+│       ├── components/            # React 组件
+│       │   ├── Layout/           # 布局（EditorTabs）
+│       │   ├── Editor/           # 编辑器（MonacoEditor / EditorToolbar / OutlineView）
+│       │   ├── Explorer/         # 侧边面板（ChapterTree / CharacterPanel / SettingPanel / StatsPanel）
+│       │   ├── Dialogs/          # 对话框（CommandPalette / ExportDialog / ProjectDialog）
+│       │   └── Settings/         # 设置（ThemeSettings）
+│       ├── pages/                # 页面（Home / Workspace / Settings）
+│       ├── stores/               # 状态管理（Zustand）
+│       ├── hooks/                # 自定义钩子（useIPC / useKeyboard / useMenu）
+│       ├── services/             # 前端服务（fileService / ipcService）
+│       └── styles/              # 样式（global.css）
+├── resources/icons/              # 图标资源
+├── docs/                         # 开发文档（DEVELOPMENT.md）
+├── electron.vite.config.ts       # ✅ 实际生效的构建配置（main / preload / renderer 三段）
+├── vite.config.ts                # ⚠️ 历史残留：独立的前端 web 构建配置（端口3000），无 npm 脚本引用，仅 tsconfig 用于类型检查
+├── tsconfig.json / tsconfig.node.json
+├── .eslintrc.js / .prettierrc
 └── package.json
 ```
 
@@ -111,6 +106,56 @@ npm run dev
 ```bash
 npm run build
 ```
+
+> ⚠️ `npm run build` 仅编译产物到 `dist-electron/`（main / preload / renderer），**不包含打包成安装包（.exe）的步骤**（未集成 electron-builder / electron-forge）。如需生成安装包，需另行补充配置。
+
+## 常见问题排查
+
+### 启动报错 `Error: Electron uninstall` / `getElectronPath`
+
+**原因**：`electron` 包通过 postinstall 脚本从 GitHub 下载预编译二进制到 `node_modules/electron/dist/`。如果该步骤没完成（网络问题、`allowScripts` 未放开、或缓存损坏），`dist/` 下会缺少 `electron.exe` 和 `path.txt`，导致 electron-vite 启动时找不到 electron。
+
+**判断方法**：检查以下文件是否存在且有效：
+
+```bash
+# 应输出 electron.exe
+cat node_modules/electron/path.txt
+# 应存在 176MB 左右的可执行文件
+ls node_modules/electron/dist/electron.exe
+```
+
+**解决办法**（按推荐顺序）：
+
+1. **手动重跑 electron 的安装脚本**（最简单）：
+   ```bash
+   node node_modules/electron/install.js
+   ```
+
+2. **网络问题**（国内访问 GitHub releases 经常超时），使用 npmmirror 镜像后重装：
+   ```bash
+   export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+   npm rebuild electron
+   # 或单独重跑：
+   node node_modules/electron/install.js
+   ```
+
+3. **缓存损坏**（`@electron/get` 报 `Cache hit` 但解压失败）：清空 electron 缓存后重下：
+   ```bash
+   # 清缓存（缓存目录：%LOCALAPPDATA%\electron\Cache）
+   rm -rf "$LOCALAPPDATA/electron/Cache"
+   node node_modules/electron/install.js
+   ```
+
+4. **兜底方案**（缓存的 zip 完好但 `install.js` 解压异常时）：缓存 zip 位于 `%LOCALAPPDATA%\electron\Cache\<hash>\electron-v<版本>-win32-x64.zip`，可用 PowerShell 手动解压并补写 `path.txt`：
+   ```powershell
+   Expand-Archive -Path "<缓存中的 electron-*.zip>" -DestinationPath "node_modules\electron\dist" -Force
+   Set-Content -Path "node_modules\electron\path.txt" -Value "electron.exe" -NoNewline
+   ```
+
+### 重装依赖时的注意事项
+
+- `package.json` 中已配置 `allowScripts`（放行 `electron` 与 `esbuild` 的 postinstall）。换机器或重装依赖时，确认这两个原生依赖的二进制已正确下载，否则需按上文步骤排查。
+- 本项目数据存储基于**本地文件**（项目目录 `.novelwriter/` 下的 json + 各目录的 `.md`），不依赖数据库服务，无需额外启动 SQLite 等服务。
 
 ## 开发路线图
 
