@@ -1,6 +1,5 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
 import type { editor } from 'monaco-editor'
-import { useEditorStore } from '@/stores'
 
 // 动态导入 Monaco（避免 SSR 问题）
 let monaco: typeof import('monaco-editor') | null = null
@@ -32,17 +31,6 @@ const novelDarkTheme = {
   }
 }
 
-// 打字机模式装饰样式
-const typewriterDecorationCss = `
-  .typewriter-center-line {
-    position: absolute;
-    left: 0;
-    right: 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    pointer-events: none;
-  }
-`
-
 interface MonacoEditorProps {
   value: string
   language?: string
@@ -54,10 +42,16 @@ interface MonacoEditorProps {
   focusMode?: boolean
   typewriterMode?: boolean
   fontSize?: number
+  wordWrap?: boolean
+  showLineNumbers?: boolean
+}
+
+export interface MonacoEditorHandle {
+  revealLineInCenter: (lineNumber: number) => void
 }
 
 // Monaco Editor 容器组件
-function MonacoEditor({
+const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function MonacoEditor({
   value,
   language = 'markdown',
   onChange,
@@ -66,32 +60,26 @@ function MonacoEditor({
   wordCount = true,
   focusMode = false,
   typewriterMode = false,
-  fontSize = 16
-}: MonacoEditorProps) {
+  fontSize = 16,
+  wordWrap = true,
+  showLineNumbers = false
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const decorationRef = useRef<string[]>([])
+
+  useImperativeHandle(ref, () => ({
+    revealLineInCenter: (lineNumber: number) => {
+      editorRef.current?.revealLineInCenter(lineNumber)
+    }
+  }), [])
 
   // 打字机模式：保持光标在屏幕中央
   const centerCursorInTypewriterMode = useCallback(() => {
-    if (!editorRef.current || !monaco) return
-
-    const editor = editorRef.current
-    const position = editor.getPosition()
+    if (!editorRef.current) return
+    const position = editorRef.current.getPosition()
     if (!position) return
-
-    // 获取编辑器可见区域
-    const scrollTop = editor.getScrollTop()
-    const editorHeight = editor.getLayoutInfo().height
-    const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight)
-    const cursorHeight = lineHeight
-
-    // 计算目标滚动位置（光标居中）
-    const targetScrollTop = scrollTop
-
-    // 使用 revealLine 将光标行滚动到视图中央
-    editor.revealLineInCenter(position.lineNumber)
+    editorRef.current.revealLineInCenter(position.lineNumber)
   }, [])
 
   // 监听光标位置变化（打字机模式）
@@ -136,9 +124,9 @@ function MonacoEditor({
           fontSize,
           fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
           lineHeight: 28,
-          wordWrap: 'on',
+          wordWrap: wordWrap ? 'on' : 'off',
           minimap: { enabled: false },
-          lineNumbers: 'off',
+          lineNumbers: showLineNumbers ? 'on' : 'off',
           folding: false,
           lineDecorationsWidth: 0,
           lineNumbersMinChars: 0,
@@ -280,6 +268,20 @@ function MonacoEditor({
     }
   }, [fontSize])
 
+  // 更新自动换行
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({ wordWrap: wordWrap ? 'on' : 'off' })
+    }
+  }, [wordWrap])
+
+  // 更新行号显示
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({ lineNumbers: showLineNumbers ? 'on' : 'off' })
+    }
+  }, [showLineNumbers])
+
   // 更新字数统计
   const updateWordCount = (text: string) => {
     const wordCountEl = document.getElementById('editor-word-count')
@@ -331,6 +333,6 @@ function MonacoEditor({
       )}
     </div>
   )
-}
+})
 
 export default MonacoEditor
