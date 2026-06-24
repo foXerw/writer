@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
-  Card,
   Tree,
   Button,
   Space,
@@ -27,6 +26,7 @@ import {
   EditOutlined
 } from '@ant-design/icons'
 import type { Setting, SettingCategory } from '@/common/ipc'
+import { useSetting } from '../../hooks/useIPC'
 
 const { Text } = Typography
 const { TextArea } = Input
@@ -48,6 +48,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
   projectPath,
   onSelectSetting
 }) => {
+  const { getAllSettings, createSetting, updateSetting, deleteSetting } = useSetting()
   const [settings, setSettings] = useState<Setting[]>([])
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
@@ -59,14 +60,14 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
   const loadSettings = useCallback(async () => {
     setLoading(true)
     try {
-      // 暂时使用模拟数据
-      setSettings([])
+      const list = await getAllSettings(projectPath)
+      setSettings(list)
     } catch (error) {
       console.error('加载设定失败:', error)
     } finally {
       setLoading(false)
     }
-  }, [projectPath])
+  }, [projectPath, getAllSettings])
 
   useEffect(() => {
     loadSettings()
@@ -98,23 +99,24 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
   const handleSave = async () => {
     try {
       const values = await form.validateFields()
-
       if (editingSetting) {
+        await updateSetting(projectPath, { ...editingSetting, ...values })
         messageApi.success('设定已更新')
       } else {
+        await createSetting(projectPath, { ...values })
         messageApi.success('设定已创建')
       }
-
       setModalVisible(false)
       loadSettings()
     } catch (error) {
-      console.error('保存设定失败:', error)
+      messageApi.error('保存失败')
     }
   }
 
   // 删除设定
   const handleDelete = async (settingId: string) => {
     try {
+      await deleteSetting(projectPath, settingId)
       messageApi.success('设定已删除')
       loadSettings()
     } catch (error) {
@@ -149,6 +151,35 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
           <Space>
             <FileTextOutlined style={{ color: '#666' }} />
             <span>{setting.title}</span>
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              style={{ color: '#888' }}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleEdit(setting)
+              }}
+            />
+            <Popconfirm
+              title="删除设定"
+              description="确定要删除这个设定吗？"
+              okText="删除"
+              cancelText="取消"
+              onConfirm={(e) => {
+                e?.stopPropagation()
+                handleDelete(setting.id)
+              }}
+            >
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                style={{ color: '#888' }}
+                onClick={(e) => e?.stopPropagation()}
+              />
+            </Popconfirm>
           </Space>
         ),
         icon: <FileTextOutlined />,

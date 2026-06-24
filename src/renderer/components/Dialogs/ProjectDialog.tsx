@@ -8,7 +8,7 @@ import {
   FileTextOutlined,
   HighlightOutlined
 } from '@ant-design/icons'
-import type { ProjectType, RecentProject } from '../../common/ipc'
+import type { ProjectType, RecentProject, ProjectData } from '@/common/ipc'
 import { useProject, useDialog } from '../../hooks/useIPC'
 import { useProjectStore } from '../../stores'
 
@@ -18,8 +18,8 @@ interface ProjectDialogProps {
   open: boolean
   mode: 'create' | 'open'
   onClose: () => void
-  onProjectCreated?: (projectPath: string) => void
-  onProjectOpened?: (projectPath: string) => void
+  onProjectCreated?: (project: ProjectData) => void
+  onProjectOpened?: (project: ProjectData) => void
 }
 
 interface ProjectTemplate {
@@ -121,7 +121,7 @@ function ProjectDialog({
         path: project.path,
         lastOpened: new Date()
       })
-      onProjectCreated?.(project.path, project.name)
+      onProjectCreated?.(project)
       onClose()
     } catch (error) {
       console.error('创建项目失败:', error)
@@ -140,7 +140,7 @@ function ProjectDialog({
         path: project.path,
         lastOpened: new Date()
       })
-      onProjectOpened?.(project.path, project.name)
+      onProjectOpened?.(project)
       onClose()
     } catch (error) {
       console.error('打开项目失败:', error)

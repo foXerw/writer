@@ -31,7 +31,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
   onSelectChapter,
   onChapterChange
 }) => {
-  const { createChapter, deleteChapter, reorderChapters } = useChapter()
+  const { createChapter, deleteChapter, reorderChapters, renameChapter } = useChapter()
   const [messageApi, contextHolder] = message.useMessage()
   const [modal, contextModalHolder] = Modal.useModal()
 
@@ -48,7 +48,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
         key: 'copy',
         label: '复制章节',
         icon: <CopyOutlined />,
-        onClick: () => copyChapter(chapter)
+        onClick: () => copyChapter()
       },
       { type: 'divider' },
       {
@@ -73,21 +73,23 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
           placeholder="请输入章节标题"
         />
       ),
-      onOk: () => {
+      onOk: async () => {
         if (newTitle.trim() && newTitle !== chapter.title) {
-          // 调用更新接口
-          messageApi.success('章节已重命名')
-          onChapterChange()
+          try {
+            await renameChapter(projectPath, chapter.id, newTitle.trim())
+            messageApi.success('章节已重命名')
+            onChapterChange()
+          } catch (error) {
+            messageApi.error('重命名失败')
+          }
         }
       }
     })
   }
 
   // 复制章节
-  const copyChapter = async (chapter: Chapter) => {
-    // 实际项目中调用复制接口
-    messageApi.success('章节已复制')
-    onChapterChange()
+  const copyChapter = () => {
+    messageApi.info('复制章节功能暂未实现')
   }
 
   // 确认删除

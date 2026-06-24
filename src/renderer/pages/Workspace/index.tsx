@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Layout, Button, Space, Typography, App } from 'antd'
 import {
@@ -19,9 +19,14 @@ import CharacterPanel from '../../components/Explorer/CharacterPanel'
 import SettingPanel from '../../components/Explorer/SettingPanel'
 import StatsPanel from '../../components/Explorer/StatsPanel'
 import CommandPalette from '../../components/Dialogs/CommandPalette'
+import OutlineView from '../../components/Editor/OutlineView'
+import type { MonacoEditorHandle } from '../../components/Editor/MonacoEditor'
+import { useMenu } from '../../hooks/useMenu'
+import { startAutoSave, stopAutoSave } from '../../services/ipcService'
+import { useEditorStore } from '../../stores'
 import { useChapter } from '../../hooks/useIPC'
 import { useKeyboard } from '../../hooks/useKeyboard'
-import type { Chapter } from '../../common/ipc'
+import type { Chapter, ProjectConfig } from '@/common/ipc'
 
 const { Header, Content, Sider } = Layout
 const { Text, Title } = Typography
@@ -29,6 +34,7 @@ const { Text, Title } = Typography
 interface WorkspaceState {
   project?: { name: string; path: string }
   projectPath?: string
+  config?: ProjectConfig
 }
 
 type SidebarTab = 'chapters' | 'characters' | 'settings' | 'stats'
@@ -38,6 +44,9 @@ function Workspace() {
   const navigate = useNavigate()
   const state = location.state as WorkspaceState
   const { message } = App.useApp()
+
+  const { fontSize, wordWrap, showLineNumbers } = useEditorStore()
+  const editorRef = useRef<MonacoEditorHandle>(null)
 
   const { getAllChapters, createChapter, updateChapter, deleteChapter } = useChapter()
 
@@ -58,11 +67,20 @@ function Workspace() {
 
   // 命令面板
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [outlineVisible, setOutlineVisible] = useState(false)
 
   const [loading, setLoading] = useState(false)
 
   const projectPath = state?.project?.path || state?.projectPath
   const projectName = state?.project?.name || '未命名项目'
+  const config = state?.config
+  const autoSaveEnabled = config?.autoSave ?? true
+  const autoSaveInterval = config?.autoSaveInterval ?? 30000
+  const isDirtyRef = useRef(false)
+  const editorContentRef = useRef(editorContent)
+  useEffect(() => {
+    editorContentRef.current = editorContent
+  }, [editorContent])
 
   // 加载章节列表
   useEffect(() => {
@@ -143,11 +161,38 @@ function Workspace() {
       })
       setCurrentChapter(updated)
       setChapters(chapters.map(c => c.id === updated.id ? updated : c))
+      isDirtyRef.current = false
       message.success('保存成功')
     } catch (error) {
       message.error('保存失败')
     }
   }
+
+  const handleSaveRef = useRef(handleSave)
+  useEffect(() => {
+    handleSaveRef.current = handleSave
+  })
+
+  // 编辑器内容变化包装：置 dirty
+  const handleEditorChange = (val: string) => {
+    setEditorContent(val)
+    isDirtyRef.current = true
+  }
+
+  // 自动保存：按配置间隔写盘
+  useEffect(() => {
+    if (!currentChapter || !autoSaveEnabled) return
+    startAutoSave({
+      interval: autoSaveInterval,
+      onSave: () => {
+        if (isDirtyRef.current) {
+          void handleSaveRef.current()
+        }
+        return editorContentRef.current
+      }
+    })
+    return () => stopAutoSave()
+  }, [currentChapter?.id, autoSaveEnabled, autoSaveInterval])
 
   // 删除章节
   const handleDeleteChapter = async (chapterId: string) => {
@@ -192,13 +237,41 @@ function Workspace() {
     }
   }, [chapters, focusMode, typewriterMode])
 
+  // 菜单栏事件
+  useMenu((event, ...args) => {
+    switch (event) {
+      case 'newChapter':
+        handleCreateChapter()
+        break
+      case 'save':
+        handleSave()
+        break
+      case 'focusMode':
+        setFocusMode(args[0] as boolean)
+        break
+      case 'typewriterMode':
+        setTypewriterMode(args[0] as boolean)
+        break
+      case 'toggleOutline':
+        setOutlineVisible((v) => !v)
+        break
+      case 'toggleChapterTree':
+        setSidebarCollapsed((v) => !v)
+        break
+      default:
+        console.log('未处理的菜单事件:', event)
+    }
+  })
+
   // 键盘快捷键
   useKeyboard({
     onSave: handleSave,
     onNew: handleCreateChapter,
     onToggleFocusMode: () => setFocusMode(prev => !prev),
     onToggleTypewriterMode: () => setTypewriterMode(prev => !prev),
-    onToggleCommandPalette: () => setCommandPaletteOpen(prev => !prev)
+    onToggleCommandPalette: () => setCommandPaletteOpen(prev => !prev),
+    onToggleSidebar: () => setSidebarCollapsed((v) => !v),
+    onOutline: () => setOutlineVisible((v) => !v)
   })
 
   // 侧边栏Tab配置
@@ -222,7 +295,7 @@ function Workspace() {
       <Sider
         width={sidebarCollapsed ? 0 : 280}
         collapsedWidth={48}
-        collapsed={sidebarCollapsed}
+        collapsed={sidebarCollapsed || focusMode}
         theme="dark"
         style={{ background: '#252526', overflow: 'hidden' }}
       >
@@ -371,42 +444,61 @@ function Workspace() {
           />
         </Header>
 
-        {/* 编辑器 */}
-        <Content style={{ background: '#1e1e1e', padding: 0 }}>
-          {currentChapter ? (
-            <MonacoEditor
-              value={editorContent}
-              onChange={setEditorContent}
-              onSave={handleSave}
-              focusMode={focusMode}
-              typewriterMode={typewriterMode}
-            />
-          ) : (
-            <div style={{
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#666'
-            }}>
-              <BookOutlined style={{ fontSize: 48, marginBottom: 16 }} />
-              <Text style={{ color: '#888' }}>
-                {chapters.length === 0 ? '暂无章节，点击新建章节开始创作' : '选择一个章节开始编辑'}
-              </Text>
-              {chapters.length === 0 && (
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={handleCreateChapter}
-                  style={{ marginTop: 16 }}
-                >
-                  新建章节
-                </Button>
-              )}
-            </div>
+        {/* 编辑器 + 大纲 */}
+        <Layout>
+          <Content style={{ background: '#1e1e1e', padding: 0, flex: 1 }}>
+            {currentChapter ? (
+              <MonacoEditor
+                ref={editorRef}
+                value={editorContent}
+                onChange={handleEditorChange}
+                onSave={handleSave}
+                focusMode={focusMode}
+                typewriterMode={typewriterMode}
+                fontSize={fontSize}
+                wordWrap={wordWrap}
+                showLineNumbers={showLineNumbers}
+              />
+            ) : (
+              <div style={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#666'
+              }}>
+                <BookOutlined style={{ fontSize: 48, marginBottom: 16 }} />
+                <Text style={{ color: '#888' }}>
+                  {chapters.length === 0 ? '暂无章节，点击新建章节开始创作' : '选择一个章节开始编辑'}
+                </Text>
+                {chapters.length === 0 && (
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={handleCreateChapter}
+                    style={{ marginTop: 16 }}
+                  >
+                    新建章节
+                  </Button>
+                )}
+              </div>
+            )}
+          </Content>
+
+          {outlineVisible && currentChapter && (
+            <Sider
+              width={260}
+              theme="dark"
+              style={{ background: '#252526', borderLeft: '1px solid #333', overflow: 'auto' }}
+            >
+              <OutlineView
+                content={editorContent}
+                onNavigateToLine={(ln) => editorRef.current?.revealLineInCenter(ln)}
+              />
+            </Sider>
           )}
-        </Content>
+        </Layout>
       </Layout>
     </Layout>
   )

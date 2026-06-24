@@ -130,7 +130,7 @@ export function onStatsUpdated(callback: (stats: { dailyWordCount: number; total
 
 interface AutoSaveOptions {
   interval: number
-  onSave: (content: string) => void
+  onSave: () => string // 返回当前内容；调用方在内部决定是否真正写盘
 }
 
 let autoSaveTimer: ReturnType<typeof setInterval> | null = null
@@ -140,8 +140,7 @@ export function startAutoSave(options: AutoSaveOptions): void {
   stopAutoSave()
   lastContent = ''
   autoSaveTimer = setInterval(() => {
-    // 内容变化时保存
-    const currentContent = options.onSave(lastContent)
+    const currentContent = options.onSave()
     if (currentContent !== lastContent) {
       lastContent = currentContent
     }

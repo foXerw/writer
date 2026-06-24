@@ -6,6 +6,30 @@
 
 ---
 
+## 2026-06-25 复审：结构修复 + 死代码接线
+
+依据 `docs/superpowers/specs/2026-06-25-structure-fix-and-wiring-design.md` 与对应实现计划，已完成下述修复（分支 `feat/structure-fix-wiring`，12 commits，`npm run build` 通过，tsc 136→62）：
+
+- **结构修复**：菜单 IPC 改单一 `menu:event` 通道贯通（menu.ts/tray.ts → preload `menu.onEvent` → `useMenu` → Workspace 分发）；修正 preload `character`/`setting` 类型（`Chapter` → `Character`/`Setting`）与 `rendererListeners` 注册器类型。
+- **死代码接线**：
+  - 阶段 8 自动保存：Workspace 接线 `startAutoSave`（ref 闭包，30s 间隔，dirty 触发）。
+  - 阶段 10 重命名：`ChapterTree` 调用 `renameChapter`；复制改为「未实现」提示。
+  - 阶段 11 大纲：`OutlineView` 在 Workspace 渲染，`MonacoEditor` 经 `forwardRef` 暴露 `revealLineInCenter` 实现行导航。
+  - 阶段 12 角色：`CharacterPanel` 接 `useCharacter` 增删改持久化 + tags 字段。
+  - 阶段 13 设定：`SettingPanel` 接 `useSetting` 增删改 + 树节点编辑/删除操作。
+  - 阶段 14 专注模式：`focusMode` 收起侧栏。
+  - 阶段 18 编辑器设置：字号/换行/行号经 `useEditorStore` 传入 `MonacoEditor`。
+- 新增 `useCharacter`/`useSetting` hooks；`ProjectDialog` 回调传递 `ProjectData`，Home 透传 `config` 到 Workspace。
+
+**已知限制（待后续修复，非本轮范围）**：
+1. 切章时上一章未保存内容不会自动 flush（≤30s 编辑可能丢失，需手动 Ctrl+S）。
+2. 菜单「角色/设定」快捷键 (Ctrl+1/2) 尚未切换侧栏 tab（命中 `default` 分支）。
+3. `useMenu` 内联 handler 每次渲染重新订阅（性能影响可忽略）。
+4. 阶段 15（快捷键冲突检测/自定义）、16（统计重做）、17（导出实现）仍未做。
+5. `npm run build` 使用 esbuild 不做类型检查；剩余 62 个 tsc 错误多为既有的 `import type` 路径、未用变量与 antd `WebkitAppRegion`/`List.Item hoverable`/`dragNode` 类型问题，非本轮引入。
+
+---
+
 ## 状态图例
 
 - ✅ 已实现：功能真实可用，端到端打通

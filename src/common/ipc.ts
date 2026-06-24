@@ -6,6 +6,7 @@ export type MainToRendererEvents = {
   'project:opened': (project: ProjectData) => void
   'file:saved': (filePath: string) => void
   'stats:updated': (stats: WritingStats) => void
+  'menu:event': (event: string, ...args: unknown[]) => void
 }
 
 // 渲染进程 -> 主进程 请求

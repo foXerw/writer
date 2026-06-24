@@ -1,5 +1,12 @@
 import { app, Menu, BrowserWindow, MenuItemConstructorOptions } from 'electron'
-import { createSettingsWindow } from './window'
+
+// 统一发送菜单事件到渲染进程
+function sendMenu(event: string, ...args: unknown[]): void {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (win) {
+    win.webContents.send('menu:event', event, ...args)
+  }
+}
 
 interface MenuOptions {
   isMac: boolean
@@ -35,51 +42,30 @@ export function createMenu(options: MenuOptions): Menu {
         {
           label: '新建项目',
           accelerator: 'CommandOrControl+Shift+N',
-          click: () => {
-            // 发送事件到渲染进程处理
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:newProject')
-            }
-          }
+          click: () => sendMenu('newProject')
         },
         {
           label: '新建章节',
           accelerator: 'CommandOrControl+N',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:newChapter')
-            }
-          }
+          click: () => sendMenu('newChapter')
         },
         { type: 'separator' as const },
-        { role: 'openFile' as const },
-        { role: 'openRecent' as const, enabled: false },
+        { label: '打开文件', click: () => sendMenu('openFile') },
+        { label: '最近打开', enabled: false },
         { type: 'separator' as const },
         {
           label: '保存',
           accelerator: 'CommandOrControl+S',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:save')
-            }
-          }
+          click: () => sendMenu('save')
         },
         {
           label: '另存为',
           accelerator: 'CommandOrControl+Shift+S',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:saveAs')
-            }
-          }
+          click: () => sendMenu('saveAs')
         },
-        { role: 'saveAll' as const, enabled: false },
+        { label: '保存全部', enabled: false },
         { type: 'separator' as const },
-        ...(isMac ? [{ role: 'closeWindow' as const }] : [{ role: 'quit' as const }])
+        ...(isMac ? [{ role: 'close' as const }] : [{ role: 'quit' as const }])
       ]
     },
     // 编辑菜单
@@ -101,22 +87,12 @@ export function createMenu(options: MenuOptions): Menu {
               {
                 label: '查找',
                 accelerator: 'CommandOrControl+F',
-                click: () => {
-                  const win = BrowserWindow.getAllWindows()[0]
-                  if (win) {
-                    win.webContents.send('menu:find')
-                  }
-                }
+                click: () => sendMenu('find')
               },
               {
                 label: '替换',
                 accelerator: 'CommandOrControl+H',
-                click: () => {
-                  const win = BrowserWindow.getAllWindows()[0]
-                  if (win) {
-                    win.webContents.send('menu:replace')
-                  }
-                }
+                click: () => sendMenu('replace')
               }
             ]
           : [
@@ -133,22 +109,12 @@ export function createMenu(options: MenuOptions): Menu {
         {
           label: '大纲',
           accelerator: 'CommandOrControl+Shift+O',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:toggleOutline')
-            }
-          }
+          click: () => sendMenu('toggleOutline')
         },
         {
           label: '章节树',
           accelerator: 'CommandOrControl+Shift+E',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:toggleChapterTree')
-            }
-          }
+          click: () => sendMenu('toggleChapterTree')
         },
         { type: 'separator' as const },
         {
@@ -156,24 +122,14 @@ export function createMenu(options: MenuOptions): Menu {
           accelerator: 'F11',
           type: 'checkbox' as const,
           checked: false,
-          click: (menuItem) => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:focusMode', menuItem.checked)
-            }
-          }
+          click: (menuItem) => sendMenu('focusMode', menuItem.checked)
         },
         {
           label: '打字机模式',
           accelerator: 'CommandOrControl+T',
           type: 'checkbox' as const,
           checked: false,
-          click: (menuItem) => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:typewriterMode', menuItem.checked)
-            }
-          }
+          click: (menuItem) => sendMenu('typewriterMode', menuItem.checked)
         },
         { type: 'separator' as const },
         { role: 'toggleDevTools' as const },
@@ -187,43 +143,23 @@ export function createMenu(options: MenuOptions): Menu {
         {
           label: '上一章',
           accelerator: 'CommandOrControl+Up',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:prevChapter')
-            }
-          }
+          click: () => sendMenu('prevChapter')
         },
         {
           label: '下一章',
           accelerator: 'CommandOrControl+Down',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:nextChapter')
-            }
-          }
+          click: () => sendMenu('nextChapter')
         },
         { type: 'separator' as const },
         {
           label: '字数统计',
           accelerator: 'CommandOrControl+Shift+W',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:wordCount')
-            }
-          }
+          click: () => sendMenu('wordCount')
         },
         {
           label: '今日写作',
           accelerator: 'CommandOrControl+Shift+D',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:dailyStats')
-            }
-          }
+          click: () => sendMenu('dailyStats')
         }
       ]
     },
@@ -234,43 +170,23 @@ export function createMenu(options: MenuOptions): Menu {
         {
           label: '角色卡片',
           accelerator: 'CommandOrControl+1',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:characters')
-            }
-          }
+          click: () => sendMenu('characters')
         },
         {
           label: '世界观设定',
           accelerator: 'CommandOrControl+2',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:settings')
-            }
-          }
+          click: () => sendMenu('settings')
         },
         {
           label: '情节线索',
           accelerator: 'CommandOrControl+3',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:plot')
-            }
-          }
+          click: () => sendMenu('plot')
         },
         { type: 'separator' as const },
         {
           label: '导出项目',
           accelerator: 'CommandOrControl+E',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:export')
-            }
-          }
+          click: () => sendMenu('export')
         }
       ]
     },
@@ -289,22 +205,12 @@ export function createMenu(options: MenuOptions): Menu {
         { type: 'separator' as const },
         {
           label: '快捷键参考',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:shortcuts')
-            }
-          }
+          click: () => sendMenu('shortcuts')
         },
         { type: 'separator' as const },
         {
           label: '关于 Novel Writer',
-          click: () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.webContents.send('menu:about')
-            }
-          }
+          click: () => sendMenu('about')
         }
       ]
     }

@@ -1,13 +1,14 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
-  MainToRendererEvents,
   RendererToMainRequests,
   ProjectData,
   Chapter,
+  Character,
+  Setting,
   RecentProject,
   WritingStats,
   ProjectType
-} from '../src/common/ipc'
+} from '../../src/common/ipc'
 
 // 渲染进程 -> 主进程 请求
 const projectAPI: RendererToMainRequests = {
@@ -46,7 +47,12 @@ const projectAPI: RendererToMainRequests = {
 }
 
 // 主进程 -> 渲染进程 监听
-const rendererListeners: MainToRendererEvents = {
+const rendererListeners: {
+  'project:created': (callback: (project: ProjectData) => void) => void
+  'project:opened': (callback: (project: ProjectData) => void) => void
+  'file:saved': (callback: (filePath: string) => void) => void
+  'stats:updated': (callback: (stats: WritingStats) => void) => void
+} = {
   'project:created': (callback) => ipcRenderer.on('project:created', (_, data) => callback(data)),
   'project:opened': (callback) => ipcRenderer.on('project:opened', (_, data) => callback(data)),
   'file:saved': (callback) => ipcRenderer.on('file:saved', (_, path) => callback(path)),
@@ -111,6 +117,17 @@ contextBridge.exposeInMainWorld('novelWriter', {
     projectOpened: rendererListeners['project:opened'],
     fileSaved: rendererListeners['file:saved'],
     statsUpdated: rendererListeners['stats:updated']
+  },
+
+  // 菜单事件
+  menu: {
+    onEvent: (handler: (event: string, ...args: unknown[]) => void) => {
+      const listener = (_e: IpcRendererEvent, event: string, ...args: unknown[]) => handler(event, ...args)
+      ipcRenderer.on('menu:event', listener)
+      return () => {
+        ipcRenderer.removeListener('menu:event', listener)
+      }
+    }
   }
 })
 
@@ -148,17 +165,17 @@ export type NovelWriterAPI = {
     getById: (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
   }
   character: {
-    getAll: (projectPath: string) => Promise<Chapter[]>
-    getById: (params: { projectPath: string; characterId: string }) => Promise<Chapter | null>
-    create: (params: { projectPath: string; character: Partial<Chapter> }) => Promise<Chapter>
-    update: (params: { projectPath: string; character: Chapter }) => Promise<Chapter>
+    getAll: (projectPath: string) => Promise<Character[]>
+    getById: (params: { projectPath: string; characterId: string }) => Promise<Character | null>
+    create: (params: { projectPath: string; character: Partial<Character> }) => Promise<Character>
+    update: (params: { projectPath: string; character: Character }) => Promise<Character>
     delete: (params: { projectPath: string; characterId: string }) => Promise<boolean>
   }
   setting: {
-    getAll: (projectPath: string) => Promise<Chapter[]>
-    getById: (params: { projectPath: string; settingId: string }) => Promise<Chapter | null>
-    create: (params: { projectPath: string; setting: Partial<Chapter> }) => Promise<Chapter>
-    update: (params: { projectPath: string; setting: Chapter }) => Promise<Chapter>
+    getAll: (projectPath: string) => Promise<Setting[]>
+    getById: (params: { projectPath: string; settingId: string }) => Promise<Setting | null>
+    create: (params: { projectPath: string; setting: Partial<Setting> }) => Promise<Setting>
+    update: (params: { projectPath: string; setting: Setting }) => Promise<Setting>
     delete: (params: { projectPath: string; settingId: string }) => Promise<boolean>
   }
   dialog: {
@@ -171,6 +188,9 @@ export type NovelWriterAPI = {
     projectOpened: (callback: (project: ProjectData) => void) => void
     fileSaved: (callback: (filePath: string) => void) => void
     statsUpdated: (callback: (stats: WritingStats) => void) => void
+  }
+  menu: {
+    onEvent: (handler: (event: string, ...args: unknown[]) => void) => () => void
   }
 }
 
@@ -198,17 +218,17 @@ declare global {
         getById: (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
       }
       character: {
-        getAll: (projectPath: string) => Promise<Chapter[]>
-        getById: (params: { projectPath: string; characterId: string }) => Promise<Chapter | null>
-        create: (params: { projectPath: string; character: Partial<Chapter> }) => Promise<Chapter>
-        update: (params: { projectPath: string; character: Chapter }) => Promise<Chapter>
+        getAll: (projectPath: string) => Promise<Character[]>
+        getById: (params: { projectPath: string; characterId: string }) => Promise<Character | null>
+        create: (params: { projectPath: string; character: Partial<Character> }) => Promise<Character>
+        update: (params: { projectPath: string; character: Character }) => Promise<Character>
         delete: (params: { projectPath: string; characterId: string }) => Promise<boolean>
       }
       setting: {
-        getAll: (projectPath: string) => Promise<Chapter[]>
-        getById: (params: { projectPath: string; settingId: string }) => Promise<Chapter | null>
-        create: (params: { projectPath: string; setting: Partial<Chapter> }) => Promise<Chapter>
-        update: (params: { projectPath: string; setting: Chapter }) => Promise<Chapter>
+        getAll: (projectPath: string) => Promise<Setting[]>
+        getById: (params: { projectPath: string; settingId: string }) => Promise<Setting | null>
+        create: (params: { projectPath: string; setting: Partial<Setting> }) => Promise<Setting>
+        update: (params: { projectPath: string; setting: Setting }) => Promise<Setting>
         delete: (params: { projectPath: string; settingId: string }) => Promise<boolean>
       }
       dialog: {
@@ -221,6 +241,9 @@ declare global {
         projectOpened: (callback: (project: ProjectData) => void) => void
         fileSaved: (callback: (filePath: string) => void) => void
         statsUpdated: (callback: (stats: WritingStats) => void) => void
+      }
+      menu: {
+        onEvent: (handler: (event: string, ...args: unknown[]) => void) => () => void
       }
     }
   }

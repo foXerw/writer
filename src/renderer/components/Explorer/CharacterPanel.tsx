@@ -26,7 +26,7 @@ import {
   QuestionOutlined
 } from '@ant-design/icons'
 import type { Character, CharacterGender, CharacterRole } from '@/common/ipc'
-import { useChapter } from '../../hooks/useIPC'
+import { useCharacter } from '../../hooks/useIPC'
 
 const { Text, Title } = Typography
 const { TextArea } = Input
@@ -40,7 +40,7 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
   projectPath,
   onSelectCharacter
 }) => {
-  const { getAllChapters, createChapter, updateChapter, deleteChapter } = useChapter()
+  const { getAllCharacters, createCharacter, updateCharacter, deleteCharacter } = useCharacter()
   const [characters, setCharacters] = useState<Character[]>([])
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
@@ -52,15 +52,14 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
   const loadCharacters = useCallback(async () => {
     setLoading(true)
     try {
-      // 使用 chapters API 作为临时方案（因为角色API还未完全集成到hooks）
-      const allChapters = await getAllChapters(projectPath)
-      setCharacters([]) // 暂时为空，后续完善
+      const list = await getAllCharacters(projectPath)
+      setCharacters(list)
     } catch (error) {
       console.error('加载角色失败:', error)
     } finally {
       setLoading(false)
     }
-  }, [projectPath, getAllChapters])
+  }, [projectPath, getAllCharacters])
 
   useEffect(() => {
     loadCharacters()
@@ -86,7 +85,8 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
       background: character.background,
       goals: character.goals,
       flaws: character.flaws,
-      notes: character.notes
+      notes: character.notes,
+      tags: character.tags
     })
     setModalVisible(true)
   }
@@ -95,26 +95,37 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
   const handleSave = async () => {
     try {
       const values = await form.validateFields()
-
+      const payload = {
+        name: values.name,
+        gender: values.gender,
+        age: values.age,
+        role: values.role,
+        appearance: values.appearance,
+        personality: values.personality,
+        background: values.background,
+        goals: values.goals,
+        flaws: values.flaws,
+        notes: values.notes,
+        tags: values.tags ?? []
+      }
       if (editingCharacter) {
-        // 更新角色
+        await updateCharacter(projectPath, { ...editingCharacter, ...payload })
         messageApi.success('角色已更新')
       } else {
-        // 创建角色
+        await createCharacter(projectPath, payload)
         messageApi.success('角色已创建')
       }
-
       setModalVisible(false)
       loadCharacters()
     } catch (error) {
-      console.error('保存角色失败:', error)
+      messageApi.error('保存失败')
     }
   }
 
   // 删除角色
   const handleDelete = async (characterId: string) => {
     try {
-      await window.electronAPI.invoke('character:delete', { projectPath, characterId })
+      await deleteCharacter(projectPath, characterId)
       messageApi.success('角色已删除')
       loadCharacters()
     } catch (error) {
@@ -370,6 +381,10 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
               label="备注"
             >
               <TextArea rows={2} placeholder="其他备注信息" />
+            </Form.Item>
+
+            <Form.Item name="tags" label="标签">
+              <Select mode="tags" placeholder="添加标签" style={{ width: '100%' }} />
             </Form.Item>
           </Form>
         </Modal>
