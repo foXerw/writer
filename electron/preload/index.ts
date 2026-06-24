@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
-  MainToRendererEvents,
   RendererToMainRequests,
   ProjectData,
   Chapter,
@@ -48,7 +47,12 @@ const projectAPI: RendererToMainRequests = {
 }
 
 // 主进程 -> 渲染进程 监听
-const rendererListeners: MainToRendererEvents = {
+const rendererListeners: {
+  'project:created': (callback: (project: ProjectData) => void) => void
+  'project:opened': (callback: (project: ProjectData) => void) => void
+  'file:saved': (callback: (filePath: string) => void) => void
+  'stats:updated': (callback: (stats: WritingStats) => void) => void
+} = {
   'project:created': (callback) => ipcRenderer.on('project:created', (_, data) => callback(data)),
   'project:opened': (callback) => ipcRenderer.on('project:opened', (_, data) => callback(data)),
   'file:saved': (callback) => ipcRenderer.on('file:saved', (_, path) => callback(path)),
