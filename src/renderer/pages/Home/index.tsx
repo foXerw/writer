@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Layout, Button, Card, Empty, List, Typography, Space } from 'antd'
 import { PlusOutlined, FolderOpenOutlined, FileOutlined, ClockCircleOutlined } from '@ant-design/icons'
-import type { RecentProject } from '../../common/ipc'
+import type { RecentProject, ProjectData } from '@/common/ipc'
 import { useProject } from '../../hooks/useIPC'
 import ProjectDialog from '../../components/Dialogs/ProjectDialog'
 
@@ -37,14 +37,14 @@ function Home() {
   }
 
   // 项目创建成功后跳转
-  const handleProjectCreated = (projectPath: string, projectName: string) => {
-    navigate('/workspace', { state: { project: { name: projectName, path: projectPath } } })
+  const handleProjectCreated = (project: ProjectData) => {
+    navigate('/workspace', { state: { project: { name: project.name, path: project.path }, config: project.config } })
     loadRecentProjects()
   }
 
   // 项目打开成功后跳转
-  const handleProjectOpened = (projectPath: string, projectName: string) => {
-    navigate('/workspace', { state: { project: { name: projectName, path: projectPath } } })
+  const handleProjectOpened = (project: ProjectData) => {
+    navigate('/workspace', { state: { project: { name: project.name, path: project.path }, config: project.config } })
   }
 
   return (
