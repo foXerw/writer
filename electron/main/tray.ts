@@ -42,7 +42,7 @@ export function createTray(): Tray | null {
       click: () => {
         const win = BrowserWindow.getAllWindows()[0]
         if (win) {
-          win.webContents.send('menu:newChapter')
+          win.webContents.send('menu:event', 'newChapter')
         }
       }
     },
@@ -108,7 +108,7 @@ export function updateTrayMenu(stats?: { todayWordCount: number; streak: number 
       click: () => {
         const win = BrowserWindow.getAllWindows()[0]
         if (win) {
-          win.webContents.send('menu:newChapter')
+          win.webContents.send('menu:event', 'newChapter')
         }
       }
     },
