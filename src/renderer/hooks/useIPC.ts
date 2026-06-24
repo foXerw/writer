@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { ProjectData, Chapter, RecentProject, ProjectType } from '@/common/ipc'
+import type { ProjectData, Chapter, Character, Setting, RecentProject, ProjectType } from '@/common/ipc'
 
 // IPC API 类型
 interface IPCAPI {
@@ -22,6 +22,20 @@ interface IPCAPI {
     rename: (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
     reorder: (params: { projectPath: string; fromId: string; toId: string }) => Promise<boolean>
     getById: (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
+  }
+  character: {
+    getAll: (projectPath: string) => Promise<Character[]>
+    getById: (params: { projectPath: string; characterId: string }) => Promise<Character | null>
+    create: (params: { projectPath: string; character: Partial<Character> }) => Promise<Character>
+    update: (params: { projectPath: string; character: Character }) => Promise<Character>
+    delete: (params: { projectPath: string; characterId: string }) => Promise<boolean>
+  }
+  setting: {
+    getAll: (projectPath: string) => Promise<Setting[]>
+    getById: (params: { projectPath: string; settingId: string }) => Promise<Setting | null>
+    create: (params: { projectPath: string; setting: Partial<Setting> }) => Promise<Setting>
+    update: (params: { projectPath: string; setting: Setting }) => Promise<Setting>
+    delete: (params: { projectPath: string; settingId: string }) => Promise<boolean>
   }
   dialog: {
     openDirectory: () => Promise<string | null>
@@ -161,6 +175,96 @@ export function useChapter() {
     renameChapter,
     reorderChapters,
     getChapterById
+  }
+}
+
+// 角色相关 Hook
+export function useCharacter() {
+  const ipc = getIPC()
+
+  const getAllCharacters = useCallback(async (projectPath: string): Promise<Character[]> => {
+    return ipc.character.getAll(projectPath)
+  }, [ipc])
+
+  const getCharacterById = useCallback(async (
+    projectPath: string,
+    characterId: string
+  ): Promise<Character | null> => {
+    return ipc.character.getById({ projectPath, characterId })
+  }, [ipc])
+
+  const createCharacter = useCallback(async (
+    projectPath: string,
+    character: Partial<Character>
+  ): Promise<Character> => {
+    return ipc.character.create({ projectPath, character })
+  }, [ipc])
+
+  const updateCharacter = useCallback(async (
+    projectPath: string,
+    character: Character
+  ): Promise<Character> => {
+    return ipc.character.update({ projectPath, character })
+  }, [ipc])
+
+  const deleteCharacter = useCallback(async (
+    projectPath: string,
+    characterId: string
+  ): Promise<boolean> => {
+    return ipc.character.delete({ projectPath, characterId })
+  }, [ipc])
+
+  return {
+    getAllCharacters,
+    getCharacterById,
+    createCharacter,
+    updateCharacter,
+    deleteCharacter
+  }
+}
+
+// 世界观设定相关 Hook
+export function useSetting() {
+  const ipc = getIPC()
+
+  const getAllSettings = useCallback(async (projectPath: string): Promise<Setting[]> => {
+    return ipc.setting.getAll(projectPath)
+  }, [ipc])
+
+  const getSettingById = useCallback(async (
+    projectPath: string,
+    settingId: string
+  ): Promise<Setting | null> => {
+    return ipc.setting.getById({ projectPath, settingId })
+  }, [ipc])
+
+  const createSetting = useCallback(async (
+    projectPath: string,
+    setting: Partial<Setting>
+  ): Promise<Setting> => {
+    return ipc.setting.create({ projectPath, setting })
+  }, [ipc])
+
+  const updateSetting = useCallback(async (
+    projectPath: string,
+    setting: Setting
+  ): Promise<Setting> => {
+    return ipc.setting.update({ projectPath, setting })
+  }, [ipc])
+
+  const deleteSetting = useCallback(async (
+    projectPath: string,
+    settingId: string
+  ): Promise<boolean> => {
+    return ipc.setting.delete({ projectPath, settingId })
+  }, [ipc])
+
+  return {
+    getAllSettings,
+    getSettingById,
+    createSetting,
+    updateSetting,
+    deleteSetting
   }
 }
 

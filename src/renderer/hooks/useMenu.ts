@@ -1,89 +1,37 @@
 import { useEffect, useCallback } from 'react'
 
-// 菜单事件类型
 export type MenuEvent =
-  | 'newProject'
-  | 'newChapter'
-  | 'save'
-  | 'saveAs'
-  | 'find'
-  | 'replace'
-  | 'toggleOutline'
-  | 'toggleChapterTree'
-  | 'focusMode'
-  | 'typewriterMode'
-  | 'prevChapter'
-  | 'nextChapter'
-  | 'wordCount'
-  | 'dailyStats'
-  | 'characters'
-  | 'settings'
-  | 'plot'
-  | 'export'
-  | 'shortcuts'
-  | 'about'
+  | 'newProject' | 'newChapter' | 'save' | 'saveAs' | 'find' | 'replace'
+  | 'toggleOutline' | 'toggleChapterTree' | 'focusMode' | 'typewriterMode'
+  | 'prevChapter' | 'nextChapter' | 'wordCount' | 'dailyStats'
+  | 'characters' | 'settings' | 'plot' | 'export' | 'shortcuts' | 'about'
+  | 'openFile' | 'openRecent' | 'saveAll'
 
-interface MenuEventHandler {
-  (event: MenuEvent): void
+export interface MenuEventHandler {
+  (event: MenuEvent, ...args: unknown[]): void
 }
 
-// 菜单Hook
+// 菜单 Hook：订阅主进程 menu:event 通道
 export function useMenu(handler: MenuEventHandler) {
   useEffect(() => {
-    const listeners: (() => void)[] = []
-
-    const events: MenuEvent[] = [
-      'newProject',
-      'newChapter',
-      'save',
-      'saveAs',
-      'find',
-      'replace',
-      'toggleOutline',
-      'toggleChapterTree',
-      'focusMode',
-      'typewriterMode',
-      'prevChapter',
-      'nextChapter',
-      'wordCount',
-      'dailyStats',
-      'characters',
-      'settings',
-      'plot',
-      'export',
-      'shortcuts',
-      'about'
-    ]
-
-    events.forEach((event) => {
-      const listener = window.novelWriter?.on?.[event as keyof typeof window.novelWriter.on]?.((...args: unknown[]) => {
-        handler(event)
-      })
-      if (listener) {
-        listeners.push(listener)
-      }
-    })
-
+    const unsub = window.novelWriter?.menu?.onEvent((event, ...args) =>
+      handler(event as MenuEvent, ...args)
+    )
     return () => {
-      listeners.forEach((unsub) => {
-        if (typeof unsub === 'function') {
-          unsub()
-        }
-      })
+      if (unsub) unsub()
     }
   }, [handler])
 }
 
-// 便捷Hook - 用于特定菜单事件
-export function useMenuEvent(event: MenuEvent, callback: () => void) {
+// 便捷 Hook：监听单个菜单事件
+export function useMenuEvent(event: MenuEvent, callback: (...args: unknown[]) => void) {
   const handler = useCallback(
-    (e: MenuEvent) => {
+    (e: MenuEvent, ...args: unknown[]) => {
       if (e === event) {
-        callback()
+        callback(...args)
       }
     },
     [event, callback]
   )
-
   useMenu(handler)
 }
