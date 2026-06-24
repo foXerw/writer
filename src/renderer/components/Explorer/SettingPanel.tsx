@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
-  Card,
   Tree,
   Button,
   Space,
@@ -152,6 +151,35 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
           <Space>
             <FileTextOutlined style={{ color: '#666' }} />
             <span>{setting.title}</span>
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              style={{ color: '#888' }}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleEdit(setting)
+              }}
+            />
+            <Popconfirm
+              title="删除设定"
+              description="确定要删除这个设定吗？"
+              okText="删除"
+              cancelText="取消"
+              onConfirm={(e) => {
+                e?.stopPropagation()
+                handleDelete(setting.id)
+              }}
+            >
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                style={{ color: '#888' }}
+                onClick={(e) => e?.stopPropagation()}
+              />
+            </Popconfirm>
           </Space>
         ),
         icon: <FileTextOutlined />,
