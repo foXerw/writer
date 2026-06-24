@@ -29,6 +29,6 @@
       "@common/*": ["src/common/*"]
     }
   },
-  "include": ["src", "electron", "**/*.ts", "**/*.tsx", "*.config.ts"],
+  "include": ["src", "electron"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
