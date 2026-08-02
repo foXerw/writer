@@ -53,6 +53,16 @@
 
 ---
 
+## 2026-08-02 复审：批次 3 写作统计
+
+分支 `feat/writing-stats`，详见 `docs/superpowers/plans/2026-08-02-writing-stats.md`。已修复：
+
+- **写作统计（阶段16 空壳）**：StatsPanel 删 mock + 删死 `useStatsStore`；新增 `statsService` 纯函数 + `stats:get/save` IPC，按项目持久化 `<project>/.novelwriter/stats.json`。今日字数=正向增量(gross)、写作时长=活跃计时(60s tick)、连续天数由每日历史计算；近 14 天纯 CSS 柱趋势。Workspace 挂载载入、编辑累计、60s 计时、防抖写盘+离开兜底。移除 `stores/index.ts` 死代码 `useStatsStore`（顺带消除 StatsPanel 的 `@/stores` TS2307）。
+
+仍待做：阶段 15（快捷键自定义）；导出 Word/PDF/ePub（阶段17 剩余）。
+
+---
+
 ## 状态图例
 
 - ✅ 已实现：功能真实可用，端到端打通
