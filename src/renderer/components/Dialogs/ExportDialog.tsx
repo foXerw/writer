@@ -7,7 +7,6 @@ import {
   Space,
   Typography,
   Button,
-  Progress,
   message,
   Divider
 } from 'antd'
@@ -54,46 +53,26 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
   const [addFrontMatter, setAddFrontMatter] = useState(true)
   const [addToc, setAddToc] = useState(true)
   const [exporting, setExporting] = useState(false)
-  const [exportProgress, setExportProgress] = useState(0)
   const [messageApi, contextHolder] = message.useMessage()
 
   // 导出格式配置
   const formatOptions = [
-    { value: 'markdown', label: 'Markdown', icon: <FileMarkdownOutlined />, desc: '纯文本格式，广泛支持' },
-    { value: 'word', label: 'Word文档', icon: <FileWordOutlined />, desc: 'docx格式，可编辑' },
-    { value: 'pdf', label: 'PDF文档', icon: <FilePdfOutlined />, desc: '便携式文档' },
-    { value: 'epub', label: '电子书', icon: <BookOutlined />, desc: 'ePub格式，适合阅读器' }
+    { value: 'markdown', label: 'Markdown', icon: <FileMarkdownOutlined />, desc: '纯文本格式，广泛支持', disabled: false },
+    { value: 'word', label: 'Word文档', icon: <FileWordOutlined />, desc: '即将支持', disabled: true },
+    { value: 'pdf', label: 'PDF文档', icon: <FilePdfOutlined />, desc: '即将支持', disabled: true },
+    { value: 'epub', label: '电子书', icon: <BookOutlined />, desc: '即将支持', disabled: true }
   ]
 
   // 处理导出
   const handleExport = async () => {
     setExporting(true)
-    setExportProgress(0)
-
     try {
-      // 模拟导出进度
-      const progressInterval = setInterval(() => {
-        setExportProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval)
-            return prev
-          }
-          return prev + 10
-        })
-      }, 200)
-
       await onExport({
         format,
         includeChapters,
         selectedChapterIds: selectedChapters,
-        options: {
-          addFrontMatter,
-          addToc
-        }
+        options: { addFrontMatter, addToc }
       })
-
-      clearInterval(progressInterval)
-      setExportProgress(100)
       messageApi.success('导出成功！')
       onClose()
     } catch (error) {
@@ -101,7 +80,6 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
       console.error('Export error:', error)
     } finally {
       setExporting(false)
-      setExportProgress(0)
     }
   }
 
@@ -131,6 +109,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                     <Radio.Button
                       key={opt.value}
                       value={opt.value}
+                      disabled={opt.disabled}
                       style={{
                         width: '100%',
                         height: 'auto',
@@ -214,20 +193,6 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
               </div>
             </Space>
           </div>
-
-          {/* 导出进度 */}
-          {exporting && (
-            <div>
-              <Text style={{ color: '#888', fontSize: 12 }}>导出中...</Text>
-              <Progress
-                percent={exportProgress}
-                size="small"
-                status="active"
-                strokeColor="#1890ff"
-                trailColor="#333"
-              />
-            </div>
-          )}
 
           {/* 操作按钮 */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
