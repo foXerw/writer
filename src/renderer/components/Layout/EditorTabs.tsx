@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { Tabs, Dropdown, Tooltip } from 'antd'
 import {
   CloseOutlined,
@@ -56,6 +56,24 @@ function EditorTabs({
     chapters.forEach(c => onCloseChapter(c.id))
   }, [closeAllTabs, chapters, onCloseChapter])
 
+  // 关闭指定 tab 右侧的所有 tab（不含 target）
+  const handleCloseRight = useCallback((targetId: string) => {
+    const idx = chapters.findIndex(c => c.id === targetId)
+    if (idx < 0) return
+    chapters.slice(idx + 1).forEach(c => {
+      removeTab(c.id)
+      onCloseChapter(c.id)
+    })
+  }, [chapters, removeTab, onCloseChapter])
+
+  // 关闭除 target 外的所有 tab（以右键 target 为基准，区别于以激活 tab 为基准的 handleCloseOthers）
+  const handleCloseOthersThan = useCallback((targetId: string) => {
+    chapters.filter(c => c.id !== targetId).forEach(c => {
+      removeTab(c.id)
+      onCloseChapter(c.id)
+    })
+  }, [chapters, removeTab, onCloseChapter])
+
   // 切换到下一个Tab
   const handleSwitchToNext = useCallback(() => {
     if (chapters.length <= 1) return
@@ -88,49 +106,59 @@ function EditorTabs({
     }
   ]
 
+  // 单个 tab 的右键菜单项（以右键的 target chapter 为基准）
+  const contextMenuItems = useCallback((chapter: Chapter): MenuProps['items'] => [
+    { key: 'close', icon: <CloseOutlined />, label: '关闭', onClick: () => handleClose(chapter.id) },
+    { key: 'closeOthers', icon: <CloseCircleOutlined />, label: '关闭其他', onClick: () => handleCloseOthersThan(chapter.id) },
+    { key: 'closeRight', icon: <ColumnWidthOutlined />, label: '关闭右侧', onClick: () => handleCloseRight(chapter.id) },
+    { key: 'closeAll', icon: <CloseCircleOutlined />, label: '关闭全部', onClick: handleCloseAll }
+  ], [handleClose, handleCloseOthersThan, handleCloseRight, handleCloseAll])
+
   // 转换为Antd Tabs items
   const items: TabsProps['items'] = chapters.map((chapter, index) => ({
     key: chapter.id,
     label: (
-      <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 8px', height: 32 }}>
-        <span style={{
-          maxWidth: 100,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          fontSize: 12
-        }}>
-          {chapter.title || '无标题'}
+      <Dropdown trigger={['contextMenu']} menu={{ items: contextMenuItems(chapter) }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 8px', height: 32, cursor: 'default' }}>
+          <span style={{
+            maxWidth: 100,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontSize: 12
+          }}>
+            {chapter.title || '无标题'}
+          </span>
+          {chapter.status === 'completed' && (
+            <span style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: '#52c41a',
+              flexShrink: 0
+            }} title="已完成" />
+          )}
+          {chapter.status === 'revising' && (
+            <span style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: '#faad14',
+              flexShrink: 0
+            }} title="修改中" />
+          )}
+          <Tooltip title="关闭" mouseEnterDelay={0.3}>
+            <CloseOutlined
+              className="tab-close"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleClose(chapter.id)
+              }}
+              style={{ fontSize: 10, color: '#888', marginLeft: 2 }}
+            />
+          </Tooltip>
         </span>
-        {chapter.status === 'completed' && (
-          <span style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: '#52c41a',
-            flexShrink: 0
-          }} title="已完成" />
-        )}
-        {chapter.status === 'revising' && (
-          <span style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: '#faad14',
-            flexShrink: 0
-          }} title="修改中" />
-        )}
-        <Tooltip title="关闭" mouseEnterDelay={0.3}>
-          <CloseOutlined
-            className="tab-close"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleClose(chapter.id)
-            }}
-            style={{ fontSize: 10, color: '#888', marginLeft: 2 }}
-          />
-        </Tooltip>
-      </span>
+      </Dropdown>
     ),
     children: null
   }))
@@ -144,11 +172,6 @@ function EditorTabs({
     }
   }
 
-  // 右键菜单
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault()
-  }
-
   return (
     <div
       style={{
@@ -158,7 +181,6 @@ function EditorTabs({
         display: 'flex',
         alignItems: 'center'
       }}
-      onContextMenu={handleContextMenu}
     >
       <Tabs
         activeKey={activeTabId || ''}
