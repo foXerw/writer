@@ -101,6 +101,16 @@ export interface WritingStats {
   streak: number
 }
 
+// 写作统计（按项目持久化模型）
+export interface DayStat {
+  words: number
+  minutes: number
+}
+export interface StatsData {
+  dailyHistory: Record<string, DayStat>  // 'YYYY-MM-DD' -> DayStat
+  lastActiveDate: string                 // 'YYYY-MM-DD'
+}
+
 // 文件过滤器
 export interface FileFilter {
   name: string
