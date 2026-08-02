@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { Card, Statistic, Progress, Row, Col, Typography, Space, List, Tag, Divider } from 'antd'
+import React, { useMemo } from 'react'
+import { Card, Statistic, Progress, Row, Col, Typography, Space, Divider } from 'antd'
 import {
   FileTextOutlined,
   ClockCircleOutlined,
@@ -8,29 +8,23 @@ import {
   RiseOutlined,
   CalendarOutlined
 } from '@ant-design/icons'
-import { useStatsStore } from '@/stores'
 
-const { Text, Title } = Typography
+const { Text } = Typography
+
+interface HistoryDay {
+  date: string   // 'YYYY-MM-DD'
+  words: number
+  minutes: number
+}
 
 interface StatsPanelProps {
   todayWordCount?: number
   totalWordCount?: number
-  writingDuration?: number
+  writingDuration?: number   // 今日分钟
   streak?: number
   dailyGoal?: number
-  onViewStats?: () => void
+  history?: HistoryDay[]     // 近 N 天（oldest→newest）；默认 []
 }
-
-// 模拟历史数据
-const mockHistoryData = [
-  { date: '01-15', count: 2500 },
-  { date: '01-14', count: 3200 },
-  { date: '01-13', count: 1800 },
-  { date: '01-12', count: 4100 },
-  { date: '01-11', count: 2800 },
-  { date: '01-10', count: 3500 },
-  { date: '01-09', count: 2200 }
-]
 
 const StatsPanel: React.FC<StatsPanelProps> = ({
   todayWordCount = 0,
@@ -38,37 +32,26 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
   writingDuration = 0,
   streak = 0,
   dailyGoal = 2000,
-  onViewStats
+  history = []
 }) => {
-  // 计算进度
-  const progress = useMemo(() => {
-    return Math.min(Math.round((todayWordCount / dailyGoal) * 100), 100)
-  }, [todayWordCount, dailyGoal])
+  const progress = useMemo(
+    () => Math.min(Math.round((todayWordCount / dailyGoal) * 100), 100),
+    [todayWordCount, dailyGoal]
+  )
 
-  // 计算平均日字数
-  const averageDaily = useMemo(() => {
-    if (mockHistoryData.length === 0) return 0
-    const total = mockHistoryData.reduce((sum, item) => sum + item.count, 0)
-    return Math.round(total / mockHistoryData.length)
-  }, [])
+  // 近 7 天用于"本周数据"
+  const last7 = useMemo(() => history.slice(-7), [history])
+  const weeklyTotal = useMemo(() => last7.reduce((s, d) => s + d.words, 0), [last7])
+  const averageDaily = useMemo(
+    () => (last7.length > 0 ? Math.round(weeklyTotal / last7.length) : 0),
+    [last7, weeklyTotal]
+  )
 
-  // 本周总字数
-  const weeklyTotal = useMemo(() => {
-    return mockHistoryData.reduce((sum, item) => sum + item.count, 0)
-  }, [])
-
-  // 获取当前时间
-  const currentTime = new Date()
-  const hour = currentTime.getHours()
-
-  // 根据时间显示问候语
-  const greeting = useMemo(() => {
-    if (hour < 6) return '深夜写作，注意休息'
-    if (hour < 12) return '早上好，创作顺利'
-    if (hour < 14) return '午后好，继续加油'
-    if (hour < 18) return '下午好，效率满满'
-    return '晚上好，静心写作'
-  }, [hour])
+  // 趋势柱最大值（用于比例）
+  const maxWords = useMemo(
+    () => history.reduce((m, d) => Math.max(m, d.words), 0),
+    [history]
+  )
 
   return (
     <div className="stats-panel" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -84,21 +67,19 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
           <RiseOutlined />
           <Text style={{ fontWeight: 500 }}>写作统计</Text>
         </Space>
-        <Tag color={progress >= 100 ? 'green' : 'blue'}>
+        <Text style={{ color: progress >= 100 ? '#52c41a' : '#1890ff', fontSize: 12 }}>
           {progress >= 100 ? '目标达成' : `${progress}%`}
-        </Tag>
+        </Text>
       </div>
 
-      {/* 问候语 */}
+      {/* 今日目标进度 */}
       <div style={{ padding: '16px', borderBottom: '1px solid #333' }}>
-        <Text style={{ color: '#888', fontSize: 12 }}>{greeting}</Text>
         <Progress
           percent={progress}
           showInfo={false}
           strokeColor={progress >= 100 ? '#52c41a' : '#1890ff'}
           trailColor="#333"
           size="small"
-          style={{ marginTop: 8 }}
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
           <Text style={{ color: '#666', fontSize: 11 }}>{todayWordCount.toLocaleString()} 字</Text>
@@ -135,7 +116,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
             <Card size="small" style={{ background: '#1e1e1e', borderColor: '#333' }}>
               <Statistic
                 title={<Text style={{ color: '#888', fontSize: 11 }}>写作时长</Text>}
-                value={Math.round(writingDuration / 60)}
+                value={writingDuration}
                 valueStyle={{ color: '#fa8c16', fontSize: 20 }}
                 prefix={<ClockCircleOutlined />}
                 suffix="分钟"
@@ -157,71 +138,61 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
 
         <Divider style={{ borderColor: '#333', margin: '16px 0' }} />
 
-        {/* 周统计 */}
+        {/* 本周数据 */}
         <div style={{ padding: '0 16px' }}>
           <Text style={{ color: '#888', fontSize: 12 }}>本周数据</Text>
           <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: 8,
-            padding: '8px 12px',
-            background: '#1e1e1e',
-            borderRadius: 4
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginTop: 8, padding: '8px 12px', background: '#1e1e1e', borderRadius: 4
           }}>
-            <Space>
-              <CalendarOutlined style={{ color: '#666' }} />
-              <Text style={{ color: '#d4d4d4' }}>周总字数</Text>
-            </Space>
-            <Text style={{ color: '#1890ff', fontWeight: 500 }}>
-              {weeklyTotal.toLocaleString()} 字
-            </Text>
+            <Space><CalendarOutlined style={{ color: '#666' }} /><Text style={{ color: '#d4d4d4' }}>周总字数</Text></Space>
+            <Text style={{ color: '#1890ff', fontWeight: 500 }}>{weeklyTotal.toLocaleString()} 字</Text>
           </div>
           <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: 8,
-            padding: '8px 12px',
-            background: '#1e1e1e',
-            borderRadius: 4
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginTop: 8, padding: '8px 12px', background: '#1e1e1e', borderRadius: 4
           }}>
-            <Space>
-              <RiseOutlined style={{ color: '#666' }} />
-              <Text style={{ color: '#d4d4d4' }}>日均字数</Text>
-            </Space>
-            <Text style={{ color: '#52c41a', fontWeight: 500 }}>
-              {averageDaily.toLocaleString()} 字
-            </Text>
+            <Space><RiseOutlined style={{ color: '#666' }} /><Text style={{ color: '#d4d4d4' }}>日均字数</Text></Space>
+            <Text style={{ color: '#52c41a', fontWeight: 500 }}>{averageDaily.toLocaleString()} 字</Text>
           </div>
         </div>
 
         <Divider style={{ borderColor: '#333', margin: '16px 0' }} />
 
-        {/* 历史记录 */}
+        {/* 近 N 天柱状趋势（纯 div/CSS） */}
         <div style={{ padding: '0 16px' }}>
-          <Text style={{ color: '#888', fontSize: 12 }}>最近7天</Text>
-          <List
-            size="small"
-            dataSource={mockHistoryData}
-            renderItem={(item, index) => (
-              <List.Item style={{ borderColor: '#333' }}>
-                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                  <Text style={{ color: '#666', fontSize: 12 }}>{item.date}</Text>
-                  <Progress
-                    percent={Math.min((item.count / dailyGoal) * 100, 100)}
-                    size="small"
-                    style={{ width: 120 }}
-                    strokeColor={index === 0 ? '#1890ff' : '#52c41a'}
-                    trailColor="#333"
-                  />
-                  <Text style={{ color: '#d4d4d4', fontSize: 12 }}>
-                    {item.count.toLocaleString()} 字
-                  </Text>
-                </Space>
-              </List.Item>
-            )}
-          />
+          <Text style={{ color: '#888', fontSize: 12 }}>最近 {history.length} 天</Text>
+          {maxWords === 0 ? (
+            <Text style={{ display: 'block', color: '#555', fontSize: 12, marginTop: 12, textAlign: 'center' }}>
+              暂无写作记录
+            </Text>
+          ) : (
+            <div style={{
+              display: 'flex', alignItems: 'flex-end', gap: 2,
+              marginTop: 12, height: 80
+            }}>
+              {history.map((d, i) => {
+                const h = maxWords > 0 ? Math.max((d.words / maxWords) * 100, d.words > 0 ? 6 : 2) : 0
+                return (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div
+                      title={`${d.date}: ${d.words} 字`}
+                      style={{
+                        width: '100%',
+                        height: `${h}%`,
+                        minHeight: 2,
+                        background: d.words > 0 ? '#1890ff' : '#333',
+                        borderRadius: 2
+                      }}
+                    />
+                    <Text style={{ color: '#555', fontSize: 9, marginTop: 2 }}>
+                      {d.date.slice(5)}
+                    </Text>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
