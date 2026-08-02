@@ -7,7 +7,7 @@ export interface Combo {
 }
 export interface ShortcutDef { id: string; combo: Combo; description: string }
 
-export const DEFAULT_SHORTCOUTS: ShortcutDef[] = [
+export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: 'save',           description: '保存',         combo: { key: 's', ctrl: true } },
   { id: 'saveAll',        description: '保存全部',     combo: { key: 's', ctrl: true, shift: true } },
   { id: 'new',            description: '新建',         combo: { key: 'n', ctrl: true } },
