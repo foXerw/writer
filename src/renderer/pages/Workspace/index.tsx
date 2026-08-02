@@ -24,12 +24,17 @@ import type { ExportOptions } from '../../components/Dialogs/ExportDialog'
 import OutlineView from '../../components/Editor/OutlineView'
 import type { MonacoEditorHandle } from '../../components/Editor/MonacoEditor'
 import { useMenu } from '../../hooks/useMenu'
-import { startAutoSave, stopAutoSave, saveFileDialog, writeFile } from '../../services/ipcService'
+import { startAutoSave, stopAutoSave, saveFileDialog, writeFile, getStats, saveStats } from '../../services/ipcService'
 import { assembleMarkdown, sanitizeFilename } from '../../services/exportService'
+import {
+  EMPTY_STATS, addWords, addMinutes, todayWords, todayMinutes,
+  computeStreak, recentHistory, STATS_DURATION_TICK_MS, STATS_IDLE_THRESHOLD_MS
+} from '../../services/statsService'
 import { useEditorStore } from '../../stores'
 import { useChapter } from '../../hooks/useIPC'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import type { Chapter, ProjectConfig } from '@/common/ipc'
+import type { StatsData } from '@/common/ipc'
 
 const { Header, Content, Sider } = Layout
 const { Text, Title } = Typography
@@ -75,7 +80,18 @@ function Workspace() {
 
   const [loading, setLoading] = useState(false)
 
+  // 写作统计：今日字数/时长/历史（持久化于项目目录）
+  const [stats, setStats] = useState<StatsData>(EMPTY_STATS)
+  const statsRef = useRef(stats)
+  statsRef.current = stats
+  const statsLoadedRef = useRef(false)
+  const prevLenRef = useRef(0)           // 当前章上一刻长度，用于增量
+  const lastActivityRef = useRef(0)      // 最近一次按键时间戳
+
   const projectPath = state?.project?.path || state?.projectPath
+  // 镜像 ref：供 beforeunload 的 []-deps effect 避免陈旧闭包
+  const projectPathRef = useRef(projectPath)
+  projectPathRef.current = projectPath
   const projectName = state?.project?.name || '未命名项目'
   const config = state?.config
   const autoSaveEnabled = config?.autoSave ?? true
@@ -101,6 +117,15 @@ function Workspace() {
     setLoading(true)
     try {
       const data = await getAllChapters(projectPath)
+      // 载入项目写作统计
+      try {
+        const loaded = await getStats(projectPath)
+        setStats(loaded ?? EMPTY_STATS)
+      } catch (e) {
+        console.error('载入统计失败:', e)
+        setStats(EMPTY_STATS)
+      }
+      statsLoadedRef.current = true
       setChapters(data)
       if (data.length > 0) {
         const firstChapter = data[0]
@@ -142,6 +167,7 @@ function Workspace() {
     setCurrentChapter(chapter)
     setEditorContent(chapter.content)
     setChapterTitle(chapter.title)
+    prevLenRef.current = chapter.content.length   // 切章不计增量
   }
 
   // 新建章节
@@ -209,6 +235,13 @@ function Workspace() {
   const handleEditorChange = (val: string) => {
     setEditorContent(val)
     isDirtyRef.current = true
+    // 正向字数增量累计今日；记录活跃时间戳
+    const delta = val.length - prevLenRef.current
+    prevLenRef.current = val.length
+    if (delta > 0) {
+      setStats(s => addWords(s, delta))
+    }
+    lastActivityRef.current = Date.now()
   }
 
   // 自动保存：按配置间隔静默写盘（不弹 toast）
@@ -224,10 +257,31 @@ function Workspace() {
     return () => stopAutoSave()
   }, [currentChapter?.id, autoSaveEnabled, autoSaveInterval])
 
+  // 写作时长：每 60s，若近 IDLE 阈值内有按键则今日 +1 分钟
+  useEffect(() => {
+    if (!projectPath) return
+    const timer = setInterval(() => {
+      if (Date.now() - lastActivityRef.current < STATS_IDLE_THRESHOLD_MS) {
+        setStats(s => addMinutes(s, 1))
+      }
+    }, STATS_DURATION_TICK_MS)
+    return () => clearInterval(timer)
+  }, [projectPath])
+
+  // 统计持久化：变化后防抖 3s 写盘
+  useEffect(() => {
+    if (!projectPath || !statsLoadedRef.current) return
+    const t = setTimeout(() => { void saveStats(projectPath, stats) }, 3000)
+    return () => clearTimeout(t)
+  }, [stats, projectPath])
+
   // 关窗/退出兜底：fire-and-forget 触发一次 flush（异步 IPC，尽力而为）。
   // 主要保障是切章/返回的显式 flush；此处为最后兜底。
   useEffect(() => {
-    const handler = () => flushIfDirtyRef.current()
+    const handler = () => {
+      flushIfDirtyRef.current()
+      if (projectPathRef.current) void saveStats(projectPathRef.current, statsRef.current)
+    }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
   }, [])
@@ -253,6 +307,7 @@ function Workspace() {
   // 返回首页
   const handleBack = () => {
     flushIfDirty()
+    if (projectPath) void saveStats(projectPath, statsRef.current)
     navigate('/')
   }
 
@@ -502,8 +557,12 @@ function Workspace() {
               )}
               {sidebarTab === 'stats' && (
                 <StatsPanel
-                  todayWordCount={editorContent.length}
+                  todayWordCount={todayWords(stats)}
                   totalWordCount={chapters.reduce((sum, c) => sum + c.wordCount, 0)}
+                  writingDuration={todayMinutes(stats)}
+                  streak={computeStreak(stats)}
+                  dailyGoal={config?.dailyGoal ?? 2000}
+                  history={recentHistory(stats, 14)}
                 />
               )}
             </div>
