@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Chapter, ProjectData, RecentProject } from '../common/ipc'
+import type { Combo } from '../services/shortcutService'
 
 // Tab状态
 interface TabState {
@@ -144,6 +145,38 @@ export const useEditorStore = create<EditorState>()(
     {
       name: 'editor-storage',
       storage: createJSONStorage(() => localStorage)
+    }
+  )
+)
+
+// 快捷键自定义（应用级，跨项目共享）
+interface ShortcutState {
+  overrides: Record<string, Combo>
+  dialogOpen: boolean
+  setBinding: (id: string, combo: Combo) => void
+  resetBinding: (id: string) => void
+  resetAll: () => void
+  setDialogOpen: (open: boolean) => void
+}
+
+export const useShortcutStore = create<ShortcutState>()(
+  persist(
+    (set) => ({
+      overrides: {},
+      dialogOpen: false,
+      setBinding: (id, combo) => set((s) => ({ overrides: { ...s.overrides, [id]: combo } })),
+      resetBinding: (id) => set((s) => {
+        const overrides = { ...s.overrides }
+        delete overrides[id]
+        return { overrides }
+      }),
+      resetAll: () => set({ overrides: {} }),
+      setDialogOpen: (open) => set({ dialogOpen: open })
+    }),
+    {
+      name: 'shortcut-storage',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({ overrides: s.overrides })
     }
   )
 )
