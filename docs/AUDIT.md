@@ -30,6 +30,19 @@
 
 ---
 
+## 2026-08-02 复审：批次 1 稳定与打磨
+
+分支 `feat/stability-and-polish`，详见 `docs/superpowers/plans/2026-08-02-stability-and-polish.md`。已修复：
+
+- **切章数据丢失**（已知限制 1）：新增 `saveCurrentChapter({silent})` 集中 chokepoint；`selectChapter`/`handleBack` 切换前 flush；`beforeunload` 兜底；自动保存改静默 flush。函数式更新 + id 守卫防异步回写。残留：fire-and-forget 极窄竞态（手动 Ctrl+S 不受影响），可忽略。
+- **Ctrl+1/2 切栏**（已知限制 2）：`useMenu` 增加 `characters`/`settings`/`wordCount`/`dailyStats` case，收起时展开。
+- **Tab 右键菜单**（阶段 7 缺陷）：`EditorTabs` 用 `Dropdown trigger=contextMenu` 包裹，新增「关闭右侧」「关闭其他(以右键 target 为基准)」。
+- **Settings 接线**（阶段 5 占位 + ThemeSettings 死代码）：`/settings` 渲染 ThemeSettings，侧栏齿轮入口，返回箭头。
+
+仍待做：阶段 16 统计重做、阶段 17 导出实现、阶段 15 快捷键自定义（后续批次）。
+
+---
+
 ## 状态图例
 
 - ✅ 已实现：功能真实可用，端到端打通
