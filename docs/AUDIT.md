@@ -73,6 +73,16 @@
 
 ---
 
+## 2026-08-03 复审：批次 5 导出 Word/PDF/ePub
+
+分支 `feat/export-formats`，详见 `docs/superpowers/plans/2026-08-03-export-formats.md`。已实现：
+
+- **导出 Word/PDF/ePub（阶段17 完成）**：主进程生成——`docx` 库生成 Word、`epub-gen-memory` 生成 ePub（内置 TOC）、Electron `printToPDF` 经临时 HTML 文件生成 PDF（CJK 字体栈、支持长篇）。renderer 复用 Markdown 管线并按格式分支；ExportDialog 启用三格式。新增依赖 docx + epub-gen-memory。
+
+至此阶段17（导入导出）全部完成（Markdown + Word + PDF + ePub）。仅余「每章一文件」「导入」未做。
+
+---
+
 ## 状态图例
 
 - ✅ 已实现：功能真实可用，端到端打通
