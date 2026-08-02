@@ -1,4 +1,3 @@
-import React from 'react'
 import { Button, Typography } from 'antd'
 import { LeftOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
@@ -8,6 +7,13 @@ const { Title } = Typography
 
 function Settings() {
   const navigate = useNavigate()
+  const goBack = () => {
+    if (window.history.state && (window.history.state as { idx?: number }).idx && (window.history.state as { idx?: number }).idx! > 0) {
+      navigate(-1)
+    } else {
+      navigate('/')
+    }
+  }
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1e1e1e' }}>
       <div style={{
@@ -20,7 +26,7 @@ function Settings() {
         <Button
           type="text"
           icon={<LeftOutlined />}
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           style={{ color: '#d4d4d4' }}
         />
         <Title level={5} style={{ color: '#d4d4d4', margin: 0 }}>设置</Title>

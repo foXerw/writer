@@ -81,6 +81,9 @@ function Workspace() {
   useEffect(() => {
     editorContentRef.current = editorContent
   }, [editorContent])
+  // 镜像 LIVE current chapter id，每次渲染更新，确保异步 resolve 时读到最新值。
+  const currentChapterIdRef = useRef<string | null>(currentChapter?.id ?? null)
+  currentChapterIdRef.current = currentChapter?.id ?? null
 
   // 加载章节列表
   useEffect(() => {
@@ -167,12 +170,19 @@ function Workspace() {
       setChapters(prev => prev.map(c => (c.id === updated.id ? updated : c)))
       setOpenedChapters(prev => prev.map(c => (c.id === updated.id ? updated : c)))
       setCurrentChapter(prev => (prev && prev.id === updated.id ? updated : prev))
-      isDirtyRef.current = false
+      // 仅当仍是同一章时才清 dirty，防止「切章 + 编辑新章」期间被陈旧回写清掉新章脏标记。
+      if (currentChapterIdRef.current === outgoing.id) {
+        isDirtyRef.current = false
+      }
       if (!opts?.silent) {
         message.success('保存成功')
       }
     } catch (error) {
-      message.error('保存失败')
+      if (opts?.silent) {
+        message.error('自动保存失败，请手动保存 (Ctrl+S)')
+      } else {
+        message.error('保存失败')
+      }
     }
   }
 
