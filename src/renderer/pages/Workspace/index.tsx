@@ -283,6 +283,20 @@ function Workspace() {
       case 'toggleChapterTree':
         setSidebarCollapsed((v) => !v)
         break
+      case 'characters':
+        setSidebarTab('characters')
+        setSidebarCollapsed(false)
+        break
+      case 'settings': // 菜单「世界观设定」(Ctrl+2) → 侧栏设定 tab（非偏好页）
+        setSidebarTab('settings')
+        setSidebarCollapsed(false)
+        break
+      case 'wordCount':
+      case 'dailyStats':
+        setSidebarTab('stats')
+        setSidebarCollapsed(false)
+        break
+      // 'plot' (Ctrl+3) 无对应面板，暂不处理
       default:
         console.log('未处理的菜单事件:', event)
     }
