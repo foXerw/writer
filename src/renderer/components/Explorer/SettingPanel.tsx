@@ -50,6 +50,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
 }) => {
   const { getAllSettings, createSetting, updateSetting, deleteSetting } = useSetting()
   const [settings, setSettings] = useState<Setting[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingSetting, setEditingSetting] = useState<Setting | null>(null)
@@ -189,6 +190,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
   }, [settings])
 
   // 处理选择
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSelect: any = (selectedKeys: React.Key[], info: any) => {
     if (selectedKeys.length > 0 && info.node.data) {
       onSelectSetting?.(info.node.data)

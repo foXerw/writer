@@ -1,15 +1,12 @@
-import React, { useCallback } from 'react'
-import { Tree, Button, Space, Dropdown, message, Modal, Input, Typography } from 'antd'
+import React from 'react'
+import { Tree, Button, Dropdown, message, Modal, Input, Typography } from 'antd'
 import type { MenuProps, TreeProps } from 'antd'
 import {
   PlusOutlined,
-  FolderOutlined,
   FileTextOutlined,
-  MoreOutlined,
   DeleteOutlined,
   EditOutlined,
-  CopyOutlined,
-  DragOutlined
+  CopyOutlined
 } from '@ant-design/icons'
 import type { Chapter } from '@/common/ipc'
 import { useChapter } from '../../hooks/useIPC'
@@ -125,7 +122,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
   }
 
   // 转换为树数据
-  const treeData: TreeProps['treeData'] = chapters.map((chapter, index) => ({
+  const treeData: TreeProps['treeData'] = chapters.map((chapter, _index) => ({
     key: chapter.id,
     title: (
       <Dropdown menu={getRightClickMenu(chapter)} trigger={['contextMenu']}>

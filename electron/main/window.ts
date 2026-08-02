@@ -1,4 +1,4 @@
-import { app, screen, BrowserWindow, BrowserWindowConstructorOptions, ipcMain, shell } from 'electron'
+import { BrowserWindow, BrowserWindowConstructorOptions, shell } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 import { join } from 'path'
 

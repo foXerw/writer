@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
-  Card,
   List,
   Button,
   Space,
@@ -28,6 +27,7 @@ import {
 import type { Character, CharacterGender, CharacterRole } from '@/common/ipc'
 import { useCharacter } from '../../hooks/useIPC'
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const { Text, Title } = Typography
 const { TextArea } = Input
 

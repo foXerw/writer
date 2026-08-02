@@ -1,11 +1,10 @@
 import React from 'react'
-import { Space, Button, Tooltip, Dropdown, Segmented } from 'antd'
+import { Space, Button, Tooltip, Dropdown } from 'antd'
 import {
   BoldOutlined,
   ItalicOutlined,
   UnorderedListOutlined,
   OrderedListOutlined,
-  ColumnWidthOutlined,
   SaveOutlined,
   UndoOutlined,
   RedoOutlined,

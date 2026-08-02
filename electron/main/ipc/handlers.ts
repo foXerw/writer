@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto'
 import { Chapter, ProjectType, Character, Setting, StatsData } from '../../src/common/ipc'
 
 // 获取主窗口
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let mainWindow: BrowserWindow | null = null
 
 export function setMainWindow(win: BrowserWindow) {

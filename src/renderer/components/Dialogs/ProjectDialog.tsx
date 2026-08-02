@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Modal, Select, Input, Space, Typography, Button, Divider, List, Empty } from 'antd'
+import { Modal, Input, Space, Typography, Button, Divider, List, Empty } from 'antd'
 import {
-  PlusOutlined,
   FolderOpenOutlined,
-  FileOutlined,
   BookOutlined,
   FileTextOutlined,
   HighlightOutlined
@@ -59,6 +57,7 @@ function ProjectDialog({
 }: ProjectDialogProps) {
   const { createProject, openProject, getRecentProjects } = useProject()
   const { openDirectory } = useDialog()
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { recentProjects, addRecentProject } = useProjectStore()
 
   const [step, setStep] = useState<'templates' | 'config' | 'location'>('templates')

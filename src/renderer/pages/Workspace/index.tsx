@@ -37,6 +37,7 @@ import type { Chapter, ProjectConfig } from '@/common/ipc'
 import type { StatsData } from '@/common/ipc'
 
 const { Header, Content, Sider } = Layout
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const { Text, Title } = Typography
 
 interface WorkspaceState {
@@ -79,6 +80,7 @@ function Workspace() {
   const [outlineVisible, setOutlineVisible] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [loading, setLoading] = useState(false)
 
   // 写作统计：今日字数/时长/历史（持久化于项目目录）
@@ -288,6 +290,7 @@ function Workspace() {
   }, [])
 
   // 删除章节
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeleteChapter = async (chapterId: string) => {
     if (!projectPath) return
     try {
@@ -374,7 +377,7 @@ function Workspace() {
         setTypewriterMode(prev => !prev)
         break
       default:
-        console.log('Unknown command:', command)
+        break
     }
   }, [chapters, focusMode, typewriterMode])
 
@@ -420,7 +423,7 @@ function Workspace() {
         setShortcutDialogOpen(true)
         break
       default:
-        console.log('未处理的菜单事件:', event)
+        break
     }
   })
 

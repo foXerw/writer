@@ -23,8 +23,9 @@ function EditorTabs({
   currentChapter,
   onSelectChapter,
   onCloseChapter,
-  onSaveChapter
+  onSaveChapter: _onSaveChapter
 }: EditorTabsProps) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { activeTabId, setActiveTab, addTab, removeTab, closeAllTabs, reorderTabs } = useTabStore()
 
   // 同步外部 chapters 变化到 store
@@ -115,7 +116,7 @@ function EditorTabs({
   ], [handleClose, handleCloseOthersThan, handleCloseRight, handleCloseAll])
 
   // 转换为Antd Tabs items
-  const items: TabsProps['items'] = chapters.map((chapter, index) => ({
+  const items: TabsProps['items'] = chapters.map((chapter, _index) => ({
     key: chapter.id,
     label: (
       <Dropdown trigger={['contextMenu']} menu={{ items: contextMenuItems(chapter) }}>

@@ -3,7 +3,6 @@ import {
   Modal,
   Radio,
   Select,
-  InputNumber,
   Space,
   Typography,
   Button,
@@ -19,6 +18,7 @@ import {
 } from '@ant-design/icons'
 import type { Chapter } from '@/common/ipc'
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const { Text, Title } = Typography
 
 interface ExportDialogProps {
@@ -44,7 +44,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
   open,
   onClose,
   chapters,
-  projectName,
+  projectName: _projectName,
   onExport
 }) => {
   const [format, setFormat] = useState<ExportOptions['format']>('markdown')

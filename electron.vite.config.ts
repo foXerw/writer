@@ -21,7 +21,7 @@ const monacoAssetsPlugin = () => {
         }
         // 递归复制整个 vs 目录
         copyFolderRecursive(src, dest)
-        console.log('Monaco assets copied to', dest)
+        console.warn('Monaco assets copied to', dest)
       }
     }
   }

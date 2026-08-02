@@ -9,6 +9,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 }
 
 // 发送事件到主进程
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function send(channel: string, ...args: unknown[]): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).electronAPI.send(channel, ...args)

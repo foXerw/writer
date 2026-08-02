@@ -14,7 +14,7 @@ interface ThemeSettingsProps {
   onThemeChange?: (theme: 'dark' | 'light') => void
 }
 
-const ThemeSettings: React.FC<ThemeSettingsProps> = ({ onThemeChange }) => {
+const ThemeSettings: React.FC<ThemeSettingsProps> = ({ onThemeChange: _onThemeChange }) => {
   const {
     fontSize,
     setFontSize,

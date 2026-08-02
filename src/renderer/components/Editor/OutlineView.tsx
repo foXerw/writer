@@ -2,8 +2,7 @@ import React, { useMemo } from 'react'
 import { Tree, Typography, Empty } from 'antd'
 import type { TreeProps } from 'antd'
 import {
-  NodeIndexOutlined,
-  PlusOutlined
+  NodeIndexOutlined
 } from '@ant-design/icons'
 
 const { Text } = Typography

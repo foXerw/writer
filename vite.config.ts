@@ -20,7 +20,7 @@ const monacoAssetsPlugin = () => {
           mkdirSync(destDir, { recursive: true })
         }
         copyFolderRecursive(src, dest)
-        console.log('Monaco assets copied to', dest)
+        console.warn('Monaco assets copied to', dest)
       }
     }
   }
