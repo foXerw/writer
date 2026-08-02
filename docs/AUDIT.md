@@ -63,6 +63,16 @@
 
 ---
 
+## 2026-08-02 复审：批次 4 快捷键自定义
+
+分支 `feat/shortcut-customization`，详见 `docs/superpowers/plans/2026-08-02-shortcut-customization.md`。已修复：
+
+- **快捷键自定义 + 冲突检测（阶段15）**：`useKeyboard` 原硬编码默认 → 新增 `shortcutService`（14 项带 id + comboEquals/findConflict/formatCombo/normalizeFromEvent/isValidCombo 纯函数）+ `useShortcutStore`（应用级 localStorage 持久化 overrides）；useKeyboard 合并默认+用户覆盖、id→action、覆盖即时生效。新建 `ShortcutDialog`（列表 + 按键捕获 rebind + 冲突阻断 + 单项/全部重置），App 全局渲染；菜单「快捷键参考」与 Settings 按钮入口。
+
+至此阶段 15/16 与 17(Markdown) 完成；仍待做：导出 Word/PDF/ePub（阶段17 剩余）。4 批审计整改收口。
+
+---
+
 ## 状态图例
 
 - ✅ 已实现：功能真实可用，端到端打通
