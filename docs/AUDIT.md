@@ -43,6 +43,16 @@
 
 ---
 
+## 2026-08-02 复审：批次 2 导出（Markdown）
+
+分支 `feat/export-markdown`，详见 `docs/superpowers/plans/2026-08-02-export-markdown.md`。已修复：
+
+- **导出功能（阶段17 空壳）**：ExportDialog 从未渲染 → 接进 Workspace（菜单 Ctrl+E + 工具栏按钮触发）；`handleExport` 真实实现：flush 当前章 → `chapter:getAll` 读权威章节 → 按范围（当前/全部/选定）选 → `exportService.assembleMarkdown` 拼装（可选 YAML 前言 + 目录）→ `dialog:saveFile` → `file:write`。删除假进度条。复用既有 IPC，零新依赖。
+
+仍待做（阶段17 未完成部分）：Word / PDF / ePub 实际生成（UI 已禁用并标「即将支持」）；「每章一个文件」导出；导入功能。阶段 16（统计重做）、15（快捷键自定义）仍待做。
+
+---
+
 ## 状态图例
 
 - ✅ 已实现：功能真实可用，端到端打通
