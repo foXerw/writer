@@ -545,6 +545,7 @@ function Workspace() {
         }}>
           <EditorToolbar
             onSave={handleSave}
+            onExport={() => setExportDialogOpen(true)}
             chapterTitle={chapterTitle}
             onTitleChange={setChapterTitle}
             wordCount={editorContent.length}

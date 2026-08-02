@@ -10,12 +10,14 @@ import {
   UndoOutlined,
   RedoOutlined,
   EyeOutlined,
-  EditOutlined
+  EditOutlined,
+  DownloadOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 
 interface EditorToolbarProps {
   onSave?: () => void
+  onExport?: () => void
   onUndo?: () => void
   onRedo?: () => void
   onBold?: () => void
@@ -33,6 +35,7 @@ interface EditorToolbarProps {
 
 function EditorToolbar({
   onSave,
+  onExport,
   onUndo,
   onRedo,
   onBold,
@@ -188,6 +191,16 @@ function EditorToolbar({
 
         {/* 分隔线 */}
         <div style={{ width: 1, height: 20, background: '#444', margin: '0 8px' }} />
+
+        {/* 导出按钮 */}
+        <Tooltip title="导出 (Ctrl+E)">
+          <Button
+            type="text"
+            icon={<DownloadOutlined />}
+            onClick={onExport}
+            style={{ color: '#d4d4d4' }}
+          />
+        </Tooltip>
 
         {/* 保存按钮 */}
         <Tooltip title="保存 (Ctrl+S)">
