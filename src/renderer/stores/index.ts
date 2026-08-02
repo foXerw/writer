@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import type { Chapter, ProjectData, RecentProject, WritingStats } from '../common/ipc'
+import type { Chapter, ProjectData, RecentProject } from '../common/ipc'
 
 // Tab状态
 interface TabState {
@@ -143,51 +143,6 @@ export const useEditorStore = create<EditorState>()(
     }),
     {
       name: 'editor-storage',
-      storage: createJSONStorage(() => localStorage)
-    }
-  )
-)
-
-// 写作统计状态
-interface StatsState {
-  stats: WritingStats
-  todayWordCount: number
-  setStats: (stats: WritingStats) => void
-  addWordCount: (count: number) => void
-  updateDuration: (minutes: number) => void
-}
-
-export const useStatsStore = create<StatsState>()(
-  persist(
-    (set) => ({
-      stats: {
-        dailyWordCount: 0,
-        totalWordCount: 0,
-        writingDuration: 0,
-        streak: 0
-      },
-      todayWordCount: 0,
-
-      setStats: (stats) => set({ stats }),
-
-      addWordCount: (count) => set((state) => ({
-        todayWordCount: state.todayWordCount + count,
-        stats: {
-          ...state.stats,
-          dailyWordCount: state.stats.dailyWordCount + count,
-          totalWordCount: state.stats.totalWordCount + count
-        }
-      })),
-
-      updateDuration: (minutes) => set((state) => ({
-        stats: {
-          ...state.stats,
-          writingDuration: state.stats.writingDuration + minutes
-        }
-      }))
-    }),
-    {
-      name: 'stats-storage',
       storage: createJSONStorage(() => localStorage)
     }
   )
