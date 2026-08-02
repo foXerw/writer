@@ -85,12 +85,6 @@ export function useKeyboard(options: UseKeyboardOptions = {}) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
-
-  return {
-    shortcuts: bindingsRef.current.map((b) => ({
-      id: b.id, ...b.combo, description: b.description
-    }))
-  }
 }
 
 export default useKeyboard
