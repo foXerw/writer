@@ -24,7 +24,7 @@ import type { ExportOptions } from '../../components/Dialogs/ExportDialog'
 import OutlineView from '../../components/Editor/OutlineView'
 import type { MonacoEditorHandle } from '../../components/Editor/MonacoEditor'
 import { useMenu } from '../../hooks/useMenu'
-import { startAutoSave, stopAutoSave, saveFileDialog, writeFile, getStats, saveStats } from '../../services/ipcService'
+import { startAutoSave, stopAutoSave, saveFileDialog, writeFile, getStats, saveStats, exportDocument } from '../../services/ipcService'
 import { assembleMarkdown, sanitizeFilename } from '../../services/exportService'
 import {
   EMPTY_STATS, addWords, addMinutes, todayWords, todayMinutes,
@@ -340,22 +340,42 @@ function Workspace() {
       message.warning('无章节可导出')
       return { ok: false }
     }
-    // 5) 拼装
-    const md = assembleMarkdown({
-      projectName,
-      chapters: selected,
-      addFrontMatter: options.options?.addFrontMatter ?? true,
-      addToc: options.options?.addToc ?? true,
-      date: new Date().toISOString().slice(0, 10)
-    })
-    // 6) 保存对话框（取消则静默中止）
-    const savePath = await saveFileDialog(`${sanitizeFilename(projectName)}.md`, [
-      { name: 'Markdown', extensions: ['md'] }
+    // 5) 按格式选扩展名 + 过滤器
+    const fmt = options.format
+    const ext = fmt === 'word' ? 'docx' : fmt === 'pdf' ? 'pdf' : fmt === 'epub' ? 'epub' : 'md'
+    const filterName = fmt === 'word' ? 'Word' : fmt === 'pdf' ? 'PDF' : fmt === 'epub' ? 'ePub' : 'Markdown'
+    const savePath = await saveFileDialog(`${sanitizeFilename(projectName)}.${ext}`, [
+      { name: filterName, extensions: [ext] }
     ])
     if (!savePath) return { ok: false }
-    // 7) 写盘
-    const written = await writeFile(savePath, md)
-    if (written) {
+    // 6) 生成/写盘：markdown 走本地拼装；word/pdf/epub 走主进程
+    let ok = false
+    try {
+      if (fmt === 'markdown') {
+        const md = assembleMarkdown({
+          projectName,
+          chapters: selected,
+          addFrontMatter: options.options?.addFrontMatter ?? true,
+          addToc: options.options?.addToc ?? true,
+          date: new Date().toISOString().slice(0, 10)
+        })
+        ok = await writeFile(savePath, md)
+      } else {
+        ok = await exportDocument(fmt as 'word' | 'pdf' | 'epub', {
+          chapters: selected,
+          projectName,
+          options: {
+            addFrontMatter: options.options?.addFrontMatter ?? true,
+            addToc: options.options?.addToc ?? true
+          },
+          savePath
+        })
+      }
+    } catch (e) {
+      console.error('导出失败:', e)
+      ok = false
+    }
+    if (ok) {
       message.success('导出成功')
       return { ok: true }
     }
