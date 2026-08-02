@@ -51,6 +51,7 @@ export function useKeyboard(options: UseKeyboardOptions = {}) {
       description: d.description,
       action: () => actionMap[d.id]?.()
     }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- actionMap 由下方各回调派生，已逐一列入依赖
   }, [
     overrides, onSave, onSaveAll, onNew, onOpen, onUndo, onRedo,
     onToggleSidebar, onToggleCommandPalette, onToggleFocusMode,

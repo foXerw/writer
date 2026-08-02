@@ -187,6 +187,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
         data: setting
       }))
     }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 树数据仅依赖 settings，处理函数为组件内定义
   }, [settings])
 
   // 处理选择

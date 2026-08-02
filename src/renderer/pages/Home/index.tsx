@@ -21,6 +21,7 @@ function Home() {
   // 加载最近项目
   useEffect(() => {
     loadRecentProjects()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载时加载一次
   }, [])
 
   const loadRecentProjects = async () => {

@@ -82,6 +82,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
     })
 
     return items
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- defaultCommands 为组件内常量，此处仅依赖 menuItems
   }, [menuItems])
 
   // 过滤命令

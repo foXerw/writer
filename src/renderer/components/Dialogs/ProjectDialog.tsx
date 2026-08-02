@@ -73,6 +73,7 @@ function ProjectDialog({
     if (open && mode === 'open') {
       loadRecentProjects()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 open/mode 变化时加载
   }, [open, mode])
 
   useEffect(() => {

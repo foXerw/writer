@@ -214,6 +214,7 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
         editorRef.current.dispose()
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 编辑器仅挂载时初始化一次
   }, [])
 
   // 更新内容

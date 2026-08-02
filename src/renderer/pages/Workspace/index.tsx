@@ -113,6 +113,7 @@ function Workspace() {
     if (projectPath) {
       loadChapters()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 projectPath 变化时加载
   }, [projectPath])
 
   const loadChapters = async () => {
@@ -258,6 +259,7 @@ function Workspace() {
       }
     })
     return () => stopAutoSave()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意只依赖章节 id（切换章时重启定时器），非整个 currentChapter 对象
   }, [currentChapter?.id, autoSaveEnabled, autoSaveInterval])
 
   // 写作时长：每 60s，若近 IDLE 阈值内有按键则今日 +1 分钟
@@ -379,6 +381,7 @@ function Workspace() {
       default:
         break
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 依赖 chapters/模式状态；命令内调用的 handler 非稳定引用，按现状即可
   }, [chapters, focusMode, typewriterMode])
 
   // 菜单栏事件
