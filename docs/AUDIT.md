@@ -34,7 +34,7 @@
 
 分支 `feat/stability-and-polish`，详见 `docs/superpowers/plans/2026-08-02-stability-and-polish.md`。已修复：
 
-- **切章数据丢失**（已知限制 1）：新增 `saveCurrentChapter({silent})` 集中 chokepoint；`selectChapter`/`handleBack` 切换前 flush；`beforeunload` 兜底；自动保存改静默 flush。函数式更新 + id 守卫防异步回写。残留：fire-and-forget 极窄竞态（手动 Ctrl+S 不受影响），可忽略。
+- **切章数据丢失**（已知限制 1）：新增 `saveCurrentChapter({silent})` 集中 chokepoint；`selectChapter`/`handleBack` 切换前 flush；`beforeunload` 兜底；自动保存改静默 flush。函数式更新 + id 守卫防异步回写 `currentChapter`；`currentChapterIdRef` 同步镜像当前章 id，仅在仍是同一章时清除 `isDirtyRef`（消除切章时在途存盘误清新章脏标记的竞态）。静默保存失败提示「自动保存失败，请手动保存 (Ctrl+S)」（数据安全优先于静默，不抑制）。
 - **Ctrl+1/2 切栏**（已知限制 2）：`useMenu` 增加 `characters`/`settings`/`wordCount`/`dailyStats` case，收起时展开。
 - **Tab 右键菜单**（阶段 7 缺陷）：`EditorTabs` 用 `Dropdown trigger=contextMenu` 包裹，新增「关闭右侧」「关闭其他(以右键 target 为基准)」。
 - **Settings 接线**（阶段 5 占位 + ThemeSettings 死代码）：`/settings` 渲染 ThemeSettings，侧栏齿轮入口，返回箭头。
