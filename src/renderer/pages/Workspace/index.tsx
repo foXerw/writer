@@ -120,7 +120,7 @@ function Workspace() {
       // 载入项目写作统计
       try {
         const loaded = await getStats(projectPath)
-        setStats(loaded ?? EMPTY_STATS)
+        setStats(loaded && loaded.dailyHistory ? loaded : EMPTY_STATS)
       } catch (e) {
         console.error('载入统计失败:', e)
         setStats(EMPTY_STATS)

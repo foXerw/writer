@@ -115,7 +115,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
           <Col span={12}>
             <Card size="small" style={{ background: '#1e1e1e', borderColor: '#333' }}>
               <Statistic
-                title={<Text style={{ color: '#888', fontSize: 11 }}>写作时长</Text>}
+                title={<Text style={{ color: '#888', fontSize: 11 }}>今日时长</Text>}
                 value={writingDuration}
                 valueStyle={{ color: '#fa8c16', fontSize: 20 }}
                 prefix={<ClockCircleOutlined />}
@@ -161,37 +161,39 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
 
         {/* 近 N 天柱状趋势（纯 div/CSS） */}
         <div style={{ padding: '0 16px' }}>
-          <Text style={{ color: '#888', fontSize: 12 }}>最近 {history.length} 天</Text>
           {maxWords === 0 ? (
             <Text style={{ display: 'block', color: '#555', fontSize: 12, marginTop: 12, textAlign: 'center' }}>
               暂无写作记录
             </Text>
           ) : (
-            <div style={{
-              display: 'flex', alignItems: 'flex-end', gap: 2,
-              marginTop: 12, height: 80
-            }}>
-              {history.map((d, i) => {
-                const h = maxWords > 0 ? Math.max((d.words / maxWords) * 100, d.words > 0 ? 6 : 2) : 0
-                return (
-                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div
-                      title={`${d.date}: ${d.words} 字`}
-                      style={{
-                        width: '100%',
-                        height: `${h}%`,
-                        minHeight: 2,
-                        background: d.words > 0 ? '#1890ff' : '#333',
-                        borderRadius: 2
-                      }}
-                    />
-                    <Text style={{ color: '#555', fontSize: 9, marginTop: 2 }}>
-                      {d.date.slice(5)}
-                    </Text>
-                  </div>
-                )
-              })}
-            </div>
+            <>
+              <Text style={{ color: '#888', fontSize: 12 }}>最近 {history.length} 天</Text>
+              <div style={{
+                display: 'flex', alignItems: 'flex-end', gap: 2,
+                marginTop: 12, height: 80
+              }}>
+                {history.map((d, i) => {
+                  const h = maxWords > 0 ? Math.max((d.words / maxWords) * 100, d.words > 0 ? 6 : 2) : 0
+                  return (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div
+                        title={`${d.date}: ${d.words} 字`}
+                        style={{
+                          width: '100%',
+                          height: `${h}%`,
+                          minHeight: 2,
+                          background: d.words > 0 ? '#1890ff' : '#333',
+                          borderRadius: 2
+                        }}
+                      />
+                      <Text style={{ color: '#555', fontSize: 9, marginTop: 2 }}>
+                        {d.date.slice(5)}
+                      </Text>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
           )}
         </div>
       </div>
