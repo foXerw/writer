@@ -11,18 +11,18 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 // 发送事件到主进程
 function send(channel: string, ...args: unknown[]): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(window as any).electronAPI.send(channel, ...args)
+  (window as any).electronAPI.send(channel, ...args)
 }
 
 // 监听主进程事件
 function on<T>(channel: string, callback: (data: T) => void): () => void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(window as any).electronAPI.on(channel, (_event: unknown, data: T) => {
+  (window as any).electronAPI.on(channel, (_event: unknown, data: T) => {
     callback(data)
   })
   return () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(window as any).electronAPI.off(channel)
+    (window as any).electronAPI.off(channel)
   }
 }
 

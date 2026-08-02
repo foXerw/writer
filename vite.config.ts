@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { copyFileSync, existsSync, mkdirSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
 import { resolve } from 'path'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -32,7 +32,7 @@ function copyFolderRecursive(src: string, dest: string) {
 
   mkdirSync(dest, { recursive: true })
 
-  const entries = require('fs').readdirSync(src, { withFileTypes: true })
+  const entries = readdirSync(src, { withFileTypes: true })
 
   for (const entry of entries) {
     const srcPath = resolve(src, entry.name)

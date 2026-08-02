@@ -154,7 +154,7 @@ ipcMain.handle('chapter:getAll', async (_, projectPath: string) => {
     const title = titleMatch ? titleMatch[1] : file.replace('.md', '')
 
     // 计算字数
-    const wordCount = content.replace(/[#*`\[\]\(\)]/g, '').length
+    const wordCount = content.replace(/[#*`[\]()]/g, '').length
 
     return {
       id: file.replace('.md', ''),
@@ -326,7 +326,7 @@ ipcMain.handle('chapter:getById', async (_, params: { projectPath: string; chapt
   const titleMatch = content.match(/^#\s+(.+)$/m)
   const title = titleMatch ? titleMatch[1] : file.replace('.md', '')
 
-  const wordCount = content.replace(/[#*`\[\]\(\)]/g, '').length
+  const wordCount = content.replace(/[#*`[\]()]/g, '').length
 
   return {
     id: file.replace('.md', ''),
@@ -600,7 +600,7 @@ ipcMain.handle('setting:create', async (_, params: { projectPath: string; settin
     updatedAt: new Date()
   }
 
-  const fileName = `${id}-${newSetting.title}.json`.replace(/[^a-zA-Z0-9\-_\.]/g, '_')
+  const fileName = `${id}-${newSetting.title}.json`.replace(/[^a-zA-Z0-9\-_.]/g, '_')
   const filePath = path.join(categoryDir, fileName)
   fs.writeFileSync(filePath, JSON.stringify(newSetting, null, 2))
 

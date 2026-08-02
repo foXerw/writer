@@ -2,7 +2,7 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { resolve } from 'path'
-import { copyFileSync, existsSync, mkdirSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -33,7 +33,7 @@ function copyFolderRecursive(src: string, dest: string) {
 
   mkdirSync(dest, { recursive: true })
 
-  const entries = require('fs').readdirSync(src, { withFileTypes: true })
+  const entries = readdirSync(src, { withFileTypes: true })
 
   for (const entry of entries) {
     const srcPath = resolve(src, entry.name)
