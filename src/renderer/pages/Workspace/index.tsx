@@ -257,8 +257,8 @@ function Workspace() {
   }
 
   // 导出 Markdown：flush 当前章 → 磁盘读权威章节 → 按范围选 → 拼装 → 保存框 → 写盘
-  const handleExport = async (options: ExportOptions) => {
-    if (!projectPath) return
+  const handleExport = async (options: ExportOptions): Promise<{ ok: boolean }> => {
+    if (!projectPath) return { ok: false }
     // 1) 先把当前章未保存编辑落盘（复用批次1 chokepoint）
     await saveCurrentChapter({ silent: true })
     // 2) 从磁盘读权威最新章节列表，按 order 排序
@@ -277,7 +277,7 @@ function Workspace() {
     // 4) 空集合兜底
     if (selected.length === 0) {
       message.warning('无章节可导出')
-      return
+      return { ok: false }
     }
     // 5) 拼装
     const md = assembleMarkdown({
@@ -289,11 +289,15 @@ function Workspace() {
     })
     // 6) 保存对话框（取消则静默中止）
     const savePath = await saveFileDialog(`${sanitizeFilename(projectName)}.md`)
-    if (!savePath) return
+    if (!savePath) return { ok: false }
     // 7) 写盘
-    const ok = await writeFile(savePath, md)
-    if (ok) message.success('导出成功')
-    else message.error('导出失败')
+    const written = await writeFile(savePath, md)
+    if (written) {
+      message.success('导出成功')
+      return { ok: true }
+    }
+    message.error('导出失败')
+    return { ok: false }
   }
 
   // 命令面板处理

@@ -26,7 +26,7 @@ interface ExportDialogProps {
   onClose: () => void
   chapters: Chapter[]
   projectName: string
-  onExport: (options: ExportOptions) => Promise<void>
+  onExport: (options: ExportOptions) => Promise<{ ok: boolean }>
 }
 
 export interface ExportOptions {
@@ -63,18 +63,17 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
     { value: 'epub', label: '电子书', icon: <BookOutlined />, desc: '即将支持', disabled: true }
   ]
 
-  // 处理导出
   const handleExport = async () => {
     setExporting(true)
     try {
-      await onExport({
+      const { ok } = await onExport({
         format,
         includeChapters,
         selectedChapterIds: selectedChapters,
         options: { addFrontMatter, addToc }
       })
-      messageApi.success('导出成功！')
-      onClose()
+      // 仅成功时关闭；失败/取消/空选保留弹窗供重试。消息由 Workspace 统一处理。
+      if (ok) onClose()
     } catch (error) {
       messageApi.error('导出失败，请重试')
       console.error('Export error:', error)
