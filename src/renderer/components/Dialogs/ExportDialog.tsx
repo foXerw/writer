@@ -58,9 +58,9 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
   // 导出格式配置
   const formatOptions = [
     { value: 'markdown', label: 'Markdown', icon: <FileMarkdownOutlined />, desc: '纯文本格式，广泛支持', disabled: false },
-    { value: 'word', label: 'Word文档', icon: <FileWordOutlined />, desc: '即将支持', disabled: true },
-    { value: 'pdf', label: 'PDF文档', icon: <FilePdfOutlined />, desc: '即将支持', disabled: true },
-    { value: 'epub', label: '电子书', icon: <BookOutlined />, desc: '即将支持', disabled: true }
+    { value: 'word', label: 'Word文档', icon: <FileWordOutlined />, desc: '可编辑 .docx 文档', disabled: false },
+    { value: 'pdf', label: 'PDF文档', icon: <FilePdfOutlined />, desc: '便携式文档，适合打印', disabled: false },
+    { value: 'epub', label: '电子书', icon: <BookOutlined />, desc: 'ePub 格式，适合阅读器', disabled: false }
   ]
 
   const handleExport = async () => {
