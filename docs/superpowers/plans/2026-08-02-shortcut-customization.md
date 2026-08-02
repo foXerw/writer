@@ -4,7 +4,7 @@
 
 **Goal:** 快捷键用户自定义绑定 + 冲突检测（审计阶段15 两项缺失目标）。
 
-**Architecture:** 新建 `shortcutService.ts`（`Combo`/`ShortcutDef`/`DEFAULT_SHORTCOUTS` + 纯函数）；`useShortcutStore` 持久化 overrides（应用级 localStorage）；`useKeyboard` 重构为合并默认+覆盖、id→action；新建 `ShortcutDialog`（列表+捕获 rebind+冲突阻断+重置），App 渲染一次；菜单 `'shortcuts'` 与 Settings 按钮入口。
+**Architecture:** 新建 `shortcutService.ts`（`Combo`/`ShortcutDef`/`DEFAULT_SHORTCUTS` + 纯函数）；`useShortcutStore` 持久化 overrides（应用级 localStorage）；`useKeyboard` 重构为合并默认+覆盖、id→action；新建 `ShortcutDialog`（列表+捕获 rebind+冲突阻断+重置），App 渲染一次；菜单 `'shortcuts'` 与 Settings 按钮入口。
 
 **Tech Stack:** Electron + React 18 + TS + antd 5 + Zustand。无测试框架；无新依赖。
 
@@ -19,7 +19,7 @@
 
 | 文件 | 责任 | 任务 |
 |------|------|------|
-| `src/renderer/services/shortcutService.ts` | **新建**：类型、`DEFAULT_SHORTCOUTS`、纯函数 | Task 1 |
+| `src/renderer/services/shortcutService.ts` | **新建**：类型、`DEFAULT_SHORTCUTS`、纯函数 | Task 1 |
 | `src/renderer/stores/index.ts` | 新增 `useShortcutStore` | Task 2 |
 | `src/renderer/hooks/useKeyboard.ts` | 重构：合并 overrides + id→action | Task 3 |
 | `src/renderer/components/Dialogs/ShortcutDialog.tsx` | **新建**：列表+捕获+冲突+重置 | Task 4 |
@@ -46,7 +46,7 @@ export interface Combo {
 }
 export interface ShortcutDef { id: string; combo: Combo; description: string }
 
-export const DEFAULT_SHORTCOUTS: ShortcutDef[] = [
+export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: 'save',           description: '保存',         combo: { key: 's', ctrl: true } },
   { id: 'saveAll',        description: '保存全部',     combo: { key: 's', ctrl: true, shift: true } },
   { id: 'new',            description: '新建',         combo: { key: 'n', ctrl: true } },
@@ -114,7 +114,7 @@ export function isValidCombo(combo: Combo): boolean {
 ```bash
 git add src/renderer/services/shortcutService.ts
 git commit -m "$(cat <<'EOF'
-feat(shortcuts): 新增 shortcutService（Combo/DEFAULT_SHORTCOUTS/纯函数）
+feat(shortcuts): 新增 shortcutService（Combo/DEFAULT_SHORTCUTS/纯函数）
 
 默认 14 项带 id；comboEquals/findConflict/formatCombo/normalizeFromEvent
 /isValidCombo 纯函数。
@@ -200,7 +200,7 @@ EOF
 ```ts
 import { useEffect, useCallback, useRef } from 'react'
 import {
-  DEFAULT_SHORTCOUTS, comboEquals, normalizeFromEvent
+  DEFAULT_SHORTCUTS, comboEquals, normalizeFromEvent
 } from '../services/shortcutService'
 import type { Combo } from '../services/shortcutService'
 import { useShortcutStore } from '../stores'
@@ -245,7 +245,7 @@ export function useKeyboard(options: UseKeyboardOptions = {}) {
   const bindingsRef = useRef<Binding[]>([])
 
   useEffect(() => {
-    bindingsRef.current = DEFAULT_SHORTCOUTS.map((d) => ({
+    bindingsRef.current = DEFAULT_SHORTCUTS.map((d) => ({
       id: d.id,
       combo: overrides[d.id] ?? d.combo,
       description: d.description,
@@ -326,7 +326,7 @@ EOF
 import React, { useState, useEffect } from 'react'
 import { Modal, Button, Space, Typography, Tag } from 'antd'
 import {
-  DEFAULT_SHORTCOUTS, formatCombo, normalizeFromEvent, isValidCombo, findConflict
+  DEFAULT_SHORTCUTS, formatCombo, normalizeFromEvent, isValidCombo, findConflict
 } from '../../services/shortcutService'
 import { useShortcutStore } from '../../stores'
 
@@ -354,7 +354,7 @@ function ShortcutDialog() {
         setHint('需要修饰键(Ctrl/Alt/Cmd)或功能键(F1-F12)')
         return
       }
-      const conflict = findConflict(DEFAULT_SHORTCOUTS, overrides, capturingId, combo)
+      const conflict = findConflict(DEFAULT_SHORTCUTS, overrides, capturingId, combo)
       if (conflict) {
         setHint(`与「${conflict.description}」冲突`)
         return
@@ -382,7 +382,7 @@ function ShortcutDialog() {
       footer={<Button onClick={resetAll} disabled={!!capturingId}>全部重置为默认</Button>}
     >
       <Space direction="vertical" style={{ width: '100%' }} size="small">
-        {DEFAULT_SHORTCOUTS.map((d) => {
+        {DEFAULT_SHORTCUTS.map((d) => {
           const effective = overrides[d.id] ?? d.combo
           const overridden = !!overrides[d.id]
           const capturing = capturingId === d.id
