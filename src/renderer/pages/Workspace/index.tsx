@@ -359,6 +359,14 @@ function Workspace() {
               </Text>
             </Space>
           )}
+          {!sidebarCollapsed && (
+            <Button
+              type="text"
+              icon={<SettingOutlined />}
+              onClick={() => navigate('/settings')}
+              style={{ color: '#d4d4d4' }}
+            />
+          )}
           {sidebarCollapsed && (
             <Button
               type="text"

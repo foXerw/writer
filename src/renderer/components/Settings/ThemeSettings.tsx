@@ -6,7 +6,7 @@ import {
   LayoutOutlined,
   HighlightOutlined
 } from '@ant-design/icons'
-import { useEditorStore } from '@/stores'
+import { useEditorStore } from '../../stores'
 
 const { Text } = Typography
 
