@@ -19,10 +19,13 @@ import CharacterPanel from '../../components/Explorer/CharacterPanel'
 import SettingPanel from '../../components/Explorer/SettingPanel'
 import StatsPanel from '../../components/Explorer/StatsPanel'
 import CommandPalette from '../../components/Dialogs/CommandPalette'
+import ExportDialog from '../../components/Dialogs/ExportDialog'
+import type { ExportOptions } from '../../components/Dialogs/ExportDialog'
 import OutlineView from '../../components/Editor/OutlineView'
 import type { MonacoEditorHandle } from '../../components/Editor/MonacoEditor'
 import { useMenu } from '../../hooks/useMenu'
-import { startAutoSave, stopAutoSave } from '../../services/ipcService'
+import { startAutoSave, stopAutoSave, saveFileDialog, writeFile } from '../../services/ipcService'
+import { assembleMarkdown, sanitizeFilename } from '../../services/exportService'
 import { useEditorStore } from '../../stores'
 import { useChapter } from '../../hooks/useIPC'
 import { useKeyboard } from '../../hooks/useKeyboard'
@@ -68,6 +71,7 @@ function Workspace() {
   // 命令面板
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [outlineVisible, setOutlineVisible] = useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
 
   const [loading, setLoading] = useState(false)
 
@@ -252,6 +256,46 @@ function Workspace() {
     navigate('/')
   }
 
+  // 导出 Markdown：flush 当前章 → 磁盘读权威章节 → 按范围选 → 拼装 → 保存框 → 写盘
+  const handleExport = async (options: ExportOptions) => {
+    if (!projectPath) return
+    // 1) 先把当前章未保存编辑落盘（复用批次1 chokepoint）
+    await saveCurrentChapter({ silent: true })
+    // 2) 从磁盘读权威最新章节列表，按 order 排序
+    const all = await getAllChapters(projectPath)
+    const sorted = [...all].sort((a, b) => a.order - b.order)
+    // 3) 按范围选章
+    let selected: Chapter[]
+    if (options.includeChapters === 'current') {
+      selected = sorted.filter(c => c.id === currentChapter?.id)
+    } else if (options.includeChapters === 'selected') {
+      const ids = options.selectedChapterIds ?? []
+      selected = sorted.filter(c => ids.includes(c.id))
+    } else {
+      selected = sorted
+    }
+    // 4) 空集合兜底
+    if (selected.length === 0) {
+      message.warning('无章节可导出')
+      return
+    }
+    // 5) 拼装
+    const md = assembleMarkdown({
+      projectName,
+      chapters: selected,
+      addFrontMatter: options.options?.addFrontMatter ?? true,
+      addToc: options.options?.addToc ?? true,
+      date: new Date().toISOString().slice(0, 10)
+    })
+    // 6) 保存对话框（取消则静默中止）
+    const savePath = await saveFileDialog(`${sanitizeFilename(projectName)}.md`)
+    if (!savePath) return
+    // 7) 写盘
+    const ok = await writeFile(savePath, md)
+    if (ok) message.success('导出成功')
+    else message.error('导出失败')
+  }
+
   // 命令面板处理
   const handleCommand = useCallback((command: string) => {
     switch (command) {
@@ -307,6 +351,9 @@ function Workspace() {
         setSidebarCollapsed(false)
         break
       // 'plot' (Ctrl+3) 无对应面板，暂不处理
+      case 'export':
+        setExportDialogOpen(true)
+        break
       default:
         console.log('未处理的菜单事件:', event)
     }
@@ -338,6 +385,13 @@ function Workspace() {
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         onExecute={handleCommand}
+      />
+      <ExportDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        chapters={chapters}
+        projectName={projectName}
+        onExport={handleExport}
       />
 
       {/* 左侧边栏 */}
