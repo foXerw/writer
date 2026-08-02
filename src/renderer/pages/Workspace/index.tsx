@@ -344,7 +344,9 @@ function Workspace() {
       date: new Date().toISOString().slice(0, 10)
     })
     // 6) 保存对话框（取消则静默中止）
-    const savePath = await saveFileDialog(`${sanitizeFilename(projectName)}.md`)
+    const savePath = await saveFileDialog(`${sanitizeFilename(projectName)}.md`, [
+      { name: 'Markdown', extensions: ['md'] }
+    ])
     if (!savePath) return { ok: false }
     // 7) 写盘
     const written = await writeFile(savePath, md)

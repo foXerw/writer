@@ -48,7 +48,7 @@ export type RendererToMainRequests = {
   // 系统相关
   'dialog:openDirectory': () => Promise<string | null>
   'dialog:openFile': (filters: FileFilter[]) => Promise<string | null>
-  'dialog:saveFile': (defaultPath: string) => Promise<string | null>
+  'dialog:saveFile': (params: { defaultPath: string; filters?: FileFilter[] }) => Promise<string | null>
 }
 
 // 项目类型

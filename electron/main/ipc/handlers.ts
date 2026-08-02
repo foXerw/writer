@@ -366,9 +366,10 @@ ipcMain.handle('dialog:openFile', async (_, filters: { name: string; extensions:
   return result.filePaths[0]
 })
 
-ipcMain.handle('dialog:saveFile', async (_, defaultPath: string) => {
+ipcMain.handle('dialog:saveFile', async (_, params: { defaultPath: string; filters?: { name: string; extensions: string[] }[] }) => {
   const result = await dialog.showSaveDialog({
-    defaultPath
+    defaultPath: params.defaultPath,
+    filters: params.filters
   })
 
   if (result.canceled || !result.filePath) {

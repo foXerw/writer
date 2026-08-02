@@ -114,8 +114,8 @@ export async function openFileDialog(filters?: FileFilter[]): Promise<string | n
   return invoke<string | null>('dialog:openFile', filters)
 }
 
-export async function saveFileDialog(defaultPath: string): Promise<string | null> {
-  return invoke<string | null>('dialog:saveFile', defaultPath)
+export async function saveFileDialog(defaultPath: string, filters?: FileFilter[]): Promise<string | null> {
+  return invoke<string | null>('dialog:saveFile', { defaultPath, filters })
 }
 
 // ==================== 事件监听 ====================
