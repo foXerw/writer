@@ -3,7 +3,7 @@ import type { DayStat, StatsData } from '../../common/ipc'
 export const STATS_HISTORY_LIMIT = 90
 export const STATS_DURATION_TICK_MS = 60_000   // 活跃计时 tick
 export const STATS_IDLE_THRESHOLD_MS = 60_000  // 近 60s 有按键算活跃
-export const EMPTY_STATS: StatsData = { dailyHistory: {}, lastActiveDate: '' }
+export const EMPTY_STATS: StatsData = { dailyHistory: {} }
 
 export function todayKey(d: Date = new Date()): string {
   const y = d.getFullYear()
@@ -25,8 +25,7 @@ export function addWords(stats: StatsData, delta: number, d: Date = new Date()):
   const day: DayStat = withToday.dailyHistory[key] ?? { words: 0, minutes: 0 }
   const next: StatsData = {
     ...withToday,
-    dailyHistory: { ...withToday.dailyHistory, [key]: { ...day, words: day.words + delta } },
-    lastActiveDate: key
+    dailyHistory: { ...withToday.dailyHistory, [key]: { ...day, words: day.words + delta } }
   }
   return trimHistory(next, d)
 }
@@ -36,11 +35,11 @@ export function addMinutes(stats: StatsData, minutes: number, d: Date = new Date
   const key = todayKey(d)
   const withToday = ensureToday(stats, d)
   const day: DayStat = withToday.dailyHistory[key] ?? { words: 0, minutes: 0 }
-  return {
+  const next: StatsData = {
     ...withToday,
-    dailyHistory: { ...withToday.dailyHistory, [key]: { ...day, minutes: day.minutes + minutes } },
-    lastActiveDate: withToday.lastActiveDate || key
+    dailyHistory: { ...withToday.dailyHistory, [key]: { ...day, minutes: day.minutes + minutes } }
   }
+  return trimHistory(next, d)
 }
 
 export function computeStreak(stats: StatsData, d: Date = new Date()): number {

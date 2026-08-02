@@ -108,7 +108,6 @@ export interface DayStat {
 }
 export interface StatsData {
   dailyHistory: Record<string, DayStat>  // 'YYYY-MM-DD' -> DayStat
-  lastActiveDate: string                 // 'YYYY-MM-DD'
 }
 
 // 文件过滤器
