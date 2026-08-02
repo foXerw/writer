@@ -47,6 +47,8 @@
     "@monaco-editor/react": "^4.7.0",
     "antd": "^5.12.0",
     "dayjs": "^1.11.10",
+    "docx": "^9.7.1",
+    "epub-gen-memory": "^1.1.2",
     "monaco-editor": "^0.55.1",
     "react-router-dom": "^6.21.0",
     "zustand": "^4.4.7"

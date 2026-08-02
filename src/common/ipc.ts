@@ -110,6 +110,14 @@ export interface StatsData {
   dailyHistory: Record<string, DayStat>  // 'YYYY-MM-DD' -> DayStat
 }
 
+// 导出参数（word/pdf/epub 主进程生成用）
+export interface ExportParams {
+  chapters: { title: string; content: string }[]
+  projectName: string
+  options: { addFrontMatter?: boolean; addToc?: boolean }
+  savePath: string
+}
+
 // 文件过滤器
 export interface FileFilter {
   name: string
