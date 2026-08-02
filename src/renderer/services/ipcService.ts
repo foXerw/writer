@@ -1,6 +1,6 @@
 // 渲染进程文件服务 - 封装IPC调用
 
-import type { Chapter, ProjectData, RecentProject, FileFilter } from '../common/ipc'
+import type { Chapter, ProjectData, RecentProject, FileFilter, StatsData } from '../common/ipc'
 
 // 调用主进程的IPC方法
 async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
@@ -92,6 +92,16 @@ export async function reorderChapters(projectPath: string, fromId: string, toId:
 
 export async function getChapterById(projectPath: string, chapterId: string): Promise<Chapter | null> {
   return invoke<Chapter | null>('chapter:getById', { projectPath, chapterId })
+}
+
+// ==================== 写作统计相关 ====================
+
+export async function getStats(projectPath: string): Promise<StatsData | null> {
+  return invoke<StatsData | null>('stats:get', projectPath)
+}
+
+export async function saveStats(projectPath: string, stats: StatsData): Promise<boolean> {
+  return invoke<boolean>('stats:save', { projectPath, stats })
 }
 
 // ==================== 对话框相关 ====================

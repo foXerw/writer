@@ -2,7 +2,7 @@ import { dialog, ipcMain, BrowserWindow } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { randomUUID } from 'crypto'
-import { Chapter, ProjectType, Character, Setting } from '../../src/common/ipc'
+import { Chapter, ProjectType, Character, Setting, StatsData } from '../../src/common/ipc'
 
 // 获取主窗口
 let mainWindow: BrowserWindow | null = null
@@ -669,4 +669,28 @@ ipcMain.handle('setting:delete', async (_, params: { projectPath: string; settin
   findAndDelete(settingsDir)
 
   return true
+})
+
+// ==================== 写作统计相关 ====================
+ipcMain.handle('stats:get', async (_, projectPath: string): Promise<StatsData | null> => {
+  const filePath = path.join(projectPath, '.novelwriter', 'stats.json')
+  if (!fs.existsSync(filePath)) return null
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as StatsData
+  } catch (e) {
+    console.error('stats:get 解析失败:', e)
+    return null
+  }
+})
+
+ipcMain.handle('stats:save', async (_, params: { projectPath: string; stats: StatsData }): Promise<boolean> => {
+  try {
+    const dir = path.join(params.projectPath, '.novelwriter')
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'stats.json'), JSON.stringify(params.stats, null, 2), 'utf-8')
+    return true
+  } catch (e) {
+    console.error('stats:save 失败:', e)
+    return false
+  }
 })
