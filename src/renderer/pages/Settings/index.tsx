@@ -1,9 +1,10 @@
-import { Button, Typography } from 'antd'
+import { Button, Space, Typography } from 'antd'
 import { LeftOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import ThemeSettings from '../../components/Settings/ThemeSettings'
+import { useShortcutStore } from '../../stores'
 
-const { Title } = Typography
+const { Title, Text } = Typography
 
 function Settings() {
   const navigate = useNavigate()
@@ -33,6 +34,18 @@ function Settings() {
       </div>
       <div style={{ flex: 1, overflow: 'auto' }}>
         <ThemeSettings />
+        <div style={{ padding: '0 16px', marginTop: 16, borderTop: '1px solid #333', paddingTop: 16 }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Text style={{ color: '#d4d4d4', fontWeight: 500 }}>快捷键</Text>
+            <Text style={{ color: '#888', fontSize: 12 }}>自定义或查看命令的键盘快捷键。</Text>
+            <Button
+              onClick={() => useShortcutStore.getState().setDialogOpen(true)}
+              style={{ width: 'fit-content' }}
+            >
+              自定义快捷键
+            </Button>
+          </Space>
+        </div>
       </div>
     </div>
   )

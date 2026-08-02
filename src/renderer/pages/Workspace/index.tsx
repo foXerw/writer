@@ -30,7 +30,7 @@ import {
   EMPTY_STATS, addWords, addMinutes, todayWords, todayMinutes,
   computeStreak, recentHistory, STATS_DURATION_TICK_MS, STATS_IDLE_THRESHOLD_MS
 } from '../../services/statsService'
-import { useEditorStore } from '../../stores'
+import { useEditorStore, useShortcutStore } from '../../stores'
 import { useChapter } from '../../hooks/useIPC'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import type { Chapter, ProjectConfig } from '@/common/ipc'
@@ -54,6 +54,7 @@ function Workspace() {
   const { message } = App.useApp()
 
   const { fontSize, wordWrap, showLineNumbers } = useEditorStore()
+  const setShortcutDialogOpen = useShortcutStore((s) => s.setDialogOpen)
   const editorRef = useRef<MonacoEditorHandle>(null)
 
   const { getAllChapters, createChapter, updateChapter, deleteChapter } = useChapter()
@@ -412,6 +413,9 @@ function Workspace() {
       // 'plot' (Ctrl+3) 无对应面板，暂不处理
       case 'export':
         setExportDialogOpen(true)
+        break
+      case 'shortcuts':
+        setShortcutDialogOpen(true)
         break
       default:
         console.log('未处理的菜单事件:', event)
