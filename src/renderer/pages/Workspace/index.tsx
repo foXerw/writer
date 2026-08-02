@@ -131,6 +131,7 @@ function Workspace() {
 
   // 选择章节
   const selectChapter = (chapter: Chapter) => {
+    flushIfDirty() // 先保存即将离开的当前章（若脏）
     setCurrentChapter(chapter)
     setEditorContent(chapter.content)
     setChapterTitle(chapter.title)
@@ -150,27 +151,44 @@ function Workspace() {
     }
   }
 
-  // 保存章节
-  const handleSave = async () => {
+  // 保存当前章节到磁盘。silent=true 用于切章/返回/关窗/自动保存的静默 flush。
+  const saveCurrentChapter = async (opts?: { silent?: boolean }): Promise<void> => {
     if (!currentChapter || !projectPath) return
+    // 静默 flush：无脏数据则跳过；手动保存（silent=false）尊重显式 Ctrl+S，不门控 dirty。
+    if (opts?.silent && !isDirtyRef.current) return
+    const outgoing = currentChapter
     try {
       const updated = await updateChapter(projectPath, {
-        ...currentChapter,
+        ...outgoing,
         title: chapterTitle,
         content: editorContent
       })
-      setCurrentChapter(updated)
-      setChapters(chapters.map(c => c.id === updated.id ? updated : c))
+      // 函数式更新避免陈旧闭包；仅当仍是同一章时同步 currentChapter，防止切走后被回写。
+      setChapters(prev => prev.map(c => (c.id === updated.id ? updated : c)))
+      setOpenedChapters(prev => prev.map(c => (c.id === updated.id ? updated : c)))
+      setCurrentChapter(prev => (prev && prev.id === updated.id ? updated : prev))
       isDirtyRef.current = false
-      message.success('保存成功')
+      if (!opts?.silent) {
+        message.success('保存成功')
+      }
     } catch (error) {
       message.error('保存失败')
     }
   }
 
-  const handleSaveRef = useRef(handleSave)
+  // 手动保存（Ctrl+S / 菜单保存 / 工具栏）：带成功提示，不门控 dirty。
+  const handleSave = () => {
+    void saveCurrentChapter({ silent: false })
+  }
+
+  // 静默 flush 脏数据：切章 / 返回 / 关窗 / 自动保存调用。
+  const flushIfDirty = () => {
+    void saveCurrentChapter({ silent: true })
+  }
+
+  const flushIfDirtyRef = useRef(flushIfDirty)
   useEffect(() => {
-    handleSaveRef.current = handleSave
+    flushIfDirtyRef.current = flushIfDirty
   })
 
   // 编辑器内容变化包装：置 dirty
@@ -179,20 +197,26 @@ function Workspace() {
     isDirtyRef.current = true
   }
 
-  // 自动保存：按配置间隔写盘
+  // 自动保存：按配置间隔静默写盘（不弹 toast）
   useEffect(() => {
     if (!currentChapter || !autoSaveEnabled) return
     startAutoSave({
       interval: autoSaveInterval,
       onSave: () => {
-        if (isDirtyRef.current) {
-          void handleSaveRef.current()
-        }
+        void flushIfDirtyRef.current()
         return editorContentRef.current
       }
     })
     return () => stopAutoSave()
   }, [currentChapter?.id, autoSaveEnabled, autoSaveInterval])
+
+  // 关窗/退出兜底：fire-and-forget 触发一次 flush（异步 IPC，尽力而为）。
+  // 主要保障是切章/返回的显式 flush；此处为最后兜底。
+  useEffect(() => {
+    const handler = () => flushIfDirtyRef.current()
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [])
 
   // 删除章节
   const handleDeleteChapter = async (chapterId: string) => {
@@ -214,6 +238,7 @@ function Workspace() {
 
   // 返回首页
   const handleBack = () => {
+    flushIfDirty()
     navigate('/')
   }
 
