@@ -1,6 +1,6 @@
 # Novel Writer 开发路线图
 
-> 更新时间: 2026-01-16
+> 更新时间: 2026-08-04
 
 ## 项目概述
 
@@ -477,6 +477,22 @@
 
 ## 最新变更
 
+### 2026-08-04 — 浅色主题（深色/浅色双主题切换）
+
+**新增功能**:
+- 实现完整的浅色主题，与既有深色主题并存；可从设置页（深色/浅色按钮）或顶部栏快捷开关（日/月图标）切换。
+
+**技术实现**:
+- 主题状态：`useSettingsStore` 新增 `themeMode: 'dark'|'light'`，zustand + localStorage 持久化（key `settings-storage`）。
+- CSS 变量：`global.css` 定义两套 `--color-*` 变量，由 `<html data-theme>` 属性选择；组件内联色统一改用 `var(--color-*)`。深色专属的 `!important` 覆盖收束到 `[data-theme='dark']` 作用域下。
+- antd 适配：`src/renderer/styles/theme.ts` 导出 `darkTheme`/`lightTheme` token 对象，由 `<ConfigProvider>` 按当前模式注入。
+- Monaco：编辑器在 `novel-dark`/`novel-light` 自定义主题间响应式切换。
+- 主进程持久化：经 `theme:set` IPC 将选择写入 `<userData>/theme.json`，使原生 `BrowserWindow` 背景与之同步，消除冷启动闪烁。
+
+**验证**: `npm run lint` 0 错误 + `npm run build` 通过；全仓 hex 残留审计通过（仅余经批准的装饰色 / antd 语义色 / 主题定义数据 / `#fff`-on-primary 例外）。⚠️ 双主题人工视觉 QA 待在 GUI 中逐屏走查后合并。
+
+---
+
 ### v1.15 (2026-01-16)
 
 **Bug修复与UI优化**:
@@ -544,4 +560,5 @@
 | 2026-01-15 | 1.13 | 阶段14完成：专注模式与打字机模式 |
 | 2026-01-15 | 1.14 | 阶段15-18完成：快捷键、统计、导出、主题设置 |
 | 2026-01-16 | 1.15 | Bug修复与UI优化：API暴露、深色主题适配、项目创建流程 |
+| 2026-08-04 | 1.17 | 新增浅色主题：深色/浅色双主题切换（CSS 变量 + antd 浅色 token + Monaco novel-light + 主进程持久化） |
 | 2026-01-16 | 1.16 | 功能修复与深色主题优化：项目名称传递、错误弹窗样式、受控Modal组件 |

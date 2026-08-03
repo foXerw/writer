@@ -188,6 +188,11 @@ ls node_modules/electron/dist/electron.exe
 
 **真实进度**: 端到端可用链路为「撰写正文 + 角色/设定 CRUD + 章节重命名 + 大纲导航 + 自动保存（静默）+ 菜单栏动作 + 编辑器设置（设置页可达）+ Tab 右键菜单 + 切章/返回/关窗自动 flush + Markdown/Word/PDF/ePub 导出 + 写作统计 + 快捷键自定义」。除阶段 9 仍部分（配置路径/最近项目内存态）外，阶段 1–18 已 ✅；仅余可选的「每章一文件」导出与「导入」功能未做。
 
+### 深色/浅色双主题切换
+
+- **状态**: ✅ 代码完成（`npm run lint` 0 错误 + `npm run build` 通过；全仓 hex 残留审计通过）。⚠️ **双主题人工视觉 QA（在 GUI 中逐屏走查深/浅两套主题）为合并前剩余步骤，尚未执行。**
+- **机制**: `useSettingsStore` 持久化 `themeMode: 'dark'|'light'`（zustand + localStorage，key `settings-storage`）；`<html data-theme>` 选择 `global.css` 中两套 `--color-*` 变量，组件内联色统一走 `var(--color-*)`；antd `<ConfigProvider>` 按 `darkTheme`/`lightTheme` token 注入（`src/renderer/styles/theme.ts`）；Monaco 在 `novel-dark`/`novel-light` 间响应式切换；主进程经 `theme:set` IPC 持久化至 `<userData>/theme.json`，使原生 `BrowserWindow` 背景同步、消除冷启动闪烁；深色专属 `!important` 覆盖收束在 `[data-theme='dark']` 作用域下。可在设置页（深色/浅色按钮）或顶部栏快捷开关（日/月图标）切换。
+
 ### 状态说明
 - ✅ 已完成
 - 🔄 开发中
