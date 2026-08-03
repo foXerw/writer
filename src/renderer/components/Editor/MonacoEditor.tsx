@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
 import type { editor } from 'monaco-editor'
+import { useSettingsStore } from '../../stores'
 
 // 动态导入 Monaco（避免 SSR 问题）
 let monaco: typeof import('monaco-editor') | null = null
@@ -29,6 +30,32 @@ const novelDarkTheme = {
     'editorIndentGuide.background': '#404040',
     'editorIndentGuide.activeBackground': '#707070'
   }
+}
+
+const novelLightTheme = {
+  base: 'vs' as const,
+  inherit: true,
+  rules: [
+    { token: '', foreground: '141414' },
+    { token: 'heading', foreground: '1677ff', fontStyle: 'bold' },
+    { token: 'emphasis', fontStyle: 'italic' },
+    { token: 'strong', fontStyle: 'bold' },
+    { token: 'keyword', foreground: 'c41d7f' },
+    { token: 'string', foreground: '389e0d' },
+    { token: 'comment', foreground: '8c8c8c' },
+  ],
+  colors: {
+    'editor.background': '#ffffff',
+    'editor.foreground': '#141414',
+    'editor.lineHighlightBackground': '#fafafa',
+    'editor.selectionBackground': '#bae0ff',
+    'editorCursor.foreground': '#1677ff',
+    'editorLineNumber.foreground': 'bfbfbf',
+    'editorLineNumber.activeForeground': '595959',
+    'editor.inactiveSelectionBackground': '#e6f4ff',
+    'editorIndentGuide.background': '#f0f0f0',
+    'editorIndentGuide.activeBackground': '#d9d9d9',
+  },
 }
 
 interface MonacoEditorProps {
@@ -67,6 +94,7 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const themeMode = useSettingsStore((s) => s.themeMode)
 
   useImperativeHandle(ref, () => ({
     revealLineInCenter: (lineNumber: number) => {
@@ -115,12 +143,13 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
 
         // 注册写作主题
         monaco.editor.defineTheme('novel-dark', novelDarkTheme)
+        monaco.editor.defineTheme('novel-light', novelLightTheme)
 
         // 创建编辑器
         const editor = monaco.editor.create(containerRef.current, {
           value,
           language,
-          theme: 'novel-dark',
+          theme: themeMode === 'light' ? 'novel-light' : 'novel-dark',
           fontSize,
           fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
           lineHeight: 28,
@@ -283,6 +312,13 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
     }
   }, [showLineNumbers])
 
+  // 跟随全局主题切换编辑器主题
+  useEffect(() => {
+    if (monaco) {
+      monaco.editor.setTheme(themeMode === 'light' ? 'novel-light' : 'novel-dark')
+    }
+  }, [themeMode])
+
   // 更新字数统计
   const updateWordCount = (text: string) => {
     const wordCountEl = document.getElementById('editor-word-count')
@@ -309,8 +345,8 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#1e1e1e',
-          color: '#888'
+          background: 'var(--color-bg-base)',
+          color: 'var(--color-text-secondary)'
         }}>
           加载编辑器...
         </div>
@@ -322,9 +358,9 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
             height: 24,
             lineHeight: '24px',
             padding: '0 16px',
-            background: '#252526',
-            borderTop: '1px solid #333',
-            color: '#888',
+            background: 'var(--color-bg-elevated)',
+            borderTop: '1px solid var(--color-border)',
+            color: 'var(--color-text-secondary)',
             fontSize: 12,
             textAlign: 'right'
           }}
