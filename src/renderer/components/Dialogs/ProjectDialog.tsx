@@ -167,7 +167,7 @@ function ProjectDialog({
     if (step === 'templates') {
       return (
         <div>
-          <Text style={{ color: '#888', marginBottom: 16, display: 'block' }}>
+          <Text style={{ color: 'var(--color-text-secondary)', marginBottom: 16, display: 'block' }}>
             选择项目类型
           </Text>
           <div style={{ display: 'flex', gap: 12 }}>
@@ -178,20 +178,20 @@ function ProjectDialog({
                 style={{
                   flex: 1,
                   padding: '20px 16px',
-                  background: '#2d2d2d',
+                  background: 'var(--color-bg-container)',
                   borderRadius: 8,
                   cursor: 'pointer',
-                  border: `2px solid ${selectedTemplate === template.type ? '#58a6ff' : 'transparent'}`,
+                  border: `2px solid ${selectedTemplate === template.type ? 'var(--color-primary)' : 'transparent'}`,
                   transition: 'all 0.2s'
                 }}
               >
-                <div style={{ fontSize: 32, marginBottom: 8, color: '#58a6ff' }}>
+                <div style={{ fontSize: 32, marginBottom: 8, color: 'var(--color-primary)' }}>
                   {template.icon}
                 </div>
-                <Text strong style={{ color: '#d4d4d4', display: 'block' }}>
+                <Text strong style={{ color: 'var(--color-text)', display: 'block' }}>
                   {template.name}
                 </Text>
-                <Text style={{ color: '#888', fontSize: 12 }}>
+                <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>
                   {template.description}
                 </Text>
               </div>
@@ -204,28 +204,28 @@ function ProjectDialog({
     return (
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <div>
-          <Text strong style={{ color: '#d4d4d4' }}>项目名称</Text>
+          <Text strong style={{ color: 'var(--color-text)' }}>项目名称</Text>
           <Input
             placeholder="输入项目名称"
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
-            style={{ marginTop: 8, background: '#2d2d2d', color: '#d4d4d4', borderColor: '#444' }}
+            style={{ marginTop: 8, background: 'var(--color-bg-container)', color: 'var(--color-text)', borderColor: 'var(--color-border-secondary)' }}
           />
         </div>
         <div>
-          <Text strong style={{ color: '#d4d4d4' }}>项目路径</Text>
+          <Text strong style={{ color: 'var(--color-text)' }}>项目路径</Text>
           <Space style={{ width: '100%', marginTop: 8 }}>
             <Input
               placeholder="选择项目路径"
               value={projectPath}
               readOnly
-              style={{ flex: 1, background: '#2d2d2d', color: '#d4d4d4', borderColor: '#444' }}
+              style={{ flex: 1, background: 'var(--color-bg-container)', color: 'var(--color-text)', borderColor: 'var(--color-border-secondary)' }}
             />
             <Button
               onClick={handleSelectPath}
               style={{
-                background: '#0d419d',
-                borderColor: '#1f6feb',
+                background: 'var(--color-primary-bg)',
+                borderColor: 'var(--color-primary-border)',
                 color: '#fff'
               }}
             >
@@ -245,8 +245,8 @@ function ProjectDialog({
           icon={<FolderOpenOutlined />}
           onClick={handleOpenCustom}
           style={{
-            background: '#0d419d',
-            borderColor: '#1f6feb',
+            background: 'var(--color-primary-bg)',
+            borderColor: 'var(--color-primary-border)',
             color: '#fff'
           }}
         >
@@ -254,7 +254,7 @@ function ProjectDialog({
         </Button>
       </Space>
 
-      <Divider style={{ borderColor: '#333' }} />
+      <Divider style={{ borderColor: 'var(--color-border)' }} />
 
       {recentList.length > 0 ? (
         <List
@@ -265,16 +265,16 @@ function ProjectDialog({
                 padding: '12px',
                 borderRadius: 4,
                 marginBottom: 4,
-                background: '#2d2d2d',
+                background: 'var(--color-bg-container)',
                 border: 'none',
                 cursor: 'pointer'
               }}
               onClick={() => handleOpen(item.path)}
             >
               <List.Item.Meta
-                avatar={<FolderOpenOutlined style={{ fontSize: 24, color: '#58a6ff' }} />}
-                title={<Text style={{ color: '#d4d4d4' }}>{item.name}</Text>}
-                description={<Text style={{ color: '#888' }}>{item.path}</Text>}
+                avatar={<FolderOpenOutlined style={{ fontSize: 24, color: 'var(--color-primary)' }} />}
+                title={<Text style={{ color: 'var(--color-text)' }}>{item.name}</Text>}
+                description={<Text style={{ color: 'var(--color-text-secondary)' }}>{item.path}</Text>}
               />
             </List.Item>
           )}
@@ -331,7 +331,7 @@ function ProjectDialog({
     <>
       {/* 错误提示弹窗 */}
       <Modal
-        title={<span style={{ color: '#ffffff' }}>无效的项目文件夹</span>}
+        title={<span style={{ color: 'var(--color-text)' }}>无效的项目文件夹</span>}
         open={errorModalOpen}
         onOk={() => setErrorModalOpen(false)}
         onCancel={() => setErrorModalOpen(false)}
@@ -339,23 +339,23 @@ function ProjectDialog({
         width={400}
         className="dark-modal"
         styles={{
-          content: { background: '#000000', color: '#ffffff', borderRadius: 8 },
-          header: { background: '#000000', borderBottom: '1px solid #333', color: '#ffffff' },
-          body: { background: '#000000', color: '#ffffff' },
-          mask: { background: 'rgba(0, 0, 0, 0.7)' }
+          content: { background: 'var(--color-bg-elevated)', color: 'var(--color-text)', borderRadius: 8 },
+          header: { background: 'var(--color-bg-elevated)', borderBottom: '1px solid var(--color-border)', color: 'var(--color-text)' },
+          body: { background: 'var(--color-bg-elevated)', color: 'var(--color-text)' },
+          mask: { background: 'var(--color-mask-bg)' }
         }}
         okButtonProps={{
-          style: { background: '#0d419d', borderColor: '#1f6feb', color: '#fff' }
+          style: { background: 'var(--color-primary-bg)', borderColor: 'var(--color-primary-border)', color: '#fff' }
         }}
       >
-        <div style={{ color: '#ffffff', fontSize: 14 }}>
+        <div style={{ color: 'var(--color-text)', fontSize: 14 }}>
           {errorModalContent}
         </div>
       </Modal>
 
       {/* 主弹窗 */}
       <Modal
-      title={<span style={{ color: '#d4d4d4' }}>{getTitle()}</span>}
+      title={<span style={{ color: 'var(--color-text)' }}>{getTitle()}</span>}
       open={open}
       onOk={handleOk}
       onCancel={handleCancel}
@@ -364,22 +364,22 @@ function ProjectDialog({
       cancelText={getCancelText()}
       width={mode === 'create' ? 600 : 500}
       styles={{
-        content: { background: '#1e1e1e', color: '#d4d4d4' },
-        header: { background: '#1e1e1e', borderBottom: '1px solid #333', color: '#d4d4d4' },
-        body: { background: '#1e1e1e' }
+        content: { background: 'var(--color-bg-base)', color: 'var(--color-text)' },
+        header: { background: 'var(--color-bg-base)', borderBottom: '1px solid var(--color-border)', color: 'var(--color-text)' },
+        body: { background: 'var(--color-bg-base)' }
       }}
       okButtonProps={{
         style: {
-          background: '#0d419d',
-          borderColor: '#1f6feb',
+          background: 'var(--color-primary-bg)',
+          borderColor: 'var(--color-primary-border)',
           color: '#fff'
         }
       }}
       cancelButtonProps={{
         style: {
-          background: '#2d2d2d',
-          borderColor: '#444',
-          color: '#d4d4d4'
+          background: 'var(--color-bg-container)',
+          borderColor: 'var(--color-border-secondary)',
+          color: 'var(--color-text)'
         }
       }}
     >

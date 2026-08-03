@@ -95,7 +95,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
         <Space direction="vertical" style={{ width: '100%' }} size="large">
           {/* 导出格式 */}
           <div>
-            <Text style={{ color: '#888', fontSize: 12 }}>导出格式</Text>
+            <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>导出格式</Text>
             <div style={{ marginTop: 8 }}>
               <Radio.Group
                 value={format}
@@ -113,20 +113,20 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                         width: '100%',
                         height: 'auto',
                         padding: '12px 16px',
-                        borderColor: format === opt.value ? '#1890ff' : '#333',
-                        background: format === opt.value ? 'rgba(24, 144, 255, 0.1)' : 'transparent'
+                        borderColor: format === opt.value ? 'var(--color-primary)' : 'var(--color-border)',
+                        background: format === opt.value ? 'var(--color-primary-tint-bg)' : 'transparent'
                       }}
                     >
                       <Space>
-                        <span style={{ color: format === opt.value ? '#1890ff' : '#888' }}>
+                        <span style={{ color: format === opt.value ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}>
                           {opt.icon}
                         </span>
                         <div>
-                          <Text style={{ color: format === opt.value ? '#1890ff' : '#d4d4d4' }}>
+                          <Text style={{ color: format === opt.value ? 'var(--color-primary)' : 'var(--color-text)' }}>
                             {opt.label}
                           </Text>
                           <br />
-                          <Text style={{ color: '#666', fontSize: 11 }}>{opt.desc}</Text>
+                          <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>{opt.desc}</Text>
                         </div>
                       </Space>
                     </Radio.Button>
@@ -136,11 +136,11 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
             </div>
           </div>
 
-          <Divider style={{ borderColor: '#333' }} />
+          <Divider style={{ borderColor: 'var(--color-border)' }} />
 
           {/* 导出范围 */}
           <div>
-            <Text style={{ color: '#888', fontSize: 12 }}>导出范围</Text>
+            <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>导出范围</Text>
             <Radio.Group
               value={includeChapters}
               onChange={(e) => setIncludeChapters(e.target.value)}
@@ -168,11 +168,11 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
             )}
           </div>
 
-          <Divider style={{ borderColor: '#333' }} />
+          <Divider style={{ borderColor: 'var(--color-border)' }} />
 
           {/* 导出选项 */}
           <div>
-            <Text style={{ color: '#888', fontSize: 12 }}>导出选项</Text>
+            <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>导出选项</Text>
             <Space direction="vertical" style={{ width: '100%', marginTop: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
@@ -180,7 +180,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                   checked={addFrontMatter}
                   onChange={(e) => setAddFrontMatter(e.target.checked)}
                 />
-                <Text style={{ color: '#d4d4d4' }}>添加YAML前言</Text>
+                <Text style={{ color: 'var(--color-text)' }}>添加YAML前言</Text>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
@@ -188,7 +188,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                   checked={addToc}
                   onChange={(e) => setAddToc(e.target.checked)}
                 />
-                <Text style={{ color: '#d4d4d4' }}>生成目录</Text>
+                <Text style={{ color: 'var(--color-text)' }}>生成目录</Text>
               </div>
             </Space>
           </div>

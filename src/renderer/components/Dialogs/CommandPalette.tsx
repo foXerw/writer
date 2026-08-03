@@ -151,7 +151,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'rgba(0, 0, 0, 0.5)',
+        background: 'var(--color-mask-bg)',
         display: 'flex',
         justifyContent: 'center',
         paddingTop: '15vh',
@@ -163,7 +163,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         style={{
           width: 600,
           maxHeight: '60vh',
-          background: '#252526',
+          background: 'var(--color-bg-elevated)',
           borderRadius: 8,
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
           display: 'flex',
@@ -175,18 +175,18 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         {/* 搜索框 */}
         <div style={{
           padding: '12px 16px',
-          borderBottom: '1px solid #333'
+          borderBottom: '1px solid var(--color-border)'
         }}>
           <Input
             ref={inputRef}
-            prefix={<SearchOutlined style={{ color: '#666' }} />}
+            prefix={<SearchOutlined style={{ color: 'var(--color-text-tertiary)' }} />}
             placeholder="输入命令或搜索..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             bordered={false}
             style={{
               fontSize: 16,
-              color: '#d4d4d4'
+              color: 'var(--color-text)'
             }}
           />
         </div>
@@ -203,7 +203,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
                 style={{
                   display: 'block',
                   padding: '8px 16px 4px',
-                  color: '#666',
+                  color: 'var(--color-text-tertiary)',
                   fontSize: 11,
                   textTransform: 'uppercase'
                 }}
@@ -223,8 +223,8 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onClick={() => handleSelect(item.key)}
                   >
                     <Space>
-                      <span style={{ color: '#888' }}>{item.icon}</span>
-                      <Text style={{ color: '#d4d4d4' }}>{item.title}</Text>
+                      <span style={{ color: 'var(--color-text-secondary)' }}>{item.icon}</span>
+                      <Text style={{ color: 'var(--color-text)' }}>{item.title}</Text>
                     </Space>
                   </List.Item>
                 )}
@@ -237,7 +237,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description={
-                  <Text style={{ color: '#666' }}>
+                  <Text style={{ color: 'var(--color-text-tertiary)' }}>
                     没有找到命令
                   </Text>
                 }
@@ -249,16 +249,16 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         {/* 底部提示 */}
         <div style={{
           padding: '8px 16px',
-          borderTop: '1px solid #333',
-          background: '#1e1e1e',
+          borderTop: '1px solid var(--color-border)',
+          background: 'var(--color-bg-base)',
           display: 'flex',
           justifyContent: 'space-between'
         }}>
           <Space size="small">
-            <Text style={{ color: '#666', fontSize: 11 }}>↑↓ 导航</Text>
-            <Text style={{ color: '#666', fontSize: 11 }}>↵ 选择</Text>
+            <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>↑↓ 导航</Text>
+            <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>↵ 选择</Text>
           </Space>
-          <Text style={{ color: '#666', fontSize: 11 }}>ESC 关闭</Text>
+          <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>ESC 关闭</Text>
         </div>
       </div>
     </div>

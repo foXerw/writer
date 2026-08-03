@@ -66,17 +66,17 @@ function ShortcutDialog() {
               key={d.id}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '6px 0', borderBottom: '1px solid #333'
+                padding: '6px 0', borderBottom: '1px solid var(--color-border)'
               }}
             >
-              <Text style={{ color: '#d4d4d4' }}>{d.description}</Text>
+              <Text style={{ color: 'var(--color-text)' }}>{d.description}</Text>
               <Space size="small">
                 {capturing ? (
-                  <Text style={{ color: hint.includes('冲突') || hint.includes('需要') ? '#f5222d' : '#1890ff', fontSize: 12 }}>
+                  <Text style={{ color: hint.includes('冲突') || hint.includes('需要') ? 'var(--color-danger)' : 'var(--color-primary)', fontSize: 12 }}>
                     {hint || '按下新组合…(Esc 取消)'}
                   </Text>
                 ) : (
-                  <Tag style={{ borderColor: overridden ? '#faad14' : '#333', color: overridden ? '#faad14' : '#d4d4d4' }}>
+                  <Tag style={{ borderColor: overridden ? '#faad14' : 'var(--color-border)', color: overridden ? '#faad14' : 'var(--color-text)' }}>
                     {formatCombo(effective)}
                   </Tag>
                 )}
@@ -104,7 +104,7 @@ function ShortcutDialog() {
             </div>
           )
         })}
-        <Text style={{ color: '#666', fontSize: 11 }}>
+        <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>
           已自定义的快捷键以橙色标记。冲突或无效组合将被阻止。
         </Text>
       </Space>
