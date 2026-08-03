@@ -5,6 +5,7 @@ import { PlusOutlined, FolderOpenOutlined, FileOutlined, ClockCircleOutlined } f
 import type { RecentProject, ProjectData } from '@/common/ipc'
 import { useProject } from '../../hooks/useIPC'
 import ProjectDialog from '../../components/Dialogs/ProjectDialog'
+import ThemeToggle from '../../components/ThemeToggle'
 
 const { Header, Content } = Layout
 const { Title, Text } = Typography
@@ -55,8 +56,8 @@ function Home() {
       <Layout>
         <Header style={{
           padding: '0 24px 0 16px',
-          background: '#1e1e1e',
-          borderBottom: '1px solid #333',
+          background: 'var(--color-bg-base)',
+          borderBottom: '1px solid var(--color-border)',
           display: 'flex',
           alignItems: 'center',
           marginRight: 0,
@@ -64,15 +65,15 @@ function Home() {
           WebkitAppRegion: 'drag'
         }}>
           <Space size="small">
-            <FileOutlined style={{ color: '#58a6ff' }} />
-            <Title level={4} style={{ margin: 0, color: '#d4d4d4', fontSize: 14 }}>Novel Writer</Title>
+            <FileOutlined style={{ color: 'var(--color-primary)' }} />
+            <Title level={4} style={{ margin: 0, color: 'var(--color-text)', fontSize: 14 }}>Novel Writer</Title>
             <Button
               size="small"
               icon={<PlusOutlined />}
               onClick={() => setCreateDialogVisible(true)}
               style={{
-                background: '#0d419d',
-                borderColor: '#1f6feb',
+                background: 'var(--color-primary-bg)',
+                borderColor: 'var(--color-primary-border)',
                 color: '#fff',
                 WebkitAppRegion: 'no-drag'
               }}
@@ -84,20 +85,21 @@ function Home() {
               icon={<FolderOpenOutlined />}
               onClick={() => setOpenDialogVisible(true)}
               style={{
-                background: '#2d2d2d',
-                borderColor: '#444',
-                color: '#d4d4d4',
+                background: 'var(--color-bg-container)',
+                borderColor: 'var(--color-border-secondary)',
+                color: 'var(--color-text)',
                 WebkitAppRegion: 'no-drag'
               }}
             >
               打开项目
             </Button>
+            <ThemeToggle />
           </Space>
         </Header>
 
         <Content style={{
           padding: '32px 48px',
-          background: '#1e1e1e',
+          background: 'var(--color-bg-base)',
           overflow: 'auto',
           display: 'flex',
           flexDirection: 'column',
@@ -113,11 +115,11 @@ function Home() {
                 </Space>
               }
               style={{
-                background: '#252526',
-                borderColor: '#333',
+                background: 'var(--color-bg-elevated)',
+                borderColor: 'var(--color-border)',
                 marginBottom: 24
               }}
-              styles={{ header: { color: '#d4d4d4', borderBottom: '1px solid #333' } }}
+              styles={{ header: { color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)' } }}
             >
             {recentProjects.length > 0 ? (
               <List
@@ -129,29 +131,29 @@ function Home() {
                       padding: '12px',
                       borderRadius: '4px',
                       marginBottom: '4px',
-                      background: '#2d2d2d',
+                      background: 'var(--color-bg-container)',
                       border: 'none'
                     }}
                     onClick={() => handleOpenProject(item.path)}
                   >
                     <List.Item.Meta
-                      avatar={<FolderOpenOutlined style={{ fontSize: '24px', color: '#58a6ff' }} />}
-                      title={<Text style={{ color: '#d4d4d4' }}>{item.name}</Text>}
-                      description={<Text style={{ color: '#888' }}>{item.path}</Text>}
+                      avatar={<FolderOpenOutlined style={{ fontSize: '24px', color: 'var(--color-primary)' }} />}
+                      title={<Text style={{ color: 'var(--color-text)' }}>{item.name}</Text>}
+                      description={<Text style={{ color: 'var(--color-text-secondary)' }}>{item.path}</Text>}
                     />
                   </List.Item>
                 )}
               />
             ) : (
               <Empty
-                description={<Text style={{ color: '#888' }}>暂无最近项目</Text>}
+                description={<Text style={{ color: 'var(--color-text-secondary)' }}>暂无最近项目</Text>}
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
               >
                 <Button
                   onClick={() => setCreateDialogVisible(true)}
                   style={{
-                    background: '#0d419d',
-                    borderColor: '#1f6feb',
+                    background: 'var(--color-primary-bg)',
+                    borderColor: 'var(--color-primary-border)',
                     color: '#fff'
                   }}
                 >
@@ -165,10 +167,10 @@ function Home() {
             <Card
               title="开始创作"
               style={{
-                background: '#252526',
-                borderColor: '#333'
+                background: 'var(--color-bg-elevated)',
+                borderColor: 'var(--color-border)'
               }}
-              styles={{ header: { color: '#d4d4d4', borderBottom: '1px solid #333' } }}
+              styles={{ header: { color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)' } }}
             >
             <Space direction="vertical" style={{ width: '100%' }}>
               <Button
@@ -178,9 +180,9 @@ function Home() {
                 style={{
                   height: '48px',
                   textAlign: 'left',
-                  background: '#2d2d2d',
-                  borderColor: '#444',
-                  color: '#d4d4d4'
+                  background: 'var(--color-bg-container)',
+                  borderColor: 'var(--color-border-secondary)',
+                  color: 'var(--color-text)'
                 }}
               >
                 新建项目
@@ -192,9 +194,9 @@ function Home() {
                 style={{
                   height: '48px',
                   textAlign: 'left',
-                  background: '#2d2d2d',
-                  borderColor: '#444',
-                  color: '#d4d4d4'
+                  background: 'var(--color-bg-container)',
+                  borderColor: 'var(--color-border-secondary)',
+                  color: 'var(--color-text)'
                 }}
               >
                 打开项目

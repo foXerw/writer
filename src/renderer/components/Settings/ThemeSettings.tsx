@@ -6,15 +6,11 @@ import {
   LayoutOutlined,
   HighlightOutlined
 } from '@ant-design/icons'
-import { useEditorStore } from '../../stores'
+import { useEditorStore, useSettingsStore } from '../../stores'
 
 const { Text } = Typography
 
-interface ThemeSettingsProps {
-  onThemeChange?: (theme: 'dark' | 'light') => void
-}
-
-const ThemeSettings: React.FC<ThemeSettingsProps> = ({ onThemeChange: _onThemeChange }) => {
+const ThemeSettings: React.FC = () => {
   const {
     fontSize,
     setFontSize,
@@ -23,6 +19,7 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ onThemeChange: _onThemeCh
     wordWrap,
     setWordWrap
   } = useEditorStore()
+  const { themeMode, setThemeMode } = useSettingsStore()
 
   // 预设字体大小
   const fontSizeOptions = [14, 16, 18, 20, 24]
@@ -33,29 +30,34 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ onThemeChange: _onThemeCh
         {/* 主题选择 */}
         <div>
           <Space>
-            <BgColorsOutlined style={{ color: '#888' }} />
-            <Text style={{ color: '#d4d4d4', fontWeight: 500 }}>主题</Text>
+            <BgColorsOutlined style={{ color: 'var(--color-text-secondary)' }} />
+            <Text style={{ color: 'var(--color-text)', fontWeight: 500 }}>主题</Text>
           </Space>
           <div style={{ marginTop: 12 }}>
             <Space>
               <Button
-                type="primary"
-                style={{ background: '#1e1e1e', borderColor: '#333' }}
+                type={themeMode === 'dark' ? 'primary' : 'default'}
+                onClick={() => setThemeMode('dark')}
               >
                 深色
               </Button>
-              <Button disabled>浅色 (开发中)</Button>
+              <Button
+                type={themeMode === 'light' ? 'primary' : 'default'}
+                onClick={() => setThemeMode('light')}
+              >
+                浅色
+              </Button>
             </Space>
           </div>
         </div>
 
-        <Divider style={{ borderColor: '#333' }} />
+        <Divider style={{ borderColor: 'var(--color-border)' }} />
 
         {/* 字体大小 */}
         <div>
           <Space>
-            <FontSizeOutlined style={{ color: '#888' }} />
-            <Text style={{ color: '#d4d4d4', fontWeight: 500 }}>字体大小</Text>
+            <FontSizeOutlined style={{ color: 'var(--color-text-secondary)' }} />
+            <Text style={{ color: 'var(--color-text)', fontWeight: 500 }}>字体大小</Text>
           </Space>
           <div style={{ marginTop: 12 }}>
             <Space wrap>
@@ -73,18 +75,18 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ onThemeChange: _onThemeCh
           </div>
         </div>
 
-        <Divider style={{ borderColor: '#333' }} />
+        <Divider style={{ borderColor: 'var(--color-border)' }} />
 
         {/* 编辑器选项 */}
         <div>
           <Space>
-            <LayoutOutlined style={{ color: '#888' }} />
-            <Text style={{ color: '#d4d4d4', fontWeight: 500 }}>编辑器选项</Text>
+            <LayoutOutlined style={{ color: 'var(--color-text-secondary)' }} />
+            <Text style={{ color: 'var(--color-text)', fontWeight: 500 }}>编辑器选项</Text>
           </Space>
           <div style={{ marginTop: 12 }}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ color: '#d4d4d4' }}>显示行号</Text>
+                <Text style={{ color: 'var(--color-text)' }}>显示行号</Text>
                 <Button
                   type={showLineNumbers ? 'primary' : 'default'}
                   size="small"
@@ -94,7 +96,7 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ onThemeChange: _onThemeCh
                 </Button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ color: '#d4d4d4' }}>自动换行</Text>
+                <Text style={{ color: 'var(--color-text)' }}>自动换行</Text>
                 <Button
                   type={wordWrap ? 'primary' : 'default'}
                   size="small"
@@ -107,17 +109,17 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ onThemeChange: _onThemeCh
           </div>
         </div>
 
-        <Divider style={{ borderColor: '#333' }} />
+        <Divider style={{ borderColor: 'var(--color-border)' }} />
 
         {/* 写作增强 */}
         <div>
           <Space>
-            <HighlightOutlined style={{ color: '#888' }} />
-            <Text style={{ color: '#d4d4d4', fontWeight: 500 }}>写作增强</Text>
+            <HighlightOutlined style={{ color: 'var(--color-text-secondary)' }} />
+            <Text style={{ color: 'var(--color-text)', fontWeight: 500 }}>写作增强</Text>
           </Space>
           <div style={{ marginTop: 12 }}>
             <Space direction="vertical" style={{ width: '100%' }}>
-              <Text style={{ color: '#888', fontSize: 12 }}>
+              <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>
                 快捷键参考: Ctrl+S保存, Ctrl+B粗体, Ctrl+I斜体, F8专注模式, F9打字机模式, Ctrl+Shift+P命令面板
               </Text>
             </Space>
