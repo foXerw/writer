@@ -127,6 +127,12 @@ export async function saveFileDialog(defaultPath: string, filters?: FileFilter[]
   return invoke<string | null>('dialog:saveFile', { defaultPath, filters })
 }
 
+// ==================== 主题相关 ====================
+
+export function setThemeMode(mode: 'dark' | 'light'): Promise<boolean> {
+  return invoke<boolean>('theme:set', mode)
+}
+
 // ==================== 事件监听 ====================
 
 export function onProjectCreated(callback: (project: ProjectData) => void): () => void {

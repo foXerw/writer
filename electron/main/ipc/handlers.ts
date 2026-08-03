@@ -5,6 +5,7 @@ import * as os from 'os'
 import * as url from 'url'
 import { randomUUID } from 'crypto'
 import { Chapter, ProjectType, Character, Setting, StatsData, ExportParams } from '../../src/common/ipc'
+import { setCurrentTheme } from '../theme'
 
 // 获取主窗口
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -16,6 +17,13 @@ export function setMainWindow(win: BrowserWindow) {
 
 // 存储最近项目
 const recentProjects: Map<string, { name: string; path: string; lastOpened: Date }> = new Map()
+
+// ==================== 主题相关 ====================
+
+ipcMain.handle('theme:set', (_event, mode: 'dark' | 'light') => {
+  setCurrentTheme(mode)
+  return true
+})
 
 // 格式化文件路径
 function formatFilePath(filePath: string): string {

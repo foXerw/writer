@@ -4,6 +4,7 @@ import { ConfigProvider, App as AntdApp } from 'antd'
 import AppRouter from './App'
 import { useSettingsStore } from './stores'
 import { darkTheme, lightTheme, readPersistedTheme } from './styles/theme'
+import { setThemeMode as setThemeModeIPC } from './services/ipcService'
 import './styles/global.css'
 
 // 冷启动：在 React 挂载前同步设置根主题属性，避免闪屏
@@ -14,6 +15,7 @@ function Root() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = themeMode
+    setThemeModeIPC(themeMode)
   }, [themeMode])
 
   const antdTheme = themeMode === 'light' ? lightTheme : darkTheme

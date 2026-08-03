@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { createMainWindow } from './window'
 import { setApplicationMenu } from './menu'
 import { createTray, destroyTray } from './tray'
+import { loadTheme } from './theme'
 import './ipc/handlers'
 
 // 开发环境禁用安全限制
@@ -12,6 +13,9 @@ if (import.meta.env.DEV) {
 }
 
 app.whenReady().then(() => {
+  // 启动时加载持久化主题（必须在创建窗口之前，确保首帧 backgroundColor 正确）
+  loadTheme()
+
   // 创建主窗口
   createMainWindow()
 

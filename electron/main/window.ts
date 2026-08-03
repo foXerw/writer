@@ -1,6 +1,7 @@
 import { BrowserWindow, BrowserWindowConstructorOptions, shell } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 import { join } from 'path'
+import { getThemeBackgroundColor, getThemeTitleBarColor, getThemeTitleBarSymbolColor } from './theme'
 
 // 存储主窗口引用
 let mainWindow: BrowserWindow | null = null
@@ -31,11 +32,11 @@ export function createMainWindow(): BrowserWindow {
     height: mainWindowState.height,
     minWidth: 800,
     minHeight: 600,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: getThemeBackgroundColor(),
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#252526',
-      symbolColor: '#ffffff',
+      color: getThemeTitleBarColor(),
+      symbolColor: getThemeTitleBarSymbolColor(),
       height: 32
     },
     webPreferences: {
@@ -92,12 +93,12 @@ export function createSettingsWindow(): BrowserWindow {
     height: settingsWindowState.height,
     minWidth: 600,
     minHeight: 400,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: getThemeBackgroundColor(),
     title: '设置 - Novel Writer',
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#252526',
-      symbolColor: '#ffffff',
+      color: getThemeTitleBarColor(),
+      symbolColor: getThemeTitleBarSymbolColor(),
       height: 32
     },
     parent: mainWindow ?? undefined,
