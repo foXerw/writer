@@ -117,7 +117,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
       case 'revising':
         return <span style={{ color: '#faad14' }}>●</span>
       default:
-        return <span style={{ color: '#8c8c8c' }}>●</span>
+        return <span style={{ color: 'var(--color-text-secondary)' }}>●</span>
     }
   }
 
@@ -127,7 +127,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
     title: (
       <Dropdown menu={getRightClickMenu(chapter)} trigger={['contextMenu']}>
         <span className="chapter-tree-title" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <FileTextOutlined style={{ color: '#58a6ff', fontSize: 12 }} />
+          <FileTextOutlined style={{ color: 'var(--color-primary)', fontSize: 12 }} />
           {getStatusIcon(chapter.status)}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {chapter.title}
@@ -207,8 +207,8 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
         {/* 头部工具栏 */}
         <div className="chapter-tree-header">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text strong style={{ color: '#d4d4d4', fontSize: 13 }}>章节</Text>
-            <Text style={{ color: '#666', fontSize: 12 }}>
+            <Text strong style={{ color: 'var(--color-text)', fontSize: 13 }}>章节</Text>
+            <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
               {chapters.length} 篇
             </Text>
           </div>
@@ -217,7 +217,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
             icon={<PlusOutlined />}
             onClick={handleCreateChapter}
             block
-            style={{ borderColor: '#444', color: '#888' }}
+            style={{ borderColor: 'var(--color-border-secondary)', color: 'var(--color-text-secondary)' }}
           >
             新建章节
           </Button>

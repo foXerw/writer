@@ -54,7 +54,7 @@ const buildHeadingTree = (headings: HeadingItem[]): TreeProps['treeData'] => {
           {heading.title}
         </span>
       ),
-      icon: <NodeIndexOutlined style={{ color: '#666' }} />
+      icon: <NodeIndexOutlined style={{ color: 'var(--color-text-tertiary)' }} />
     }
 
     // 找到正确的父级
@@ -96,14 +96,14 @@ const OutlineView: React.FC<OutlineViewProps> = ({
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={
-            <Text style={{ color: '#666' }}>
+            <Text style={{ color: 'var(--color-text-tertiary)' }}>
               文档中暂无标题
             </Text>
           }
         >
           {onAddHeading && (
             <Text
-              style={{ color: '#1890ff', cursor: 'pointer', fontSize: 12 }}
+              style={{ color: 'var(--color-primary)', cursor: 'pointer', fontSize: 12 }}
               onClick={onAddHeading}
             >
               添加标题快速导航
@@ -119,13 +119,13 @@ const OutlineView: React.FC<OutlineViewProps> = ({
       {/* 头部 */}
       <div style={{
         padding: '8px 16px',
-        borderBottom: '1px solid #333',
+        borderBottom: '1px solid var(--color-border)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <Text style={{ color: '#888', fontSize: 12 }}>大纲</Text>
-        <Text style={{ color: '#666', fontSize: 11 }}>
+        <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>大纲</Text>
+        <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>
           {headings.length} 个标题
         </Text>
       </div>

@@ -150,13 +150,13 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
         key: setting.id,
         title: (
           <Space>
-            <FileTextOutlined style={{ color: '#666' }} />
+            <FileTextOutlined style={{ color: 'var(--color-text-tertiary)' }} />
             <span>{setting.title}</span>
             <Button
               type="text"
               size="small"
               icon={<EditOutlined />}
-              style={{ color: '#888' }}
+              style={{ color: 'var(--color-text-secondary)' }}
               onClick={(e) => {
                 e.stopPropagation()
                 handleEdit(setting)
@@ -177,7 +177,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
                 size="small"
                 danger
                 icon={<DeleteOutlined />}
-                style={{ color: '#888' }}
+                style={{ color: 'var(--color-text-secondary)' }}
                 onClick={(e) => e?.stopPropagation()}
               />
             </Popconfirm>
@@ -200,7 +200,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
 
   // 分类按钮列表
   const categoryButtons = (
-    <Space wrap style={{ padding: '8px 16px', borderBottom: '1px solid #333' }}>
+    <Space wrap style={{ padding: '8px 16px', borderBottom: '1px solid var(--color-border)' }}>
       {(Object.entries(CATEGORY_CONFIG) as [SettingCategory, typeof CATEGORY_CONFIG[SettingCategory]][]).map(([key, config]) => (
         <Button
           key={key}
@@ -222,7 +222,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
         {/* 头部 */}
         <div style={{
           padding: '12px 16px',
-          borderBottom: '1px solid #333',
+          borderBottom: '1px solid var(--color-border)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
@@ -235,7 +235,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
             type="text"
             icon={<PlusOutlined />}
             onClick={() => handleCreate()}
-            style={{ color: '#d4d4d4' }}
+            style={{ color: 'var(--color-text)' }}
           />
         </div>
 
@@ -250,7 +250,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description={
                   <Space direction="vertical" align="center">
-                    <Text style={{ color: '#666' }}>暂无设定</Text>
+                    <Text style={{ color: 'var(--color-text-tertiary)' }}>暂无设定</Text>
                     <Space>
                       {(Object.entries(CATEGORY_CONFIG) as [SettingCategory, typeof CATEGORY_CONFIG[SettingCategory]][]).map(([key, config]) => (
                         <Button

@@ -58,7 +58,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
       {/* 头部 */}
       <div style={{
         padding: '12px 16px',
-        borderBottom: '1px solid #333',
+        borderBottom: '1px solid var(--color-border)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center'
@@ -67,23 +67,23 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
           <RiseOutlined />
           <Text style={{ fontWeight: 500 }}>写作统计</Text>
         </Space>
-        <Text style={{ color: progress >= 100 ? '#52c41a' : '#1890ff', fontSize: 12 }}>
+        <Text style={{ color: progress >= 100 ? '#52c41a' : 'var(--color-primary)', fontSize: 12 }}>
           {progress >= 100 ? '目标达成' : `${progress}%`}
         </Text>
       </div>
 
       {/* 今日目标进度 */}
-      <div style={{ padding: '16px', borderBottom: '1px solid #333' }}>
+      <div style={{ padding: '16px', borderBottom: '1px solid var(--color-border)' }}>
         <Progress
           percent={progress}
           showInfo={false}
-          strokeColor={progress >= 100 ? '#52c41a' : '#1890ff'}
-          trailColor="#333"
+          strokeColor={progress >= 100 ? '#52c41a' : 'var(--color-primary)'}
+          trailColor="var(--color-border)"
           size="small"
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-          <Text style={{ color: '#666', fontSize: 11 }}>{todayWordCount.toLocaleString()} 字</Text>
-          <Text style={{ color: '#666', fontSize: 11 }}>目标: {dailyGoal.toLocaleString()} 字</Text>
+          <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>{todayWordCount.toLocaleString()} 字</Text>
+          <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>目标: {dailyGoal.toLocaleString()} 字</Text>
         </div>
       </div>
 
@@ -91,20 +91,20 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
       <div style={{ flex: 1, overflow: 'auto', padding: '16px 0' }}>
         <Row gutter={[16, 16]} style={{ padding: '0 16px' }}>
           <Col span={12}>
-            <Card size="small" style={{ background: '#1e1e1e', borderColor: '#333' }}>
+            <Card size="small" style={{ background: 'var(--color-bg-base)', borderColor: 'var(--color-border)' }}>
               <Statistic
-                title={<Text style={{ color: '#888', fontSize: 11 }}>今日字数</Text>}
+                title={<Text style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>今日字数</Text>}
                 value={todayWordCount}
-                valueStyle={{ color: '#1890ff', fontSize: 20 }}
+                valueStyle={{ color: 'var(--color-primary)', fontSize: 20 }}
                 prefix={<FileTextOutlined />}
                 suffix="字"
               />
             </Card>
           </Col>
           <Col span={12}>
-            <Card size="small" style={{ background: '#1e1e1e', borderColor: '#333' }}>
+            <Card size="small" style={{ background: 'var(--color-bg-base)', borderColor: 'var(--color-border)' }}>
               <Statistic
-                title={<Text style={{ color: '#888', fontSize: 11 }}>总字数</Text>}
+                title={<Text style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>总字数</Text>}
                 value={totalWordCount}
                 valueStyle={{ color: '#52c41a', fontSize: 20 }}
                 prefix={<TrophyOutlined />}
@@ -113,9 +113,9 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
             </Card>
           </Col>
           <Col span={12}>
-            <Card size="small" style={{ background: '#1e1e1e', borderColor: '#333' }}>
+            <Card size="small" style={{ background: 'var(--color-bg-base)', borderColor: 'var(--color-border)' }}>
               <Statistic
-                title={<Text style={{ color: '#888', fontSize: 11 }}>今日时长</Text>}
+                title={<Text style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>今日时长</Text>}
                 value={writingDuration}
                 valueStyle={{ color: '#fa8c16', fontSize: 20 }}
                 prefix={<ClockCircleOutlined />}
@@ -124,11 +124,11 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
             </Card>
           </Col>
           <Col span={12}>
-            <Card size="small" style={{ background: '#1e1e1e', borderColor: '#333' }}>
+            <Card size="small" style={{ background: 'var(--color-bg-base)', borderColor: 'var(--color-border)' }}>
               <Statistic
-                title={<Text style={{ color: '#888', fontSize: 11 }}>连续写作</Text>}
+                title={<Text style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>连续写作</Text>}
                 value={streak}
-                valueStyle={{ color: '#f5222d', fontSize: 20 }}
+                valueStyle={{ color: 'var(--color-danger)', fontSize: 20 }}
                 prefix={<FireOutlined />}
                 suffix="天"
               />
@@ -136,38 +136,38 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
           </Col>
         </Row>
 
-        <Divider style={{ borderColor: '#333', margin: '16px 0' }} />
+        <Divider style={{ borderColor: 'var(--color-border)', margin: '16px 0' }} />
 
         {/* 本周数据 */}
         <div style={{ padding: '0 16px' }}>
-          <Text style={{ color: '#888', fontSize: 12 }}>本周数据</Text>
+          <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>本周数据</Text>
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginTop: 8, padding: '8px 12px', background: '#1e1e1e', borderRadius: 4
+            marginTop: 8, padding: '8px 12px', background: 'var(--color-bg-base)', borderRadius: 4
           }}>
-            <Space><CalendarOutlined style={{ color: '#666' }} /><Text style={{ color: '#d4d4d4' }}>周总字数</Text></Space>
-            <Text style={{ color: '#1890ff', fontWeight: 500 }}>{weeklyTotal.toLocaleString()} 字</Text>
+            <Space><CalendarOutlined style={{ color: 'var(--color-text-tertiary)' }} /><Text style={{ color: 'var(--color-text)' }}>周总字数</Text></Space>
+            <Text style={{ color: 'var(--color-primary)', fontWeight: 500 }}>{weeklyTotal.toLocaleString()} 字</Text>
           </div>
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginTop: 8, padding: '8px 12px', background: '#1e1e1e', borderRadius: 4
+            marginTop: 8, padding: '8px 12px', background: 'var(--color-bg-base)', borderRadius: 4
           }}>
-            <Space><RiseOutlined style={{ color: '#666' }} /><Text style={{ color: '#d4d4d4' }}>日均字数</Text></Space>
+            <Space><RiseOutlined style={{ color: 'var(--color-text-tertiary)' }} /><Text style={{ color: 'var(--color-text)' }}>日均字数</Text></Space>
             <Text style={{ color: '#52c41a', fontWeight: 500 }}>{averageDaily.toLocaleString()} 字</Text>
           </div>
         </div>
 
-        <Divider style={{ borderColor: '#333', margin: '16px 0' }} />
+        <Divider style={{ borderColor: 'var(--color-border)', margin: '16px 0' }} />
 
         {/* 近 N 天柱状趋势（纯 div/CSS） */}
         <div style={{ padding: '0 16px' }}>
           {maxWords === 0 ? (
-            <Text style={{ display: 'block', color: '#555', fontSize: 12, marginTop: 12, textAlign: 'center' }}>
+            <Text style={{ display: 'block', color: 'var(--color-text-tertiary)', fontSize: 12, marginTop: 12, textAlign: 'center' }}>
               暂无写作记录
             </Text>
           ) : (
             <>
-              <Text style={{ color: '#888', fontSize: 12 }}>最近 {history.length} 天</Text>
+              <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>最近 {history.length} 天</Text>
               <div style={{
                 display: 'flex', alignItems: 'flex-end', gap: 2,
                 marginTop: 12, height: 80
@@ -182,11 +182,11 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
                           width: '100%',
                           height: `${h}%`,
                           minHeight: 2,
-                          background: d.words > 0 ? '#1890ff' : '#333',
+                          background: d.words > 0 ? 'var(--color-primary)' : 'var(--color-border)',
                           borderRadius: 2
                         }}
                       />
-                      <Text style={{ color: '#555', fontSize: 9, marginTop: 2 }}>
+                      <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 9, marginTop: 2 }}>
                         {d.date.slice(5)}
                       </Text>
                     </div>

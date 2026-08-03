@@ -155,7 +155,7 @@ function EditorTabs({
                 e.stopPropagation()
                 handleClose(chapter.id)
               }}
-              style={{ fontSize: 10, color: '#888', marginLeft: 2 }}
+              style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginLeft: 2 }}
             />
           </Tooltip>
         </span>
@@ -177,8 +177,8 @@ function EditorTabs({
     <div
       style={{
         height: 36,
-        background: '#252526',
-        borderBottom: '1px solid #333',
+        background: 'var(--color-bg-elevated)',
+        borderBottom: '1px solid var(--color-border)',
         display: 'flex',
         alignItems: 'center'
       }}
@@ -193,7 +193,7 @@ function EditorTabs({
         tabBarStyle={{
           margin: 0,
           paddingLeft: 4,
-          background: '#252526'
+          background: 'var(--color-bg-elevated)'
         }}
         moreIcon={
           <Dropdown menu={{ items: menuItems }} trigger={['click']}>
@@ -207,12 +207,12 @@ function EditorTabs({
         position: 'absolute',
         right: 8,
         padding: '0 8px',
-        borderLeft: '1px solid #333',
+        borderLeft: '1px solid var(--color-border)',
         height: '100%',
         display: 'flex',
         alignItems: 'center'
       }}>
-        <span style={{ fontSize: 11, color: '#888' }}>
+        <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
           {chapters.length} 个标签
         </span>
       </div>
@@ -230,13 +230,13 @@ function EditorTabs({
           height: 32px;
         }
         .ant-tabs-tab-active {
-          background: #1e1e1e !important;
+          background: var(--color-bg-base) !important;
         }
         .ant-tabs-tab .anticon {
-          color: #888;
+          color: var(--color-text-secondary);
         }
         .ant-tabs-tab-active .anticon {
-          color: #58a6ff;
+          color: var(--color-primary);
         }
         .tab-close {
           opacity: 0;

@@ -137,11 +137,11 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
   const getGenderIcon = (gender: CharacterGender) => {
     switch (gender) {
       case 'male':
-        return <ManOutlined style={{ color: '#1890ff' }} />
+        return <ManOutlined style={{ color: 'var(--color-primary)' }} />
       case 'female':
         return <WomanOutlined style={{ color: '#eb2f96' }} />
       default:
-        return <QuestionOutlined style={{ color: '#8c8c8c' }} />
+        return <QuestionOutlined style={{ color: 'var(--color-text-secondary)' }} />
     }
   }
 
@@ -165,7 +165,7 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
       image={Empty.PRESENTED_IMAGE_SIMPLE}
       description={
         <Space direction="vertical" align="center">
-          <Text style={{ color: '#666' }}>暂无角色</Text>
+          <Text style={{ color: 'var(--color-text-tertiary)' }}>暂无角色</Text>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
             创建角色
           </Button>
@@ -181,7 +181,7 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
         {/* 头部 */}
         <div style={{
           padding: '12px 16px',
-          borderBottom: '1px solid #333',
+          borderBottom: '1px solid var(--color-border)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
@@ -194,7 +194,7 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
             type="text"
             icon={<PlusOutlined />}
             onClick={handleCreate}
-            style={{ color: '#d4d4d4' }}
+            style={{ color: 'var(--color-text)' }}
           />
         </div>
 
@@ -249,7 +249,7 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
                     avatar={
                       <Avatar
                         icon={<UserOutlined />}
-                        style={{ backgroundColor: character.role === 'protagonist' ? '#1890ff' : '#555' }}
+                        style={{ backgroundColor: character.role === 'protagonist' ? 'var(--color-primary)' : '#555' }}
                       />
                     }
                     title={
