@@ -15,7 +15,6 @@ function Home() {
 
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
   const [createDialogVisible, setCreateDialogVisible] = useState(false)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [openDialogVisible, setOpenDialogVisible] = useState(false)
 
   // 加载最近项目
@@ -211,6 +210,15 @@ function Home() {
         open={createDialogVisible}
         mode="create"
         onClose={() => setCreateDialogVisible(false)}
+        onProjectCreated={handleProjectCreated}
+        onProjectOpened={handleProjectOpened}
+      />
+
+      {/* 打开项目对话框 */}
+      <ProjectDialog
+        open={openDialogVisible}
+        mode="open"
+        onClose={() => setOpenDialogVisible(false)}
         onProjectCreated={handleProjectCreated}
         onProjectOpened={handleProjectOpened}
       />
