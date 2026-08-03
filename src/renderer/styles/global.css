@@ -141,7 +141,7 @@ body {
 
 .chapter-tree .ant-tree-node-selected .ant-tree-node-content-wrapper {
   background: var(--color-bg-selected) !important;
-  color: #fff !important;
+  color: var(--color-text) !important;
   border-left-color: var(--color-primary);
 }
 
