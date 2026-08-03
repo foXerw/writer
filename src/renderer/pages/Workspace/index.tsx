@@ -490,13 +490,12 @@ function Workspace() {
         width={sidebarCollapsed ? 0 : 280}
         collapsedWidth={48}
         collapsed={sidebarCollapsed || focusMode}
-        theme="dark"
-        style={{ background: '#252526', overflow: 'hidden' }}
+        style={{ background: 'var(--color-bg-elevated)', overflow: 'hidden' }}
       >
         {/* 顶部项目信息 */}
         <div style={{
           padding: sidebarCollapsed ? '12px 0' : '12px 16px',
-          borderBottom: '1px solid #333',
+          borderBottom: '1px solid var(--color-border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: sidebarCollapsed ? 'center' : 'space-between'
@@ -507,9 +506,9 @@ function Workspace() {
                 type="text"
                 icon={<LeftOutlined />}
                 onClick={handleBack}
-                style={{ color: '#d4d4d4' }}
+                style={{ color: 'var(--color-text)' }}
               />
-              <Text style={{ color: '#d4d4d4', fontWeight: 500, fontSize: 13 }} ellipsis>
+              <Text style={{ color: 'var(--color-text)', fontWeight: 500, fontSize: 13 }} ellipsis>
                 {projectName}
               </Text>
             </Space>
@@ -519,7 +518,7 @@ function Workspace() {
               type="text"
               icon={<SettingOutlined />}
               onClick={() => navigate('/settings')}
-              style={{ color: '#d4d4d4' }}
+              style={{ color: 'var(--color-text)' }}
             />
           )}
           {sidebarCollapsed && (
@@ -527,7 +526,7 @@ function Workspace() {
               type="text"
               icon={<LeftOutlined />}
               onClick={handleBack}
-              style={{ color: '#d4d4d4' }}
+              style={{ color: 'var(--color-text)' }}
             />
           )}
         </div>
@@ -538,8 +537,8 @@ function Workspace() {
             {/* Tab按钮栏 */}
             <div style={{
               display: 'flex',
-              borderBottom: '1px solid #333',
-              background: '#1e1e1e'
+              borderBottom: '1px solid var(--color-border)',
+              background: 'var(--color-bg-base)'
             }}>
               {sidebarTabs.map(tab => (
                 <Button
@@ -550,9 +549,9 @@ function Workspace() {
                     flex: 1,
                     height: 36,
                     borderRadius: 0,
-                    color: sidebarTab === tab.key ? '#fff' : '#888',
-                    background: sidebarTab === tab.key ? '#252526' : 'transparent',
-                    borderBottom: sidebarTab === tab.key ? '2px solid #1890ff' : '2px solid transparent',
+                    color: sidebarTab === tab.key ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                    background: sidebarTab === tab.key ? 'var(--color-bg-elevated)' : 'transparent',
+                    borderBottom: sidebarTab === tab.key ? '2px solid var(--color-primary)' : '2px solid transparent',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -567,7 +566,7 @@ function Workspace() {
             </div>
 
             {/* Tab内容区 */}
-            <div style={{ flex: 1, overflow: 'auto', background: '#252526' }}>
+            <div style={{ flex: 1, overflow: 'auto', background: 'var(--color-bg-elevated)' }}>
               {sidebarTab === 'chapters' && (
                 <ChapterTree
                   projectPath={projectPath || ''}
@@ -608,14 +607,14 @@ function Workspace() {
           left: 0,
           right: 0,
           padding: '8px',
-          borderTop: '1px solid #333',
+          borderTop: '1px solid var(--color-border)',
           textAlign: 'center'
         }}>
           <Button
             type="text"
             icon={sidebarCollapsed ? <FolderOpenOutlined /> : <FolderOpenOutlined />}
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            style={{ color: '#666' }}
+            style={{ color: 'var(--color-text-tertiary)' }}
           />
         </div>
       </Sider>
@@ -634,7 +633,7 @@ function Workspace() {
         {/* 工具栏 */}
         <Header style={{
           padding: 0,
-          background: '#1e1e1e',
+          background: 'var(--color-bg-base)',
           height: 'auto',
           lineHeight: 'normal'
         }}>
@@ -653,7 +652,7 @@ function Workspace() {
 
         {/* 编辑器 + 大纲 */}
         <Layout>
-          <Content style={{ background: '#1e1e1e', padding: 0, flex: 1 }}>
+          <Content style={{ background: 'var(--color-bg-base)', padding: 0, flex: 1 }}>
             {currentChapter ? (
               <MonacoEditor
                 ref={editorRef}
@@ -673,10 +672,10 @@ function Workspace() {
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#666'
+                color: 'var(--color-text-tertiary)'
               }}>
                 <BookOutlined style={{ fontSize: 48, marginBottom: 16 }} />
-                <Text style={{ color: '#888' }}>
+                <Text style={{ color: 'var(--color-text-secondary)' }}>
                   {chapters.length === 0 ? '暂无章节，点击新建章节开始创作' : '选择一个章节开始编辑'}
                 </Text>
                 {chapters.length === 0 && (
@@ -696,8 +695,7 @@ function Workspace() {
           {outlineVisible && currentChapter && (
             <Sider
               width={260}
-              theme="dark"
-              style={{ background: '#252526', borderLeft: '1px solid #333', overflow: 'auto' }}
+              style={{ background: 'var(--color-bg-elevated)', borderLeft: '1px solid var(--color-border)', overflow: 'auto' }}
             >
               <OutlineView
                 content={editorContent}

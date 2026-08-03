@@ -13,6 +13,7 @@ import {
   DownloadOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
+import ThemeToggle from '../ThemeToggle'
 
 interface EditorToolbarProps {
   onSave?: () => void
@@ -66,8 +67,8 @@ function EditorToolbar({
       style={{
         height: 40,
         padding: '0 16px',
-        background: '#252526',
-        borderBottom: '1px solid #333',
+        background: 'var(--color-bg-elevated)',
+        borderBottom: '1px solid var(--color-border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between'
@@ -82,18 +83,18 @@ function EditorToolbar({
           onChange={(e) => onTitleChange?.(e.target.value)}
           placeholder="章节标题"
           style={{
-            background: '#1e1e1e',
-            border: '1px solid #333',
+            background: 'var(--color-bg-base)',
+            border: '1px solid var(--color-border)',
             borderRadius: 4,
             padding: '4px 8px',
-            color: '#d4d4d4',
+            color: 'var(--color-text)',
             fontSize: 14,
             width: 200
           }}
         />
 
         {/* 分隔线 */}
-        <div style={{ width: 1, height: 20, background: '#444', margin: '0 8px' }} />
+        <div style={{ width: 1, height: 20, background: 'var(--color-border-secondary)', margin: '0 8px' }} />
 
         {/* 撤销/重做 */}
         <Tooltip title="撤销 (Ctrl+Z)">
@@ -101,7 +102,7 @@ function EditorToolbar({
             type="text"
             icon={<UndoOutlined />}
             onClick={onUndo}
-            style={{ color: '#d4d4d4' }}
+            style={{ color: 'var(--color-text)' }}
           />
         </Tooltip>
         <Tooltip title="重做 (Ctrl+Y)">
@@ -109,12 +110,12 @@ function EditorToolbar({
             type="text"
             icon={<RedoOutlined />}
             onClick={onRedo}
-            style={{ color: '#d4d4d4' }}
+            style={{ color: 'var(--color-text)' }}
           />
         </Tooltip>
 
         {/* 分隔线 */}
-        <div style={{ width: 1, height: 20, background: '#444', margin: '0 8px' }} />
+        <div style={{ width: 1, height: 20, background: 'var(--color-border-secondary)', margin: '0 8px' }} />
 
         {/* 格式工具 */}
         <Tooltip title="粗体 (Ctrl+B)">
@@ -122,7 +123,7 @@ function EditorToolbar({
             type="text"
             icon={<BoldOutlined />}
             onClick={onBold}
-            style={{ color: '#d4d4d4' }}
+            style={{ color: 'var(--color-text)' }}
           />
         </Tooltip>
         <Tooltip title="斜体 (Ctrl+I)">
@@ -130,13 +131,13 @@ function EditorToolbar({
             type="text"
             icon={<ItalicOutlined />}
             onClick={onItalic}
-            style={{ color: '#d4d4d4' }}
+            style={{ color: 'var(--color-text)' }}
           />
         </Tooltip>
 
         {/* 标题级别 */}
         <Dropdown menu={{ items: headingItems, onClick: handleHeadingClick }} trigger={['click']}>
-          <Button type="text" style={{ color: '#d4d4d4' }}>
+          <Button type="text" style={{ color: 'var(--color-text)' }}>
             标题
           </Button>
         </Dropdown>
@@ -147,7 +148,7 @@ function EditorToolbar({
             type="text"
             icon={<UnorderedListOutlined />}
             onClick={() => onList?.('unordered')}
-            style={{ color: '#d4d4d4' }}
+            style={{ color: 'var(--color-text)' }}
           />
         </Tooltip>
         <Tooltip title="有序列表">
@@ -155,7 +156,7 @@ function EditorToolbar({
             type="text"
             icon={<OrderedListOutlined />}
             onClick={() => onList?.('ordered')}
-            style={{ color: '#d4d4d4' }}
+            style={{ color: 'var(--color-text)' }}
           />
         </Tooltip>
       </Space>
@@ -169,8 +170,8 @@ function EditorToolbar({
             icon={<EyeOutlined />}
             onClick={() => onToggleFocus?.(!focusMode)}
             style={{
-              color: focusMode ? '#1890ff' : '#d4d4d4',
-              background: focusMode ? 'rgba(24, 144, 255, 0.1)' : 'transparent'
+              color: focusMode ? 'var(--color-primary)' : 'var(--color-text)',
+              background: focusMode ? 'var(--color-primary-tint-bg)' : 'transparent'
             }}
           />
         </Tooltip>
@@ -182,14 +183,14 @@ function EditorToolbar({
             icon={<EditOutlined />}
             onClick={() => onToggleTypewriter?.(!typewriterMode)}
             style={{
-              color: typewriterMode ? '#1890ff' : '#d4d4d4',
-              background: typewriterMode ? 'rgba(24, 144, 255, 0.1)' : 'transparent'
+              color: typewriterMode ? 'var(--color-primary)' : 'var(--color-text)',
+              background: typewriterMode ? 'var(--color-primary-tint-bg)' : 'transparent'
             }}
           />
         </Tooltip>
 
         {/* 分隔线 */}
-        <div style={{ width: 1, height: 20, background: '#444', margin: '0 8px' }} />
+        <div style={{ width: 1, height: 20, background: 'var(--color-border-secondary)', margin: '0 8px' }} />
 
         {/* 导出按钮 */}
         <Tooltip title="导出 (Ctrl+E)">
@@ -197,7 +198,7 @@ function EditorToolbar({
             type="text"
             icon={<DownloadOutlined />}
             onClick={onExport}
-            style={{ color: '#d4d4d4' }}
+            style={{ color: 'var(--color-text)' }}
           />
         </Tooltip>
 
@@ -213,8 +214,10 @@ function EditorToolbar({
           </Button>
         </Tooltip>
 
+        <ThemeToggle />
+
         {/* 字数统计 */}
-        <span style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>
+        <span style={{ color: 'var(--color-text-secondary)', fontSize: 12, marginLeft: 8 }}>
           {wordCount.toLocaleString()} 字
         </span>
       </Space>
