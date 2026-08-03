@@ -6,6 +6,17 @@
     <meta name="description" content="Novel Writer - 专业小说写作应用" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';" />
     <title>Novel Writer</title>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('settings-storage');
+          var mode = raw ? JSON.parse(raw).state.themeMode : null;
+          document.documentElement.dataset.theme = mode === 'light' ? 'light' : 'dark';
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
