@@ -180,3 +180,24 @@ export const useShortcutStore = create<ShortcutState>()(
     }
   )
 )
+
+// 应用设置（主题等）
+interface SettingsState {
+  themeMode: 'dark' | 'light'
+  setThemeMode: (mode: 'dark' | 'light') => void
+  toggleTheme: () => void
+}
+
+export const useSettingsStore = create<SettingsState>()(
+  persist(
+    (set, get) => ({
+      themeMode: 'dark',
+      setThemeMode: (mode) => set({ themeMode: mode }),
+      toggleTheme: () => set({ themeMode: get().themeMode === 'dark' ? 'light' : 'dark' }),
+    }),
+    {
+      name: 'settings-storage',
+      storage: createJSONStorage(() => localStorage),
+    },
+  ),
+)
