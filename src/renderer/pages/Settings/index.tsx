@@ -16,10 +16,10 @@ function Settings() {
     }
   }
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1e1e1e' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--color-bg-base)' }}>
       <div style={{
         padding: '12px 16px',
-        borderBottom: '1px solid #333',
+        borderBottom: '1px solid var(--color-border)',
         display: 'flex',
         alignItems: 'center',
         gap: 8
@@ -28,16 +28,16 @@ function Settings() {
           type="text"
           icon={<LeftOutlined />}
           onClick={goBack}
-          style={{ color: '#d4d4d4' }}
+          style={{ color: 'var(--color-text)' }}
         />
-        <Title level={5} style={{ color: '#d4d4d4', margin: 0 }}>设置</Title>
+        <Title level={5} style={{ color: 'var(--color-text)', margin: 0 }}>设置</Title>
       </div>
       <div style={{ flex: 1, overflow: 'auto' }}>
         <ThemeSettings />
-        <div style={{ padding: '0 16px', marginTop: 16, borderTop: '1px solid #333', paddingTop: 16 }}>
+        <div style={{ padding: '0 16px', marginTop: 16, borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
           <Space direction="vertical" style={{ width: '100%' }}>
-            <Text style={{ color: '#d4d4d4', fontWeight: 500 }}>快捷键</Text>
-            <Text style={{ color: '#888', fontSize: 12 }}>自定义或查看命令的键盘快捷键。</Text>
+            <Text style={{ color: 'var(--color-text)', fontWeight: 500 }}>快捷键</Text>
+            <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>自定义或查看命令的键盘快捷键。</Text>
             <Button
               onClick={() => useShortcutStore.getState().setDialogOpen(true)}
               style={{ width: 'fit-content' }}
