@@ -76,7 +76,6 @@ novel-writer/
 ├── resources/icons/              # 图标资源
 ├── docs/                         # 开发文档（DEVELOPMENT.md）
 ├── electron.vite.config.ts       # ✅ 实际生效的构建配置（main / preload / renderer 三段）
-├── vite.config.ts                # ⚠️ 历史残留：独立的前端 web 构建配置（端口3000），无 npm 脚本引用，仅 tsconfig 用于类型检查
 ├── tsconfig.json / tsconfig.node.json
 ├── .eslintrc.js / .prettierrc
 └── package.json

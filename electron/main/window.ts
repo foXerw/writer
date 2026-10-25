@@ -5,16 +5,10 @@ import { getThemeBackgroundColor, getThemeTitleBarColor, getThemeTitleBarSymbolC
 
 // 存储主窗口引用
 let mainWindow: BrowserWindow | null = null
-let settingsWindow: BrowserWindow | null = null
 
 // 获取主窗口
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow
-}
-
-// 获取设置窗口
-export function getSettingsWindow(): BrowserWindow | null {
-  return settingsWindow
 }
 
 // 创建主窗口
@@ -71,67 +65,6 @@ export function createMainWindow(): BrowserWindow {
   })
 
   return mainWindow
-}
-
-// 创建设置窗口
-export function createSettingsWindow(): BrowserWindow {
-  if (settingsWindow) {
-    settingsWindow.focus()
-    return settingsWindow
-  }
-
-  const settingsWindowState = windowStateKeeper({
-    defaultWidth: 800,
-    defaultHeight: 600,
-    file: 'settings-window-state.json'
-  })
-
-  const browserOptions: BrowserWindowConstructorOptions = {
-    x: settingsWindowState.x,
-    y: settingsWindowState.y,
-    width: settingsWindowState.width,
-    height: settingsWindowState.height,
-    minWidth: 600,
-    minHeight: 400,
-    backgroundColor: getThemeBackgroundColor(),
-    title: '设置 - 完美小说',
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: getThemeTitleBarColor(),
-      symbolColor: getThemeTitleBarSymbolColor(),
-      height: 32
-    },
-    parent: mainWindow ?? undefined,
-    modal: false,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: join(__dirname, '../preload/index.js')
-    }
-  }
-
-  settingsWindow = new BrowserWindow(browserOptions)
-
-  // 加载设置页面
-  if (import.meta.env.DEV) {
-    settingsWindow.loadURL('http://localhost:5173/settings')
-  } else {
-    settingsWindow.loadFile(join(__dirname, '../renderer/index.html'), {
-      hash: '/settings'
-    })
-  }
-
-  settingsWindow.webContents.openDevTools()
-
-  // 窗口事件处理
-  settingsWindow.on('closed', () => {
-    settingsWindow = null
-  })
-
-  // 保存窗口状态
-  settingsWindowState.manage(settingsWindow)
-
-  return settingsWindow
 }
 
 // 创建窗口（通用函数）
