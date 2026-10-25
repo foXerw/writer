@@ -111,12 +111,13 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
     // 注：原 prevLenRef（切章不计字数增量）随统计逻辑迁至 useWritingStats（按 currentChapterId 变化重置基线）
   }
 
-  // 新建章节
+  // 新建章节（Task 5：落在当前打开章所属卷；无当前章/未分卷 → 未分卷桶。
+  // 简单裁定：volumeId 经 hook 参数直通，不在 hook 边界另设「当前卷」状态）
   const createChapter = async () => {
     if (!projectPath) return
     const title = `新章节 ${chapters.length + 1}`
     try {
-      const newChapter = await createChapterIpc(projectPath, title)
+      const newChapter = await createChapterIpc(projectPath, title, currentChapter?.volumeId ?? null)
       setChapters([...chapters, newChapter])
       openChapter(newChapter)
       message.success('章节创建成功')

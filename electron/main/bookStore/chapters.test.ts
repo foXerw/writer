@@ -148,6 +148,23 @@ describe('updateChapter', () => {
     expect(updated.volumeId).toBe(vol)
   })
 
+  it('meta-only patch（content 缺省）：front-matter 重写，body 字节原样不动（Task 5 接口裁定）', () => {
+    const p = mkTmpBook()
+    const c = createChapter(p, '标题')
+    updateChapter(p, c.id, { content: '# 标题\r\n\r\n带 CRLF 的正文。\r\n第二行\r\n' })
+    const rawBefore = rawOf(p, c.id)
+    const bodyBefore = parseChapterDoc(rawBefore, c.id).body
+
+    const vol = '11111111-2222-4222-8222-222222222222'
+    const updated = updateChapter(p, c.id, { volumeId: vol })
+    expect(updated.volumeId).toBe(vol)
+    const rawAfter = rawOf(p, c.id)
+    expect(rawAfter).not.toBe(rawBefore) // front-matter 确实重写
+    expect(rawAfter.endsWith(bodyBefore)).toBe(true) // body 逐字节 = 原后缀（不重新序列化正文）
+    expect(parseChapterDoc(rawAfter, c.id).body).toBe(bodyBefore)
+    expect(updated.content).toBe(bodyBefore)
+  })
+
   it('id 不存在 → 抛 CHAPTER_MISSING: <id>（v1 静默写新文件的行为被禁）', () => {
     const p = mkTmpBook()
     const ghost = '99999999-8888-4888-8888-777777777777'

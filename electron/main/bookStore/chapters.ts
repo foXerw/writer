@@ -62,10 +62,14 @@ export function createChapter(p: string, title: string, volumeId?: string | null
   return toChapter({ stem: meta.id, abs, meta, body })
 }
 
+/**
+ * Task 5 接口裁定：content 可选。缺省 = meta-only 写（卷归属/状态变更不重排正文——
+ * body 以磁盘字节为准原样回写，绝不重新「序列化」正文）；带 content 的行为与 Task 4 完全一致。
+ */
 export function updateChapter(
   p: string,
   id: string,
-  patch: MetaPatch & { content: string }
+  patch: MetaPatch & { content?: string }
 ): Chapter {
   return applyPatch(p, id, patch)
 }

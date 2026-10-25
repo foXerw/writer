@@ -23,12 +23,38 @@ export type RendererToMainRequests = {
 
   // 章节相关
   'chapter:getAll': (projectPath: string) => Promise<Chapter[]>
-  'chapter:create': (params: { projectPath: string; title: string }) => Promise<Chapter>
+  'chapter:create': (params: {
+    projectPath: string
+    title: string
+    // Task 5：新建章落在当前卷（未传/null = 未分卷）
+    volumeId?: string | null
+  }) => Promise<Chapter>
   'chapter:update': (params: { projectPath: string; chapter: Chapter }) => Promise<Chapter>
   'chapter:delete': (params: { projectPath: string; chapterId: string }) => Promise<boolean>
   'chapter:rename': (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
   'chapter:reorder': (params: { projectPath: string; fromId: string; toId: string }) => Promise<boolean>
   'chapter:getById': (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
+  // 改卷归属（Task 5）：volumeId = null 或未传 → 未分卷；缺省绝不视同「不改归属」
+  'chapter:moveToVolume': (params: {
+    projectPath: string
+    chapterId: string
+    volumeId: string | null
+  }) => Promise<Chapter>
+
+  // 卷相关（Task 5 一等公民：volumes/<id>.yaml = VolumeDoc{id,title,order}）
+  'volume:getAll': (projectPath: string) => Promise<Volume[]>
+  'volume:create': (params: { projectPath: string; title: string }) => Promise<Volume>
+  'volume:rename': (params: {
+    projectPath: string
+    volumeId: string
+    newTitle: string
+  }) => Promise<Volume>
+  'volume:delete': (params: { projectPath: string; volumeId: string }) => Promise<boolean>
+  'volume:reorder': (params: {
+    projectPath: string
+    fromId: string
+    toId: string
+  }) => Promise<boolean>
 
   // 角色相关
   'character:getAll': (projectPath: string) => Promise<Character[]>
@@ -83,6 +109,14 @@ export interface NovelWriterApi {
     rename: RendererToMainRequests['chapter:rename']
     reorder: RendererToMainRequests['chapter:reorder']
     getById: RendererToMainRequests['chapter:getById']
+    moveToVolume: RendererToMainRequests['chapter:moveToVolume']
+  }
+  volume: {
+    getAll: RendererToMainRequests['volume:getAll']
+    create: RendererToMainRequests['volume:create']
+    rename: RendererToMainRequests['volume:rename']
+    delete: RendererToMainRequests['volume:delete']
+    reorder: RendererToMainRequests['volume:reorder']
   }
   character: {
     getAll: RendererToMainRequests['character:getAll']
@@ -176,6 +210,14 @@ export interface Chapter {
   wordCount: number
   createdAt: Date
   updatedAt: Date
+}
+
+// 卷（v2 一等公民实体；与 common/schema.ts 的 VolumeDoc 同形——依赖方向 schema→ipc 保持不变，
+// 此处独立声明供渲染层/preload 消费，卷仓库返回 VolumeDoc 结构即兼容）
+export interface Volume {
+  id: string
+  title: string
+  order: number
 }
 
 // 写作统计

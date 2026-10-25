@@ -5,6 +5,7 @@ import type {
   Chapter,
   Character,
   Setting,
+  Volume,
   ProjectType,
   FileFilter,
   StatsData,
@@ -90,9 +91,11 @@ export function useChapter() {
 
   const createChapter = useCallback(async (
     projectPath: string,
-    title: string
+    title: string,
+    // Task 5：落在当前卷；未传/null = 未分卷
+    volumeId?: string | null
   ): Promise<Chapter> => {
-    return ipc.chapter.create({ projectPath, title })
+    return ipc.chapter.create({ projectPath, title, volumeId: volumeId ?? null })
   }, [ipc])
 
   const updateChapter = useCallback(async (
@@ -140,6 +143,63 @@ export function useChapter() {
     renameChapter,
     reorderChapters,
     getChapterById
+  }
+}
+
+// 卷相关 Hook（Task 5：与 useChapter 同一薄包装纪律，一通道一函数）
+export function useVolume() {
+  const ipc = getIPC()
+
+  const getAllVolumes = useCallback(async (projectPath: string): Promise<Volume[]> => {
+    return ipc.volume.getAll(projectPath)
+  }, [ipc])
+
+  const createVolume = useCallback(async (
+    projectPath: string,
+    title: string
+  ): Promise<Volume> => {
+    return ipc.volume.create({ projectPath, title })
+  }, [ipc])
+
+  const renameVolume = useCallback(async (
+    projectPath: string,
+    volumeId: string,
+    newTitle: string
+  ): Promise<Volume> => {
+    return ipc.volume.rename({ projectPath, volumeId, newTitle })
+  }, [ipc])
+
+  const deleteVolume = useCallback(async (
+    projectPath: string,
+    volumeId: string
+  ): Promise<boolean> => {
+    return ipc.volume.delete({ projectPath, volumeId })
+  }, [ipc])
+
+  const reorderVolumes = useCallback(async (
+    projectPath: string,
+    fromId: string,
+    toId: string
+  ): Promise<boolean> => {
+    return ipc.volume.reorder({ projectPath, fromId, toId })
+  }, [ipc])
+
+  // 移卷 = 章的归属变更（volumeId=null 或未传 = 未分卷）
+  const moveChapterToVolume = useCallback(async (
+    projectPath: string,
+    chapterId: string,
+    volumeId: string | null
+  ): Promise<Chapter> => {
+    return ipc.chapter.moveToVolume({ projectPath, chapterId, volumeId })
+  }, [ipc])
+
+  return {
+    getAllVolumes,
+    createVolume,
+    renameVolume,
+    deleteVolume,
+    reorderVolumes,
+    moveChapterToVolume
   }
 }
 

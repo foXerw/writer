@@ -1,17 +1,22 @@
-import React from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Tree, Button, Dropdown, message, Modal, Input, Typography } from 'antd'
 import type { MenuProps, TreeProps } from 'antd'
 import {
   PlusOutlined,
   FileTextOutlined,
+  FolderOutlined,
   DeleteOutlined,
   EditOutlined,
   CopyOutlined
 } from '@ant-design/icons'
-import type { Chapter } from '@/common/ipc'
-import { useChapter } from '../../hooks/useIPC'
+import type { Chapter, Volume } from '@/common/ipc'
+import { useChapter, useVolume } from '../../hooks/useIPC'
+import { VolumeManager } from './VolumeManager'
 
 const { Text } = Typography
+
+/** 未分卷桶的虚拟节点 key（非 UUID，永不与卷/章 id 撞车） */
+const UNGROUPED_KEY = '__ungrouped__'
 
 interface ChapterTreeProps {
   projectPath: string
@@ -29,8 +34,45 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
   onChapterChange
 }) => {
   const { createChapter, deleteChapter, renameChapter } = useChapter()
+  const { getAllVolumes, moveChapterToVolume } = useVolume()
   const [messageApi, contextHolder] = message.useMessage()
   const [modal, contextModalHolder] = Modal.useModal()
+
+  // 卷列表自持（Task 5）：卷的增删改重排不进 Workspace 会话状态，树内闭环；
+  // 但删卷/移章会改章的 volumeId——必须经 onChapterChange 重拉章列表，
+  // 防会话里陈旧 volumeId 被下一次自动保存整 Chapter 回写复活。
+  const [volumes, setVolumes] = useState<Volume[]>([])
+  const refreshVolumes = useCallback(async () => {
+    try {
+      setVolumes(await getAllVolumes(projectPath))
+    } catch (error) {
+      setVolumes([]) // 卷侧不可用（无 electron/坏目录）→ 退化为无卷平铺，章树本身仍可用
+    }
+  }, [projectPath, getAllVolumes])
+
+  useEffect(() => {
+    void refreshVolumes()
+  }, [refreshVolumes])
+
+  // 移卷后的章归属变更走 onChapterChange（父级重拉），卷自身变更走 refreshVolumes
+  const grouped = volumes.length > 0
+  const chaptersOfVolume = (volumeId: string) => chapters.filter((c) => c.volumeId === volumeId)
+  const volumeIdSet = new Set(volumes.map((v) => v.id))
+  // 悬挂引用（指向已消失的卷）与 null 同归未分卷桶——删除路径保证不产生，展示侧再兜一层底
+  const ungroupedChapters = chapters.filter(
+    (c) => !c.volumeId || !volumeIdSet.has(c.volumeId)
+  )
+
+  // 分组节点展开态：新出现的组自动展开（并集），用户手动折叠后保持折叠
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
+  const groupSig = grouped
+    ? [...volumes.map((v) => v.id), ...(ungroupedChapters.length > 0 ? [UNGROUPED_KEY] : [])].join('|')
+    : ''
+  useEffect(() => {
+    if (!groupSig) return
+    const keys = groupSig.split('|')
+    setExpandedKeys((prev) => Array.from(new Set([...prev, ...keys])))
+  }, [groupSig])
 
   // 右键菜单
   const getRightClickMenu = (chapter: Chapter): MenuProps => ({
@@ -47,6 +89,27 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
         icon: <CopyOutlined />,
         onClick: () => copyChapter()
       },
+      // Task 5：拖拽排序 M1 已移除，移卷走此子菜单（列全部卷 + 未分卷）
+      {
+        key: 'move',
+        label: '移动到卷',
+        icon: <FolderOutlined />,
+        children: [
+          {
+            key: 'ungrouped',
+            label: '未分卷',
+            // 已明确未分卷 → 禁用；悬挂引用不禁（正好借此修复）
+            disabled: !chapter.volumeId,
+            onClick: () => moveToVolume(chapter, null)
+          },
+          ...volumes.map((v) => ({
+            key: v.id,
+            label: v.title,
+            disabled: chapter.volumeId === v.id,
+            onClick: () => moveToVolume(chapter, v.id)
+          }))
+        ]
+      },
       { type: 'divider' },
       {
         key: 'delete',
@@ -57,6 +120,17 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
       }
     ]
   })
+
+  // 移卷（meta-only 写，正文不动——仓库侧 updateChapter 契约）
+  const moveToVolume = async (chapter: Chapter, volumeId: string | null) => {
+    try {
+      await moveChapterToVolume(projectPath, chapter.id, volumeId)
+      messageApi.success(volumeId === null ? '已移回未分卷' : '已移动到卷')
+      onChapterChange()
+    } catch (error) {
+      messageApi.error('移动失败')
+    }
+  }
 
   // 重命名弹窗
   const showRenameModal = (chapter: Chapter) => {
@@ -121,8 +195,8 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
     }
   }
 
-  // 转换为树数据
-  const treeData: TreeProps['treeData'] = chapters.map((chapter, _index) => ({
+  // 章节点（平铺与分组两模式共用）
+  const chapterNode = (chapter: Chapter) => ({
     key: chapter.id,
     title: (
       <Dropdown menu={getRightClickMenu(chapter)} trigger={['contextMenu']}>
@@ -138,7 +212,53 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
     isLeaf: true,
     // 存储完整数据
     data: chapter
-  }))
+  })
+
+  // 转换为树数据：无卷 → 平铺（M1 形态，零回归）；有卷 → 卷分组 + 未分卷桶（末位）
+  const treeData: TreeProps['treeData'] = (() => {
+    if (!grouped) return chapters.map(chapterNode)
+    const nodes = volumes.map((v, i) => {
+      const kids = chaptersOfVolume(v.id)
+      return {
+        key: v.id,
+        selectable: false, // 卷节点不可选中（选择语义仍 = 打开章；分组变更走右键菜单）
+        title: (
+          <VolumeManager
+            projectPath={projectPath}
+            volume={v}
+            index={i}
+            total={volumes.length}
+            chapterCount={kids.length}
+            prevId={volumes[i - 1]?.id}
+            nextId={volumes[i + 1]?.id}
+            onVolumesChanged={() => void refreshVolumes()}
+            onChaptersChanged={onChapterChange}
+          />
+        ),
+        // 空卷不给 children=[]：undefined 即无可展开箭头，避免空壳展开态
+        children: kids.length > 0 ? kids.map(chapterNode) : undefined
+      }
+    })
+    if (ungroupedChapters.length > 0) {
+      nodes.push({
+        key: UNGROUPED_KEY,
+        selectable: false,
+        title: (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <FolderOutlined style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }} />
+            <Text strong style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+              未分卷
+            </Text>
+            <Text style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+              （{ungroupedChapters.length} 章）
+            </Text>
+          </span>
+        ),
+        children: ungroupedChapters.map(chapterNode)
+      })
+    }
+    return nodes
+  })()
 
   // 处理选择
   const handleSelect: TreeProps['onSelect'] = (selectedKeys) => {
@@ -181,7 +301,9 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
   const confirmCreateChapter = async (title: string) => {
     if (!title.trim()) return
     try {
-      await createChapter(projectPath, title.trim())
+      // 种子卷 = 当前选中章的卷（Task 5 裁定：简单直通，取不到归未分卷）
+      const seedVolumeId = chapters.find((c) => c.id === selectedChapterId)?.volumeId ?? null
+      await createChapter(projectPath, title.trim(), seedVolumeId)
       messageApi.success('章节已创建')
       onChapterChange()
     } catch (error) {
@@ -213,11 +335,13 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
           </Button>
         </div>
 
-        {/* 章节树 */}
+        {/* 章节树（卷分组见上） */}
         <Tree
           treeData={treeData}
           selectedKeys={selectedChapterId ? [selectedChapterId] : []}
           onSelect={handleSelect}
+          expandedKeys={expandedKeys}
+          onExpand={(keys) => setExpandedKeys(keys)}
           blockNode
           showIcon
           style={{ padding: '8px 12px' }}

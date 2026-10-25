@@ -2,6 +2,7 @@ import { registerThemeHandlers } from './modules/theme'
 import { registerProjectHandlers } from './modules/project'
 import { registerFileHandlers } from './modules/file'
 import { registerChapterHandlers } from './modules/chapter'
+import { registerVolumeHandlers } from './modules/volume'
 import { registerDialogHandlers } from './modules/dialog'
 import { registerCharacterHandlers } from './modules/character'
 import { registerSettingHandlers } from './modules/setting'
@@ -16,6 +17,7 @@ export function registerAllIpcHandlers(): void {
   registerProjectHandlers()
   registerFileHandlers()
   registerChapterHandlers()
+  registerVolumeHandlers()
   registerDialogHandlers()
   registerCharacterHandlers()
   registerSettingHandlers()

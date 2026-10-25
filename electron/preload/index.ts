@@ -23,6 +23,13 @@ const projectAPI: RendererToMainRequests = {
   'chapter:rename': (params) => ipcRenderer.invoke('chapter:rename', params),
   'chapter:reorder': (params) => ipcRenderer.invoke('chapter:reorder', params),
   'chapter:getById': (params) => ipcRenderer.invoke('chapter:getById', params),
+  'chapter:moveToVolume': (params) => ipcRenderer.invoke('chapter:moveToVolume', params),
+
+  'volume:getAll': (projectPath) => ipcRenderer.invoke('volume:getAll', projectPath),
+  'volume:create': (params) => ipcRenderer.invoke('volume:create', params),
+  'volume:rename': (params) => ipcRenderer.invoke('volume:rename', params),
+  'volume:delete': (params) => ipcRenderer.invoke('volume:delete', params),
+  'volume:reorder': (params) => ipcRenderer.invoke('volume:reorder', params),
 
   'character:getAll': (projectPath) => ipcRenderer.invoke('character:getAll', projectPath),
   'character:getById': (params) => ipcRenderer.invoke('character:getById', params),
@@ -87,7 +94,17 @@ const novelWriter: NovelWriterApi = {
     delete: projectAPI['chapter:delete'],
     rename: projectAPI['chapter:rename'],
     reorder: projectAPI['chapter:reorder'],
-    getById: projectAPI['chapter:getById']
+    getById: projectAPI['chapter:getById'],
+    moveToVolume: projectAPI['chapter:moveToVolume']
+  },
+
+  // 卷相关
+  volume: {
+    getAll: projectAPI['volume:getAll'],
+    create: projectAPI['volume:create'],
+    rename: projectAPI['volume:rename'],
+    delete: projectAPI['volume:delete'],
+    reorder: projectAPI['volume:reorder']
   },
 
   // 角色相关
