@@ -605,10 +605,10 @@ function Workspace() {
         {/* Tab栏 */}
         <EditorTabs
           chapters={openedChapters}
+          activeChapterId={currentChapter?.id ?? null}
           currentChapter={currentChapter}
           onSelectChapter={handleOpenChapter}
           onCloseChapter={handleCloseChapter}
-          onSaveChapter={handleSave}
         />
 
         {/* 工具栏 */}

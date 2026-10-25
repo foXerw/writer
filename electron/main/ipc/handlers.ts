@@ -8,9 +8,6 @@ import { Chapter, ProjectType, Character, Setting, StatsData, ExportParams } fro
 import { countWords } from '../../../src/common/wordCount'
 import { setCurrentTheme } from '../theme'
 
-// 存储最近项目
-const recentProjects: Map<string, { name: string; path: string; lastOpened: Date }> = new Map()
-
 // ==================== 主题相关 ====================
 
 ipcMain.handle('theme:set', (_event, mode: 'dark' | 'light') => {
@@ -64,9 +61,6 @@ ipcMain.handle('project:create', async (_, params: { name: string; path: string;
     config: config.settings
   }
 
-  // 添加到最近项目
-  recentProjects.set(projectDir, { name, path: projectDir, lastOpened: new Date() })
-
   return projectData
 })
 
@@ -79,13 +73,6 @@ ipcMain.handle('project:open', async (_, projectPath: string) => {
 
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
 
-  // 添加到最近项目
-  recentProjects.set(projectPath, {
-    name: config.name,
-    path: projectPath,
-    lastOpened: new Date()
-  })
-
   return {
     id: randomUUID(),
     name: config.name,
@@ -95,12 +82,6 @@ ipcMain.handle('project:open', async (_, projectPath: string) => {
     updatedAt: new Date(),
     config: config.settings
   }
-})
-
-ipcMain.handle('project:getRecent', async () => {
-  return Array.from(recentProjects.values())
-    .sort((a, b) => b.lastOpened.getTime() - a.lastOpened.getTime())
-    .slice(0, 10)
 })
 
 // 文件相关处理

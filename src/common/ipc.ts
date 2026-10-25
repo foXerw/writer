@@ -14,7 +14,6 @@ export type RendererToMainRequests = {
   // 项目相关
   'project:create': (params: { name: string; path: string; type: ProjectType }) => Promise<ProjectData>
   'project:open': (path: string) => Promise<ProjectData>
-  'project:getRecent': () => Promise<RecentProject[]>
 
   // 文件相关
   'file:read': (path: string) => Promise<string>
@@ -69,7 +68,6 @@ export interface NovelWriterApi {
   project: {
     create: RendererToMainRequests['project:create']
     open: RendererToMainRequests['project:open']
-    getRecent: RendererToMainRequests['project:getRecent']
   }
   file: {
     read: RendererToMainRequests['file:read']
@@ -150,12 +148,12 @@ export interface ProjectConfig {
   autoSaveInterval: number
 }
 
-// 最近项目
+// 最近项目（lastOpened 为 ISO 字符串，便于 zustand persist 序列化；展示时用 dayjs 格式化）
 export interface RecentProject {
   id: string
   name: string
   path: string
-  lastOpened: Date
+  lastOpened: string
 }
 
 // 章节

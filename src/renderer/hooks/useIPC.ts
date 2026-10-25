@@ -5,7 +5,6 @@ import type {
   Chapter,
   Character,
   Setting,
-  RecentProject,
   ProjectType,
   FileFilter,
   StatsData,
@@ -44,14 +43,9 @@ export function useProject() {
     return ipc.project.open(projectPath)
   }, [ipc])
 
-  const getRecentProjects = useCallback(async (): Promise<RecentProject[]> => {
-    return ipc.project.getRecent()
-  }, [ipc])
-
   return {
     createProject,
-    openProject,
-    getRecentProjects
+    openProject
   }
 }
 

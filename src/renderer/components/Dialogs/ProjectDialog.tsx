@@ -6,7 +6,7 @@ import {
   FileTextOutlined,
   HighlightOutlined
 } from '@ant-design/icons'
-import type { ProjectType, RecentProject, ProjectData } from '@/common/ipc'
+import type { ProjectType, ProjectData } from '@/common/ipc'
 import { useProject, useDialog } from '../../hooks/useIPC'
 import { useProjectStore } from '../../stores'
 
@@ -55,25 +55,18 @@ function ProjectDialog({
   onProjectCreated,
   onProjectOpened
 }: ProjectDialogProps) {
-  const { createProject, openProject, getRecentProjects } = useProject()
+  const { createProject, openProject } = useProject()
   const { openDirectory } = useDialog()
-  const { addRecentProject } = useProjectStore()
+  // 最近项目唯一真源：store（persist localStorage），读取与写入都走这里
+  const { recentProjects: recentList, addRecentProject } = useProjectStore()
 
   const [step, setStep] = useState<'templates' | 'config' | 'location'>('templates')
   const [selectedTemplate, setSelectedTemplate] = useState<ProjectType>('novel')
   const [projectName, setProjectName] = useState('')
   const [projectPath, setProjectPath] = useState('')
   const [loading, setLoading] = useState(false)
-  const [recentList, setRecentList] = useState<RecentProject[]>([])
   const [errorModalOpen, setErrorModalOpen] = useState(false)
   const [errorModalContent, setErrorModalContent] = useState('')
-
-  useEffect(() => {
-    if (open && mode === 'open') {
-      loadRecentProjects()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 open/mode 变化时加载
-  }, [open, mode])
 
   useEffect(() => {
     if (open && mode === 'create') {
@@ -82,15 +75,6 @@ function ProjectDialog({
       setProjectPath('')
     }
   }, [open, mode])
-
-  const loadRecentProjects = async () => {
-    try {
-      const projects = await getRecentProjects()
-      setRecentList(projects)
-    } catch (error) {
-      console.error('加载最近项目失败:', error)
-    }
-  }
 
   const handleSelectTemplate = (template: ProjectType) => {
     setSelectedTemplate(template)
@@ -115,10 +99,10 @@ function ProjectDialog({
     try {
       const project = await createProject(projectName, projectPath, selectedTemplate)
       addRecentProject({
-        id: project.id,
+        id: project.path,
         name: project.name,
         path: project.path,
-        lastOpened: new Date()
+        lastOpened: new Date().toISOString()
       })
       onProjectCreated?.(project)
       onClose()
@@ -134,10 +118,10 @@ function ProjectDialog({
     try {
       const project = await openProject(path)
       addRecentProject({
-        id: project.id,
+        id: project.path,
         name: project.name,
         path: project.path,
-        lastOpened: new Date()
+        lastOpened: new Date().toISOString()
       })
       onProjectOpened?.(project)
       onClose()

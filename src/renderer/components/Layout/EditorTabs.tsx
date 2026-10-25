@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback } from 'react'
 import { Tabs, Dropdown, Tooltip } from 'antd'
 import {
   CloseOutlined,
@@ -8,81 +8,66 @@ import {
 } from '@ant-design/icons'
 import type { TabsProps, MenuProps } from 'antd'
 import type { Chapter } from '@/common/ipc'
-import { useTabStore } from '../../stores'
 
 interface EditorTabsProps {
   chapters: Chapter[]
+  activeChapterId: string | null
   currentChapter: Chapter | null
   onSelectChapter: (chapter: Chapter) => void
   onCloseChapter: (chapterId: string) => void
-  onSaveChapter: (chapter: Chapter) => void
 }
 
+// 纯受控组件：激活位与打开列表均来自 props（Workspace 的 currentChapter/openedChapters 是唯一真源）
 function EditorTabs({
   chapters,
+  activeChapterId,
   currentChapter,
   onSelectChapter,
-  onCloseChapter,
-  onSaveChapter: _onSaveChapter
+  onCloseChapter
 }: EditorTabsProps) {
-  const { activeTabId, setActiveTab, removeTab, closeAllTabs } = useTabStore()
-
-  // 同步外部 chapters 变化到 store
-  useEffect(() => {
-    if (chapters.length > 0 && activeTabId === null) {
-      setActiveTab(chapters[0].id)
-    }
-  }, [chapters, activeTabId, setActiveTab])
-
   // Tab关闭处理
   const handleClose = useCallback((key: string) => {
-    removeTab(key)
     onCloseChapter(key)
-  }, [removeTab, onCloseChapter])
+  }, [onCloseChapter])
 
   // 关闭其他Tab
   const handleCloseOthers = useCallback(() => {
     if (currentChapter) {
       chapters.filter(c => c.id !== currentChapter.id).forEach(c => {
-        removeTab(c.id)
         onCloseChapter(c.id)
       })
     }
-  }, [currentChapter, chapters, removeTab, onCloseChapter])
+  }, [currentChapter, chapters, onCloseChapter])
 
   // 关闭全部
   const handleCloseAll = useCallback(() => {
-    closeAllTabs()
     chapters.forEach(c => onCloseChapter(c.id))
-  }, [closeAllTabs, chapters, onCloseChapter])
+  }, [chapters, onCloseChapter])
 
   // 关闭指定 tab 右侧的所有 tab（不含 target）
   const handleCloseRight = useCallback((targetId: string) => {
     const idx = chapters.findIndex(c => c.id === targetId)
     if (idx < 0) return
     chapters.slice(idx + 1).forEach(c => {
-      removeTab(c.id)
       onCloseChapter(c.id)
     })
-  }, [chapters, removeTab, onCloseChapter])
+  }, [chapters, onCloseChapter])
 
   // 关闭除 target 外的所有 tab（以右键 target 为基准，区别于以激活 tab 为基准的 handleCloseOthers）
   const handleCloseOthersThan = useCallback((targetId: string) => {
     chapters.filter(c => c.id !== targetId).forEach(c => {
-      removeTab(c.id)
       onCloseChapter(c.id)
     })
-  }, [chapters, removeTab, onCloseChapter])
+  }, [chapters, onCloseChapter])
 
   // 切换到下一个Tab
   const handleSwitchToNext = useCallback(() => {
     if (chapters.length <= 1) return
-    const currentIndex = chapters.findIndex(c => c.id === activeTabId)
+    const currentIndex = chapters.findIndex(c => c.id === activeChapterId)
     const nextIndex = currentIndex === chapters.length - 1 ? 0 : currentIndex + 1
     const nextChapter = chapters[nextIndex]
-    setActiveTab(nextChapter.id)
     onSelectChapter(nextChapter)
-  }, [chapters, activeTabId, setActiveTab, onSelectChapter])
+  }, [chapters, activeChapterId, onSelectChapter])
 
   // 下拉菜单
   const menuItems: MenuProps['items'] = [
@@ -165,7 +150,6 @@ function EditorTabs({
 
   // Tab切换
   const handleChange = (key: string) => {
-    setActiveTab(key)
     const chapter = chapters.find(c => c.id === key)
     if (chapter) {
       onSelectChapter(chapter)
@@ -183,7 +167,7 @@ function EditorTabs({
       }}
     >
       <Tabs
-        activeKey={activeTabId || ''}
+        activeKey={activeChapterId || ''}
         items={items}
         onChange={handleChange}
         hideAdd

@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Layout, Button, Card, Empty, List, Typography, Space } from 'antd'
 import { PlusOutlined, FolderOpenOutlined, FileOutlined, ClockCircleOutlined } from '@ant-design/icons'
-import type { RecentProject, ProjectData } from '@/common/ipc'
+import type { ProjectData } from '@/common/ipc'
 import { appRegionStyle } from '../../styles/css'
-import { useProject } from '../../hooks/useIPC'
+import { useProjectStore } from '../../stores'
 import ProjectDialog from '../../components/Dialogs/ProjectDialog'
 import ThemeToggle from '../../components/ThemeToggle'
 
@@ -13,26 +13,13 @@ const { Title, Text } = Typography
 
 function Home() {
   const navigate = useNavigate()
-  const { getRecentProjects } = useProject()
 
-  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
+  // 最近项目唯一真源：zustand persist（localStorage），重启不丢；
+  // 写入统一发生在 ProjectDialog 的 create/open 成功回调
+  const { recentProjects } = useProjectStore()
+
   const [createDialogVisible, setCreateDialogVisible] = useState(false)
   const [openDialogVisible, setOpenDialogVisible] = useState(false)
-
-  // 加载最近项目
-  useEffect(() => {
-    loadRecentProjects()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载时加载一次
-  }, [])
-
-  const loadRecentProjects = async () => {
-    try {
-      const projects = await getRecentProjects()
-      setRecentProjects(projects)
-    } catch (error) {
-      console.error('加载最近项目失败:', error)
-    }
-  }
 
   // 打开最近项目
   const handleOpenProject = (projectPath: string) => {
@@ -42,7 +29,6 @@ function Home() {
   // 项目创建成功后跳转
   const handleProjectCreated = (project: ProjectData) => {
     navigate('/workspace', { state: { project: { name: project.name, path: project.path }, config: project.config } })
-    loadRecentProjects()
   }
 
   // 项目打开成功后跳转

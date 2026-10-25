@@ -10,7 +10,6 @@ import {
 const projectAPI: RendererToMainRequests = {
   'project:create': (params) => ipcRenderer.invoke('project:create', params),
   'project:open': (path) => ipcRenderer.invoke('project:open', path),
-  'project:getRecent': () => ipcRenderer.invoke('project:getRecent'),
 
   'file:read': (path) => ipcRenderer.invoke('file:read', path),
   'file:write': (params) => ipcRenderer.invoke('file:write', params),
@@ -69,8 +68,7 @@ const novelWriter: NovelWriterApi = {
   // 项目相关
   project: {
     create: projectAPI['project:create'],
-    open: projectAPI['project:open'],
-    getRecent: projectAPI['project:getRecent']
+    open: projectAPI['project:open']
   },
 
   // 文件相关
