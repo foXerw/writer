@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Layout, Button, Typography, App } from 'antd'
-import { PlusOutlined, BookOutlined } from '@ant-design/icons'
+import { PlusOutlined, BookOutlined, SaveOutlined } from '@ant-design/icons'
 import MonacoEditor, { type MonacoEditorHandle } from '../../components/Editor/MonacoEditor'
 import EditorToolbar from '../../components/Editor/EditorToolbar'
 import EditorTabs from '../../components/Layout/EditorTabs'
@@ -157,10 +157,7 @@ function Workspace() {
       case 'toggleOutline': setOutlineVisible((v) => !v); break
       case 'toggleChapterTree': setSidebarCollapsed((v) => !v); break
       // 菜单 → 侧栏对应 tab 并展开；'settings' 为「世界观设定」(Ctrl+2) → 侧栏设定 tab（非偏好页）
-      case 'characters':
-      case 'settings':
-      case 'wordCount':
-      case 'dailyStats':
+      case 'characters': case 'settings': case 'wordCount': case 'dailyStats':
         setSidebarTab(event === 'characters' ? 'characters' : event === 'settings' ? 'settings' : 'stats')
         setSidebarCollapsed(false)
         break
@@ -183,25 +180,31 @@ function Workspace() {
   // 主区渲染单一出口（§7.6 布局接缝）：M1 恒返回编辑器+大纲视图，M3 在此切出图谱视图
   const renderMainView = () => (
     <>
-      {/* Tab栏 */}
-      <EditorTabs
-        chapters={openedChapters} activeChapterId={currentChapter?.id ?? null}
-        currentChapter={currentChapter}
-        onSelectChapter={openChapter} onCloseChapter={closeChapter}
-      />
-      {/* 工具栏 */}
-      <Header style={{ padding: 0, background: 'var(--color-bg-base)', height: 'auto', lineHeight: 'normal' }}>
-        <EditorToolbar
-          onSave={handleSave} onExport={() => setExportDialogOpen(true)}
-          chapterTitle={chapterTitle} onTitleChange={setChapterTitle}
-          wordCount={countWords(editorContent)}
-          focusMode={focusMode} typewriterMode={typewriterMode}
-          onToggleFocus={setFocusMode} onToggleTypewriter={setTypewriterMode}
+      {/* Tab栏：专注模式隐藏 */}
+      {!focusMode && (
+        <EditorTabs
+          chapters={openedChapters} activeChapterId={currentChapter?.id ?? null} currentChapter={currentChapter}
+          onSelectChapter={openChapter} onCloseChapter={closeChapter}
         />
+      )}
+      {/* Header：专注模式降为仅标题+保存的轻量条 */}
+      <Header style={{ padding: 0, background: 'var(--color-bg-base)', height: 'auto', lineHeight: 'normal' }}>
+        {focusMode ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-2) var(--space-4)' }}>
+            <Text style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-sm)' }}>{chapterTitle}</Text>
+            <Button type="text" icon={<SaveOutlined />} onClick={handleSave}>保存</Button>
+          </div>
+        ) : (
+          <EditorToolbar
+            onSave={handleSave} onExport={() => setExportDialogOpen(true)} chapterTitle={chapterTitle} onTitleChange={setChapterTitle}
+            wordCount={countWords(editorContent)} focusMode={focusMode} typewriterMode={typewriterMode}
+            onToggleFocus={setFocusMode} onToggleTypewriter={setTypewriterMode}
+          />
+        )}
       </Header>
       {/* 编辑器 + 大纲 */}
       <Layout>
-        <Content style={{ background: 'var(--color-bg-base)', padding: 0, flex: 1 }}>
+        <Content style={{ background: 'var(--color-paper)', padding: focusMode ? '0 var(--space-6)' : 'var(--space-3) var(--space-4)', flex: 1 }}>
           {currentChapter ? (
             <MonacoEditor
               ref={editorRef} value={editorContent}
@@ -212,18 +215,14 @@ function Workspace() {
           ) : (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-tertiary)' }}>
               <BookOutlined style={{ fontSize: 48, marginBottom: 16 }} />
-              <Text style={{ color: 'var(--color-text-secondary)' }}>
-                {chapters.length === 0 ? '暂无章节，点击新建章节开始创作' : '选择一个章节开始编辑'}
-              </Text>
+              <Text style={{ color: 'var(--color-text-secondary)' }}>{chapters.length === 0 ? '暂无章节，点击新建章节开始创作' : '选择一个章节开始编辑'}</Text>
               {chapters.length === 0 && (
-                <Button type="primary" icon={<PlusOutlined />} onClick={createChapter} style={{ marginTop: 16 }}>
-                  新建章节
-                </Button>
+                <Button type="primary" icon={<PlusOutlined />} onClick={createChapter} style={{ marginTop: 16 }}>新建章节</Button>
               )}
             </div>
           )}
         </Content>
-        {outlineVisible && currentChapter && (
+        {outlineVisible && currentChapter && !focusMode && (
           <Sider width={260} style={{ background: 'var(--color-bg-elevated)', borderLeft: '1px solid var(--color-border)', overflow: 'auto' }}>
             <OutlineView content={editorContent} onNavigateToLine={(ln) => editorRef.current?.revealLineInCenter(ln)} />
           </Sider>

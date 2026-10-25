@@ -6,12 +6,22 @@ import { countWords } from '@/common/wordCount'
 // 动态导入 Monaco（避免 SSR 问题）
 let monaco: typeof import('monaco-editor') | null = null
 
+// 正文排印字体：思源宋体族优先（macOS Songti SC / Windows SimSun 兜底，西文 Georgia）
+const SERIF_FONT_FAMILY = "'Noto Serif SC','Source Han Serif SC','Songti SC','SimSun',Georgia,serif"
+
+// 行高随字号派生：1.9 倍留白，正文才有纸面呼吸感
+function createLineHeight(fontSize: number): number {
+  return Math.round(fontSize * 1.9)
+}
+
 // 写作主题配置
 const novelDarkTheme = {
   base: 'vs-dark' as const,
   inherit: true,
   rules: [
     { token: '', foreground: 'd4d4d4' },
+    // 兜底：取消 monospace 主题对文本 token 的粗体倾向，正文回到字重正常的宋体
+    { token: 'text', fontStyle: 'normal' },
     { token: 'heading', foreground: '569cd6', fontStyle: 'bold' },
     { token: 'emphasis', fontStyle: 'italic' },
     { token: 'strong', fontStyle: 'bold' },
@@ -20,11 +30,13 @@ const novelDarkTheme = {
     { token: 'comment', foreground: '6a9955' }
   ],
   colors: {
-    'editor.background': '#1e1e1e',
+    // editor.background 对齐 global.css --color-paper（dark #1f1e1c）
+    'editor.background': '#1f1e1c',
     'editor.foreground': '#d4d4d4',
-    'editor.lineHighlightBackground': '#2d2d2d',
-    'editor.selectionBackground': '#264f78',
-    'editorCursor.foreground': '#aeafad',
+    // 暖纸底上的行高亮/选区改暖中性，保证与正文仍可区分
+    'editor.lineHighlightBackground': '#282723',
+    'editor.selectionBackground': '#3a4a5e',
+    'editorCursor.foreground': '#e6e2d6',
     'editorLineNumber.foreground': '#858585',
     'editorLineNumber.activeForeground': '#c6c6c6',
     'editor.inactiveSelectionBackground': '#3a3d41',
@@ -38,6 +50,7 @@ const novelLightTheme = {
   inherit: true,
   rules: [
     { token: '', foreground: '141414' },
+    { token: 'text', fontStyle: 'normal' },
     { token: 'heading', foreground: '1677ff', fontStyle: 'bold' },
     { token: 'emphasis', fontStyle: 'italic' },
     { token: 'strong', fontStyle: 'bold' },
@@ -46,10 +59,12 @@ const novelLightTheme = {
     { token: 'comment', foreground: '8c8c8c' },
   ],
   colors: {
-    'editor.background': '#ffffff',
+    // editor.background 对齐 global.css --color-paper（light #faf8f2）
+    'editor.background': '#faf8f2',
     'editor.foreground': '#141414',
-    'editor.lineHighlightBackground': '#fafafa',
-    'editor.selectionBackground': '#bae0ff',
+    // 纸底偏暖，高亮/选区同步微调避免灰白脱节
+    'editor.lineHighlightBackground': '#f2eee3',
+    'editor.selectionBackground': '#d6e4f0',
     'editorCursor.foreground': '#1677ff',
     'editorLineNumber.foreground': 'bfbfbf',
     'editorLineNumber.activeForeground': '595959',
@@ -72,6 +87,8 @@ interface MonacoEditorProps {
   fontSize?: number
   wordWrap?: boolean
   showLineNumbers?: boolean
+  /** 可编辑排印列最大宽度（px），正文在此列内居中 */
+  maxWidthPx?: number
 }
 
 export interface MonacoEditorHandle {
@@ -90,7 +107,8 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   typewriterMode = false,
   fontSize = 16,
   wordWrap = true,
-  showLineNumbers = false
+  showLineNumbers = false,
+  maxWidthPx = 760
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
@@ -154,8 +172,8 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
           language,
           theme: themeMode === 'light' ? 'novel-light' : 'novel-dark',
           fontSize,
-          fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
-          lineHeight: 28,
+          fontFamily: SERIF_FONT_FAMILY,
+          lineHeight: createLineHeight(fontSize),
           wordWrap: wordWrap ? 'on' : 'off',
           minimap: { enabled: false },
           lineNumbers: showLineNumbers ? 'on' : 'off',
@@ -264,54 +282,23 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
     }
   }, [language])
 
-  // 更新只读状态
+  // 合并的选项更新 effect：readOnly / 专注 / 打字机 / 字号（含派生行高）/ 换行 / 行号
+  // 一次 updateOptions 覆盖原先 6 个各自为政的 effect；lineHeight 必须随 fontSize 联动，故同批派生
   useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current.updateOptions({ readOnly })
-    }
-  }, [readOnly])
-
-  // 更新专注模式
-  useEffect(() => {
-    if (editorRef.current && monaco) {
-      editorRef.current.updateOptions({
-        contextmenu: !focusMode,
-        renderWhitespace: focusMode ? 'none' : 'none'
-      })
-    }
-  }, [focusMode])
-
-  // 更新打字机模式
-  useEffect(() => {
-    if (editorRef.current && monaco) {
-      editorRef.current.updateOptions({
-        cursorBlinking: typewriterMode ? 'solid' : 'smooth',
-        cursorSmoothCaretAnimation: typewriterMode ? 'off' : 'on',
-        smoothScrolling: !typewriterMode
-      })
-    }
-  }, [typewriterMode])
-
-  // 更新字体大小
-  useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current.updateOptions({ fontSize })
-    }
-  }, [fontSize])
-
-  // 更新自动换行
-  useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current.updateOptions({ wordWrap: wordWrap ? 'on' : 'off' })
-    }
-  }, [wordWrap])
-
-  // 更新行号显示
-  useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current.updateOptions({ lineNumbers: showLineNumbers ? 'on' : 'off' })
-    }
-  }, [showLineNumbers])
+    if (!editorRef.current) return
+    editorRef.current.updateOptions({
+      readOnly,
+      contextmenu: !focusMode,
+      renderWhitespace: 'none',
+      cursorBlinking: typewriterMode ? 'solid' : 'smooth',
+      cursorSmoothCaretAnimation: typewriterMode ? 'off' : 'on',
+      smoothScrolling: !typewriterMode,
+      fontSize,
+      lineHeight: createLineHeight(fontSize),
+      wordWrap: wordWrap ? 'on' : 'off',
+      lineNumbers: showLineNumbers ? 'on' : 'off'
+    })
+  }, [readOnly, focusMode, typewriterMode, fontSize, wordWrap, showLineNumbers])
 
   // 跟随全局主题切换编辑器主题
   useEffect(() => {
@@ -321,10 +308,12 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   }, [themeMode])
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="editor-shell" style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--color-paper)' }}>
+      {/* 排印容器：可编辑列居中、两侧留纸面空白，正文像一页纸 */}
       <div
         ref={containerRef}
-        style={{ height: 'calc(100% - 24px)' }}
+        className="editor-print-column"
+        style={{ height: '100%', minHeight: 0, flex: 1, maxWidth: maxWidthPx, margin: '0 auto' }}
       />
       {isLoading && (
         <div style={{
@@ -336,7 +325,7 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'var(--color-bg-base)',
+          background: 'var(--color-paper)',
           color: 'var(--color-text-secondary)'
         }}>
           加载编辑器...
@@ -344,18 +333,21 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
       )}
       {wordCount && (
         <div
+          className="editor-status-bar"
           style={{
             height: 24,
             lineHeight: '24px',
-            padding: '0 16px',
+            padding: '0 var(--space-4)',
             background: 'var(--color-bg-elevated)',
             borderTop: '1px solid var(--color-border)',
-            color: 'var(--color-text-secondary)',
-            fontSize: 12,
-            textAlign: 'right'
+            color: 'var(--color-text-tertiary)',
+            fontSize: 'var(--font-xs)',
+            textAlign: 'right',
+            letterSpacing: '0.02em',
+            flexShrink: 0
           }}
         >
-          字数: {currentWordCount.toLocaleString()}
+          字数 {currentWordCount.toLocaleString()}
         </div>
       )}
     </div>
