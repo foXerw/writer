@@ -138,6 +138,14 @@ export interface ProjectData {
   createdAt: Date
   updatedAt: Date
   config: ProjectConfig
+  // v1 -> v2 迁移报告（未迁移的旧项目为 undefined/null）
+  migration?: MigrationReport | null
+}
+
+// v1 -> v2 迁移报告（备份位置与告警明细）
+export interface MigrationReport {
+  backupPath: string
+  warnings: string[]
 }
 
 // 项目配置
@@ -161,6 +169,8 @@ export interface Chapter {
   id: string
   title: string
   content: string
+  // v2 卷归属（v1 旧数据无此字段，迁移时补 null）
+  volumeId?: string | null
   order: number
   status: 'draft' | 'revising' | 'completed'
   wordCount: number
