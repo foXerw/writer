@@ -3,7 +3,13 @@
 // title/status/order/volumeId 全部来自 meta——v1 的「文件名当数据」字符串手术在此终结。
 // 契约：
 // - listChapters 单文件 parse 失败 console.warn + 跳过，绝不整体抛（一本坏章不让全书列表瘫痪）；
+//   分工契约（评审裁定）：列表侧容错跳过，点读写侧（getChapter/updateChapter）对坏档把
+//   `FRONTMATTER_*` 抛穿渲染层——坏章允许报错，绝不静默改写；
 // - updateChapter/renameChapter 对缺失 id 抛 `CHAPTER_MISSING: <id>`（v1 静默写新文件的行为被禁）；
+// - 仓库边界守卫（评审整改）：id 必须匹配 UUID_PATTERN，否则 `BAD_CHAPTER_ID: <id>`
+//   （deleteChapter 按幂等契约返回 false）——封死 v1 遗留的 `../` join 路径重定向；
+//   title 空白或含 \n/\r → `CHAPTER_TITLE_INVALID`，先于任何写盘抛（create 回显 title，
+//   update/rename 带 id）；
 // - 文件名（stem）即 id 的唯一权威：update/rename 写回读到的同一路径，绝不改名；
 // - moveChapter 重排后 order 重编为稠密 1..n（3.5 评审：碰撞场景靠稠密重编号扑灭）；
 // - title 变化（update patch 带 title 或 rename）：body 首非空行以 `# ` 开头 → 只替换该行
@@ -13,6 +19,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Chapter } from '../../../src/common/ipc'
 import type { ChapterMeta } from '../../../src/common/schema'
+import { UUID_PATTERN } from '../../../src/common/schema'
 import { parseChapterDoc, serializeChapterDoc } from '../../../src/common/chapterDoc'
 import { countWords } from '../../../src/common/wordCount'
 import { chapterFile, chaptersDir } from './paths'
@@ -36,6 +43,9 @@ export function listChapters(p: string): Chapter[] {
 }
 
 export function createChapter(p: string, title: string, volumeId?: string | null): Chapter {
+  if (isInvalidTitle(title)) {
+    throw new Error(`CHAPTER_TITLE_INVALID: ${title}`) // create 场景回显 title（此时尚无 id）
+  }
   const docs = loadAll(p)
   const order = docs.reduce((max, d) => Math.max(max, d.meta.order), 0) + 1
   const meta: ChapterMeta = {
@@ -65,6 +75,7 @@ export function renameChapter(p: string, id: string, newTitle: string): Chapter 
 }
 
 export function deleteChapter(p: string, id: string): boolean {
+  if (!UUID_PATTERN.test(id)) return false // 幂等契约优先于 BAD_CHAPTER_ID 抛错（评审裁定）
   const abs = chapterFile(p, id)
   if (!existsSync(abs)) return false // 幂等：缺失返回 false，不抛
   unlinkSync(abs)
@@ -73,6 +84,7 @@ export function deleteChapter(p: string, id: string): boolean {
 
 /** 把 id 移到 toOrder 所在槽位（handler 的 fromId/toId → toId.order 映射后调用），order 重编稠密 1..n。 */
 export function moveChapter(p: string, id: string, toOrder: number): boolean {
+  assertChapterId(id)
   const docs = loadAll(p).sort((a, b) => a.meta.order - b.meta.order || a.stem.localeCompare(b.stem))
   const fromIdx = docs.findIndex((d) => d.stem === id)
   if (fromIdx === -1) return false
@@ -94,6 +106,7 @@ export function moveChapter(p: string, id: string, toOrder: number): boolean {
 }
 
 export function getChapter(p: string, id: string): Chapter | null {
+  assertChapterId(id)
   const abs = chapterFile(p, id)
   if (!existsSync(abs)) return null
   const doc = parseChapterDoc(readFileSync(abs, 'utf8'), abs)
@@ -104,8 +117,24 @@ export function getChapter(p: string, id: string): Chapter | null {
 // 内部
 // ---------------------------------------------------------------------------
 
+/** id 形状门：文件名 = `<id>.md`，非 UUID（如 `../../evil`）会经 join 路径重定向越出章节目录——v1 遗留，边界封死。 */
+function assertChapterId(id: string): void {
+  if (!UUID_PATTERN.test(id)) {
+    throw new Error(`BAD_CHAPTER_ID: ${id}`)
+  }
+}
+
+/** front-matter 要求 title 为非空单行串；空白/含换行一律先于任何写盘拒绝（列表侧否则解析跳过=章节隐身）。 */
+function isInvalidTitle(title: string): boolean {
+  return title.trim() === '' || /[\n\r]/.test(title)
+}
+
 /** 读-改-写单一入口：title 变化触发 H1 同步；content 缺省时正文以磁盘为准。 */
 function applyPatch(p: string, id: string, patch: MetaPatch & { content?: string }): Chapter {
+  assertChapterId(id)
+  if (patch.title !== undefined && isInvalidTitle(patch.title)) {
+    throw new Error(`CHAPTER_TITLE_INVALID: ${id}`)
+  }
   const abs = chapterFile(p, id)
   if (!existsSync(abs)) {
     throw new Error(`CHAPTER_MISSING: ${id}`)
@@ -155,7 +184,7 @@ function loadAll(p: string): LoadedDoc[] {
       const { meta, body } = parseChapterDoc(readFileSync(abs, 'utf8'), name)
       docs.push({ stem: name.slice(0, -'.md'.length), abs, meta, body })
     } catch (err) {
-      console.warn(`跳过损坏章节文件: ${name}: ${err instanceof Error ? err.message : String(err)}`)
+      console.warn(`跳过损坏章节文件: ${abs}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
   return docs

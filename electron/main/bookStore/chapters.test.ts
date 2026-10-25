@@ -179,9 +179,10 @@ describe('renameChapter', () => {
     expect(renameChapter(p, c.id, '新题').content).toBe('纯正文。\n')
   })
 
-  it('rename 不存在的 id → CHAPTER_MISSING', () => {
+  it('rename 不存在的（合法形状）id → CHAPTER_MISSING', () => {
     const p = mkTmpBook()
-    expect(() => renameChapter(p, 'nope', 'x')).toThrow('CHAPTER_MISSING: nope')
+    const ghost = '99999999-8888-4888-8888-777777777777'
+    expect(() => renameChapter(p, ghost, 'x')).toThrow(`CHAPTER_MISSING: ${ghost}`)
   })
 })
 
@@ -229,7 +230,8 @@ describe('moveChapter', () => {
     createChapter(p, '乙')
     expect(moveChapter(p, a.id, 99)).toBe(true)
     expect(listChapters(p).map((x) => x.id).indexOf(a.id)).toBe(1)
-    expect(moveChapter(p, 'ghost', 1)).toBe(false)
+    expect(moveChapter(p, '99999999-8888-4888-8888-777777777777', 1)).toBe(false)
+    expect(() => moveChapter(p, 'ghost', 1)).toThrow('BAD_CHAPTER_ID: ghost')
   })
 })
 
@@ -252,7 +254,7 @@ describe('deleteChapter / getChapter', () => {
     const got = getChapter(p, c.id) as Chapter
     expect(got.id).toBe(c.id)
     expect(got.content).toBe('# 独章\n\n')
-    expect(getChapter(p, 'nope')).toBeNull()
+    expect(getChapter(p, '99999999-8888-4888-8888-777777777777')).toBeNull()
   })
 })
 
@@ -270,7 +272,8 @@ describe('listChapters 损坏文件容错', () => {
 
     const list = listChapters(p)
     expect(list.map((c) => c.id)).toEqual([good.id])
-    expect(console.warn).toHaveBeenCalled()
+    // 跳过警告必须带绝对路径（裸文件名在多书并行时无法定位）
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(join(chaptersDir(p), 'broken.md')))
   })
 
   it('meta.id 与文件名不一致的极端残档：以文件名为准（无 v1 split 手术）', () => {
@@ -289,6 +292,58 @@ describe('listChapters 损坏文件容错', () => {
       'utf8'
     )
     expect(listChapters(p)[0].id).toBe('bbbbbbbb-2222-4222-8222-222222222222')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 仓库边界守卫（评审整改：标题合法性 + id 形状）
+// ---------------------------------------------------------------------------
+
+describe('标题守卫 CHAPTER_TITLE_INVALID', () => {
+  it('rename("") → 抛错且磁盘逐字节不动、章节仍可列出', () => {
+    const p = mkTmpBook()
+    const c = createChapter(p, '标题')
+    const rawBefore = rawOf(p, c.id)
+
+    expect(() => renameChapter(p, c.id, '   ')).toThrow(`CHAPTER_TITLE_INVALID: ${c.id}`)
+    expect(rawOf(p, c.id)).toBe(rawBefore)
+    expect(listChapters(p).map((x) => x.id)).toEqual([c.id])
+  })
+
+  it('update{title:"a\\nb"} → 抛错且磁盘逐字节不动、章节仍可列出', () => {
+    const p = mkTmpBook()
+    const c = createChapter(p, '标题')
+    const rawBefore = rawOf(p, c.id)
+
+    expect(() => updateChapter(p, c.id, { title: 'a\nb', content: 'x' })).toThrow(
+      `CHAPTER_TITLE_INVALID: ${c.id}`
+    )
+    expect(rawOf(p, c.id)).toBe(rawBefore)
+    expect(listChapters(p).map((x) => x.id)).toEqual([c.id])
+  })
+
+  it('createChapter 空白/含换行标题 → CHAPTER_TITLE_INVALID（回显 title）且零落盘', () => {
+    const p = mkTmpBook()
+    expect(() => createChapter(p, '  ')).toThrow('CHAPTER_TITLE_INVALID:   ')
+    expect(() => createChapter(p, '甲\r\n乙')).toThrow('CHAPTER_TITLE_INVALID: 甲\r\n乙')
+    expect(existsSync(chaptersDir(p))).toBe(false)
+  })
+})
+
+describe('id 形状守卫 BAD_CHAPTER_ID', () => {
+  it('getChapter("../../evil") → 抛错（v1 遗留的 join 路径重定向被封死），FS 零触碰', () => {
+    const p = mkTmpBook()
+    createChapter(p, '正主')
+    expect(() => getChapter(p, '../../evil')).toThrow('BAD_CHAPTER_ID: ../../evil')
+    expect(existsSync(join(p, '..', 'evil.md'))).toBe(false)
+  })
+
+  it('update/rename/move 非 UUID id 一律抛；delete 按幂等契约返回 false', () => {
+    const p = mkTmpBook()
+    expect(() => updateChapter(p, '../x', { content: 'x' })).toThrow('BAD_CHAPTER_ID: ../x')
+    expect(() => renameChapter(p, 'nope', 'x')).toThrow('BAD_CHAPTER_ID: nope')
+    expect(deleteChapter(p, '../evil')).toBe(false)
+    expect(existsSync(join(p, '..', 'evil.md'))).toBe(false)
   })
 })
 

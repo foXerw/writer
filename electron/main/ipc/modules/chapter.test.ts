@@ -93,12 +93,12 @@ describe('chapter:* handlers 委托', () => {
 
   it('update 缺失 id → CHAPTER_MISSING 前缀透传给渲染层', async () => {
     const p = mkTmpBook()
-    const ghost = { id: 'nope', title: 't', content: 'x' } as Chapter
+    const ghost = { id: '99999999-8888-4888-8888-777777777777', title: 't', content: 'x' } as Chapter
     // 委托 handler 同步抛（真实 electron 会包装成 rejected invoke——两种形态都钉住）
     await expect(
       Promise.resolve().then(() =>
         getHandler('chapter:update')(null, { projectPath: p, chapter: ghost })
       )
-    ).rejects.toThrow('CHAPTER_MISSING: nope')
+    ).rejects.toThrow('CHAPTER_MISSING: 99999999-8888-4888-8888-777777777777')
   })
 })
