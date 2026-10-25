@@ -1,18 +1,11 @@
 // 渲染进程文件服务 - 封装IPC调用
 
-import type { Chapter, ProjectData, RecentProject, FileFilter, StatsData, ExportParams } from '../common/ipc'
+import type { Chapter, ProjectData, RecentProject, FileFilter, StatsData, ExportParams } from '@/common/ipc'
 
 // 调用主进程的IPC方法
 async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (window as any).electronAPI.invoke(channel, ...args) as Promise<T>
-}
-
-// 发送事件到主进程
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function send(channel: string, ...args: unknown[]): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).electronAPI.send(channel, ...args)
 }
 
 // 监听主进程事件

@@ -7,7 +7,7 @@ import {
   ColumnWidthOutlined
 } from '@ant-design/icons'
 import type { TabsProps, MenuProps } from 'antd'
-import type { Chapter } from '../../common/ipc'
+import type { Chapter } from '@/common/ipc'
 import { useTabStore } from '../../stores'
 
 interface EditorTabsProps {
@@ -25,8 +25,7 @@ function EditorTabs({
   onCloseChapter,
   onSaveChapter: _onSaveChapter
 }: EditorTabsProps) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { activeTabId, setActiveTab, addTab, removeTab, closeAllTabs, reorderTabs } = useTabStore()
+  const { activeTabId, setActiveTab, removeTab, closeAllTabs } = useTabStore()
 
   // 同步外部 chapters 变化到 store
   useEffect(() => {

@@ -18,8 +18,7 @@ import {
 } from '@ant-design/icons'
 import type { Chapter } from '@/common/ipc'
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const { Text, Title } = Typography
+const { Text } = Typography
 
 interface ExportDialogProps {
   open: boolean

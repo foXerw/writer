@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Layout, Button, Space, Typography, App } from 'antd'
 import {
@@ -37,8 +37,7 @@ import type { Chapter, ProjectConfig } from '@/common/ipc'
 import type { StatsData } from '@/common/ipc'
 
 const { Header, Content, Sider } = Layout
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const { Text, Title } = Typography
+const { Text } = Typography
 
 interface WorkspaceState {
   project?: { name: string; path: string }
@@ -58,7 +57,7 @@ function Workspace() {
   const setShortcutDialogOpen = useShortcutStore((s) => s.setDialogOpen)
   const editorRef = useRef<MonacoEditorHandle>(null)
 
-  const { getAllChapters, createChapter, updateChapter, deleteChapter } = useChapter()
+  const { getAllChapters, createChapter, updateChapter } = useChapter()
 
   // 侧边栏状态
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('chapters')
@@ -79,9 +78,6 @@ function Workspace() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [outlineVisible, setOutlineVisible] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [loading, setLoading] = useState(false)
 
   // 写作统计：今日字数/时长/历史（持久化于项目目录）
   const [stats, setStats] = useState<StatsData>(EMPTY_STATS)
@@ -118,7 +114,6 @@ function Workspace() {
 
   const loadChapters = async () => {
     if (!projectPath) return
-    setLoading(true)
     try {
       const data = await getAllChapters(projectPath)
       // 载入项目写作统计
@@ -138,8 +133,6 @@ function Workspace() {
       }
     } catch (error) {
       console.error('加载章节失败:', error)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -290,25 +283,6 @@ function Workspace() {
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
   }, [])
-
-  // 删除章节
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleDeleteChapter = async (chapterId: string) => {
-    if (!projectPath) return
-    try {
-      await deleteChapter(projectPath, chapterId)
-      setChapters(chapters.filter(c => c.id !== chapterId))
-      setOpenedChapters(prev => prev.filter(c => c.id !== chapterId))
-      if (currentChapter?.id === chapterId) {
-        setCurrentChapter(null)
-        setEditorContent('')
-        setChapterTitle('')
-      }
-      message.success('章节已删除')
-    } catch (error) {
-      message.error('删除失败')
-    }
-  }
 
   // 返回首页
   const handleBack = () => {

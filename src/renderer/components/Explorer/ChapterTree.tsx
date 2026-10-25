@@ -1,6 +1,7 @@
 import React from 'react'
 import { Tree, Button, Dropdown, message, Modal, Input, Typography } from 'antd'
 import type { MenuProps, TreeProps } from 'antd'
+import type { DataNode, EventDataNode } from 'antd/es/tree'
 import {
   PlusOutlined,
   FileTextOutlined,
@@ -151,9 +152,12 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
   }
 
   // 处理拖拽排序
+  // 注意：antd onDragEnd 的类型只保证 event/node 两个字段，dragNode 需显式收窄为可选，
+  // 缺失时直接返回（拖拽排序的完整实现将在后续任务重做）
   const handleDragEnd: TreeProps['onDragEnd'] = async (info) => {
-    const { node, dragNode } = info
-    if (!node.key || !dragNode.key || node.key === dragNode.key) return
+    const { node } = info
+    const dragNode = (info as { dragNode?: EventDataNode<DataNode> }).dragNode
+    if (!node.key || !dragNode?.key || node.key === dragNode.key) return
 
     try {
       await reorderChapters(projectPath, dragNode.key as string, node.key as string)

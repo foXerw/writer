@@ -50,8 +50,6 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
 }) => {
   const { getAllSettings, createSetting, updateSetting, deleteSetting } = useSetting()
   const [settings, setSettings] = useState<Setting[]>([])
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingSetting, setEditingSetting] = useState<Setting | null>(null)
   const [form] = Form.useForm()
@@ -59,14 +57,11 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
 
   // 加载设定列表
   const loadSettings = useCallback(async () => {
-    setLoading(true)
     try {
       const list = await getAllSettings(projectPath)
       setSettings(list)
     } catch (error) {
       console.error('加载设定失败:', error)
-    } finally {
-      setLoading(false)
     }
   }, [projectPath, getAllSettings])
 

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Layout, Button, Card, Empty, List, Typography, Space } from 'antd'
 import { PlusOutlined, FolderOpenOutlined, FileOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import type { RecentProject, ProjectData } from '@/common/ipc'
+import { appRegionStyle } from '../../styles/css'
 import { useProject } from '../../hooks/useIPC'
 import ProjectDialog from '../../components/Dialogs/ProjectDialog'
 import ThemeToggle from '../../components/ThemeToggle'
@@ -62,7 +63,7 @@ function Home() {
           alignItems: 'center',
           marginRight: 0,
           height: 32,
-          WebkitAppRegion: 'drag'
+          ...appRegionStyle('drag')
         }}>
           <Space size="small">
             <FileOutlined style={{ color: 'var(--color-primary)' }} />
@@ -75,7 +76,7 @@ function Home() {
                 background: 'var(--color-primary-bg)',
                 borderColor: 'var(--color-primary-border)',
                 color: '#fff',
-                WebkitAppRegion: 'no-drag'
+                ...appRegionStyle('no-drag')
               }}
             >
               新建项目
@@ -88,7 +89,7 @@ function Home() {
                 background: 'var(--color-bg-container)',
                 borderColor: 'var(--color-border-secondary)',
                 color: 'var(--color-text)',
-                WebkitAppRegion: 'no-drag'
+                ...appRegionStyle('no-drag')
               }}
             >
               打开项目

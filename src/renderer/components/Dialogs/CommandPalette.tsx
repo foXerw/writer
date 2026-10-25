@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Input, List, Typography, Space, Empty } from 'antd'
+import type { InputRef } from 'antd'
 import {
   SearchOutlined,
   FileTextOutlined,
@@ -40,7 +41,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
   menuItems = []
 }) => {
   const [searchText, setSearchText] = useState('')
-  const inputRef = useRef<Input>(null)
+  const inputRef = useRef<InputRef>(null)
 
   // 默认命令列表
   const defaultCommands: FilteredItem[] = [
@@ -219,7 +220,6 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
                       cursor: 'pointer',
                       transition: 'background 0.2s'
                     }}
-                    hoverable
                     onClick={() => handleSelect(item.key)}
                   >
                     <Space>

@@ -4,16 +4,8 @@ import * as path from 'path'
 import * as os from 'os'
 import * as url from 'url'
 import { randomUUID } from 'crypto'
-import { Chapter, ProjectType, Character, Setting, StatsData, ExportParams } from '../../src/common/ipc'
+import { Chapter, ProjectType, Character, Setting, StatsData, ExportParams } from '../../../src/common/ipc'
 import { setCurrentTheme } from '../theme'
-
-// 获取主窗口
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-let mainWindow: BrowserWindow | null = null
-
-export function setMainWindow(win: BrowserWindow) {
-  mainWindow = win
-}
 
 // 存储最近项目
 const recentProjects: Map<string, { name: string; path: string; lastOpened: Date }> = new Map()

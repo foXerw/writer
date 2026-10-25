@@ -1,7 +1,7 @@
-import React from 'react'
 import { Button, Tooltip } from 'antd'
 import { SunOutlined, MoonOutlined } from '@ant-design/icons'
 import { useSettingsStore } from '../stores'
+import { appRegionStyle } from '../styles/css'
 
 interface ThemeToggleProps {
   size?: 'small' | 'middle' | 'large'
@@ -19,7 +19,7 @@ function ThemeToggle({ size = 'small' }: ThemeToggleProps) {
         size={size}
         icon={isDark ? <SunOutlined /> : <MoonOutlined />}
         onClick={toggleTheme}
-        style={{ color: 'var(--color-text)', WebkitAppRegion: 'no-drag' }}
+        style={{ color: 'var(--color-text)', ...appRegionStyle('no-drag') }}
       />
     </Tooltip>
   )

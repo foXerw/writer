@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react'
 import { Tree, Typography, Empty } from 'antd'
 import type { TreeProps } from 'antd'
+import type { DataNode } from 'antd/es/tree'
 import {
   NodeIndexOutlined
 } from '@ant-design/icons'
@@ -47,7 +48,7 @@ const buildHeadingTree = (headings: HeadingItem[]): TreeProps['treeData'] => {
   const stack: { level: number; children: TreeProps['treeData'] }[] = [{ level: 0, children: root }]
 
   headings.forEach((heading) => {
-    const node: TreeProps['treeData'][0] = {
+    const node: DataNode = {
       key: heading.key,
       title: (
         <span style={{ paddingLeft: (heading.level - 1) * 16 }}>

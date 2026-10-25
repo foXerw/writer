@@ -57,8 +57,7 @@ function ProjectDialog({
 }: ProjectDialogProps) {
   const { createProject, openProject, getRecentProjects } = useProject()
   const { openDirectory } = useDialog()
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { recentProjects, addRecentProject } = useProjectStore()
+  const { addRecentProject } = useProjectStore()
 
   const [step, setStep] = useState<'templates' | 'config' | 'location'>('templates')
   const [selectedTemplate, setSelectedTemplate] = useState<ProjectType>('novel')

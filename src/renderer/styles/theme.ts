@@ -28,7 +28,7 @@ export const darkTheme: ThemeConfig = {
     Input: { colorBgContainer: '#2d2d2d', colorBorder: '#333333' },
     Select: { colorBgContainer: '#2d2d2d', colorBorder: '#333333' },
     List: { colorBgContainer: '#2d2d2d' },
-    Tabs: { colorBgContainer: '#252526', colorActiveBar: '#58a6ff' },
+    Tabs: { colorBgContainer: '#252526' },
   },
 }
 
@@ -58,7 +58,7 @@ export const lightTheme: ThemeConfig = {
     Input: { colorBgContainer: '#ffffff', colorBorder: '#d9d9d9' },
     Select: { colorBgContainer: '#ffffff', colorBorder: '#d9d9d9' },
     List: { colorBgContainer: '#ffffff' },
-    Tabs: { colorBgContainer: '#ffffff', colorActiveBar: '#1677ff' },
+    Tabs: { colorBgContainer: '#ffffff' },
   },
 }
 

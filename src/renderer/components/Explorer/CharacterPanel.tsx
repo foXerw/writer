@@ -27,8 +27,7 @@ import {
 import type { Character, CharacterGender, CharacterRole } from '@/common/ipc'
 import { useCharacter } from '../../hooks/useIPC'
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const { Text, Title } = Typography
+const { Text } = Typography
 const { TextArea } = Input
 
 interface CharacterPanelProps {
@@ -213,7 +212,6 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
                     cursor: 'pointer',
                     transition: 'background 0.2s'
                   }}
-                  hoverable
                   onClick={() => onSelectCharacter?.(character)}
                   actions={[
                     <Button

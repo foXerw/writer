@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import type { Chapter, ProjectData, RecentProject } from '../common/ipc'
+import type { Chapter, ProjectData, RecentProject } from '@/common/ipc'
 import type { Combo } from '../services/shortcutService'
 
 // Tab状态
