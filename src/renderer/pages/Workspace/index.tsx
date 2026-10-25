@@ -1,40 +1,23 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Layout, Button, Space, Typography, App } from 'antd'
-import {
-  FileTextOutlined,
-  PlusOutlined,
-  FolderOpenOutlined,
-  UserOutlined,
-  SettingOutlined,
-  BarChartOutlined,
-  BookOutlined,
-  LeftOutlined
-} from '@ant-design/icons'
-import MonacoEditor from '../../components/Editor/MonacoEditor'
+import { Layout, Button, Typography, App } from 'antd'
+import { PlusOutlined, BookOutlined } from '@ant-design/icons'
+import MonacoEditor, { type MonacoEditorHandle } from '../../components/Editor/MonacoEditor'
 import EditorToolbar from '../../components/Editor/EditorToolbar'
 import EditorTabs from '../../components/Layout/EditorTabs'
-import ChapterTree from '../../components/Explorer/ChapterTree'
-import CharacterPanel from '../../components/Explorer/CharacterPanel'
-import SettingPanel from '../../components/Explorer/SettingPanel'
-import StatsPanel from '../../components/Explorer/StatsPanel'
-import CommandPalette from '../../components/Dialogs/CommandPalette'
-import ExportDialog from '../../components/Dialogs/ExportDialog'
-import type { ExportOptions } from '../../components/Dialogs/ExportDialog'
 import OutlineView from '../../components/Editor/OutlineView'
-import type { MonacoEditorHandle } from '../../components/Editor/MonacoEditor'
+import SidebarPanel, { type SidebarTab } from '../../components/Workspace/SidebarPanel'
+import CommandPalette from '../../components/Dialogs/CommandPalette'
+import ExportDialog, { type ExportOptions } from '../../components/Dialogs/ExportDialog'
 import { useMenu } from '../../hooks/useMenu'
-import { startAutoSave, stopAutoSave } from '../../services/autoSave'
-import { assembleMarkdown, sanitizeFilename } from '../../services/exportService'
-import {
-  EMPTY_STATS, addWords, addMinutes, todayWords, todayMinutes,
-  computeStreak, recentHistory, STATS_DURATION_TICK_MS, STATS_IDLE_THRESHOLD_MS
-} from '../../services/statsService'
-import { useEditorStore, useShortcutStore } from '../../stores'
-import { useChapter, useDialog, useExport, useFile, useStats } from '../../hooks/useIPC'
 import { useKeyboard } from '../../hooks/useKeyboard'
+import { useChapter, useDialog, useExport, useFile } from '../../hooks/useIPC'
+import { assembleMarkdown, sanitizeFilename } from '../../services/exportService'
+import { useEditorStore, useShortcutStore } from '../../stores'
+import { useEditorSession } from './hooks/useEditorSession'
+import { useWritingStats } from './hooks/useWritingStats'
+import { useAutoSave } from './hooks/useAutoSave'
 import type { Chapter, ProjectConfig } from '@/common/ipc'
-import type { StatsData } from '@/common/ipc'
 import { countWords } from '@/common/wordCount'
 
 const { Header, Content, Sider } = Layout
@@ -46,8 +29,6 @@ interface WorkspaceState {
   config?: ProjectConfig
 }
 
-type SidebarTab = 'chapters' | 'characters' | 'settings' | 'stats'
-
 function Workspace() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -58,308 +39,98 @@ function Workspace() {
   const setShortcutDialogOpen = useShortcutStore((s) => s.setDialogOpen)
   const editorRef = useRef<MonacoEditorHandle>(null)
 
-  const { getAllChapters, createChapter, updateChapter } = useChapter()
-  const { getStats, saveStats } = useStats()
+  const { getAllChapters } = useChapter()
   const { exportDocument } = useExport()
   const { saveFile } = useDialog()
   const { writeFile } = useFile()
 
-  // 侧边栏状态
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('chapters')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-
-  // 章节状态
-  const [chapters, setChapters] = useState<Chapter[]>([])
-  const [openedChapters, setOpenedChapters] = useState<Chapter[]>([])
-  const [currentChapter, setCurrentChapter] = useState<Chapter | null>(null)
-  const [editorContent, setEditorContent] = useState('')
-  const [chapterTitle, setChapterTitle] = useState('')
-
-  // 模式状态
-  const [focusMode, setFocusMode] = useState(false)
-  const [typewriterMode, setTypewriterMode] = useState(false)
-
-  // 命令面板
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
-  const [outlineVisible, setOutlineVisible] = useState(false)
-  const [exportDialogOpen, setExportDialogOpen] = useState(false)
-
-  // 写作统计：今日字数/时长/历史（持久化于项目目录）
-  const [stats, setStats] = useState<StatsData>(EMPTY_STATS)
-  const statsRef = useRef(stats)
-  statsRef.current = stats
-  const statsLoadedRef = useRef(false)
-  const prevLenRef = useRef(0)           // 当前章上一刻字数（countWords 口径），用于增量
-  const lastActivityRef = useRef(0)      // 最近一次按键时间戳
-
+  // 路由参数与项目配置
   const projectPath = state?.project?.path || state?.projectPath
-  // 镜像 ref：供 beforeunload 的 []-deps effect 避免陈旧闭包
-  const projectPathRef = useRef(projectPath)
-  projectPathRef.current = projectPath
   const projectName = state?.project?.name || '未命名项目'
   const config = state?.config
   const autoSaveEnabled = config?.autoSave ?? true
   const autoSaveInterval = config?.autoSaveInterval ?? 30000
-  const isDirtyRef = useRef(false)
-  const editorContentRef = useRef(editorContent)
+
+  // 侧边栏状态（菜单事件需要驱动，故保留在 Workspace）
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('chapters')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  // 模式状态
+  const [focusMode, setFocusMode] = useState(false)
+  const [typewriterMode, setTypewriterMode] = useState(false)
+  // 命令面板 / 大纲 / 导出对话框
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [outlineVisible, setOutlineVisible] = useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+
+  // 章节会话：save/flush 并发语义（dirty 门控 / LIVE id 镜像 / 函数式回写）全部在 hook 内
+  const session = useEditorSession(projectPath)
+  const { chapters, openedChapters, currentChapter, editorContent, chapterTitle, setChapterTitle,
+    loadChapters, openChapter, closeChapter, createChapter, save, flushIfDirty, handleEditorChange } = session
+
+  // 写作统计：countWords 增量（切章重置基线）/ 60s 活跃分钟 / 3s 防抖落盘
+  const stats = useWritingStats({ projectPath, chapters, editorContent, currentChapterId: currentChapter?.id ?? null })
+  const { persistNow } = stats
+
+  // 自动保存：按项目配置间隔静默 flush（取代原 services/autoSave.ts）
+  useAutoSave({ enabled: autoSaveEnabled, intervalMs: autoSaveInterval, chapterId: currentChapter?.id ?? null, flush: flushIfDirty })
+
+  // 关窗/退出兜底：fire-and-forget flush + 统计落盘（稳定引用，内部读最新镜像）；主要保障仍是切章/返回的显式 flush
   useEffect(() => {
-    editorContentRef.current = editorContent
-  }, [editorContent])
-  // 镜像 LIVE current chapter id，每次渲染更新，确保异步 resolve 时读到最新值。
-  const currentChapterIdRef = useRef<string | null>(currentChapter?.id ?? null)
-  currentChapterIdRef.current = currentChapter?.id ?? null
-
-  // 加载章节列表
-  useEffect(() => {
-    if (projectPath) {
-      loadChapters()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 projectPath 变化时加载
-  }, [projectPath])
-
-  const loadChapters = async () => {
-    if (!projectPath) return
-    try {
-      const data = await getAllChapters(projectPath)
-      // 载入项目写作统计
-      try {
-        const loaded = await getStats(projectPath)
-        setStats(loaded && loaded.dailyHistory ? loaded : EMPTY_STATS)
-      } catch (e) {
-        console.error('载入统计失败:', e)
-        setStats(EMPTY_STATS)
-      }
-      statsLoadedRef.current = true
-      setChapters(data)
-      if (data.length > 0) {
-        const firstChapter = data[0]
-        setOpenedChapters([firstChapter])
-        selectChapter(firstChapter)
-      }
-    } catch (error) {
-      console.error('加载章节失败:', error)
-    }
-  }
-
-  // 打开章节
-  const handleOpenChapter = (chapter: Chapter) => {
-    setOpenedChapters(prev => {
-      if (prev.find(c => c.id === chapter.id)) {
-        return prev
-      }
-      return [...prev, chapter]
-    })
-    selectChapter(chapter)
-  }
-
-  // 关闭章节
-  const handleCloseChapter = (chapterId: string) => {
-    setOpenedChapters(prev => {
-      const filtered = prev.filter(c => c.id !== chapterId)
-      if (currentChapter?.id === chapterId && filtered.length > 0) {
-        selectChapter(filtered[0])
-      }
-      return filtered
-    })
-  }
-
-  // 选择章节
-  const selectChapter = (chapter: Chapter) => {
-    flushIfDirty() // 先保存即将离开的当前章（若脏）
-    setCurrentChapter(chapter)
-    setEditorContent(chapter.content)
-    setChapterTitle(chapter.title)
-    prevLenRef.current = countWords(chapter.content)   // 切章不计增量
-  }
-
-  // 新建章节
-  const handleCreateChapter = async () => {
-    if (!projectPath) return
-    const title = `新章节 ${chapters.length + 1}`
-    try {
-      const newChapter = await createChapter(projectPath, title)
-      setChapters([...chapters, newChapter])
-      handleOpenChapter(newChapter)
-      message.success('章节创建成功')
-    } catch (error) {
-      message.error('章节创建失败')
-    }
-  }
-
-  // 保存当前章节到磁盘。silent=true 用于切章/返回/关窗/自动保存的静默 flush。
-  const saveCurrentChapter = async (opts?: { silent?: boolean }): Promise<void> => {
-    if (!currentChapter || !projectPath) return
-    // 静默 flush：无脏数据则跳过；手动保存（silent=false）尊重显式 Ctrl+S，不门控 dirty。
-    if (opts?.silent && !isDirtyRef.current) return
-    const outgoing = currentChapter
-    try {
-      const updated = await updateChapter(projectPath, {
-        ...outgoing,
-        title: chapterTitle,
-        content: editorContent
-      })
-      // 函数式更新避免陈旧闭包；仅当仍是同一章时同步 currentChapter，防止切走后被回写。
-      setChapters(prev => prev.map(c => (c.id === updated.id ? updated : c)))
-      setOpenedChapters(prev => prev.map(c => (c.id === updated.id ? updated : c)))
-      setCurrentChapter(prev => (prev && prev.id === updated.id ? updated : prev))
-      // 仅当仍是同一章时才清 dirty，防止「切章 + 编辑新章」期间被陈旧回写清掉新章脏标记。
-      if (currentChapterIdRef.current === outgoing.id) {
-        isDirtyRef.current = false
-      }
-      if (!opts?.silent) {
-        message.success('保存成功')
-      }
-    } catch (error) {
-      if (opts?.silent) {
-        message.error('自动保存失败，请手动保存 (Ctrl+S)')
-      } else {
-        message.error('保存失败')
-      }
-    }
-  }
-
-  // 手动保存（Ctrl+S / 菜单保存 / 工具栏）：带成功提示，不门控 dirty。
-  const handleSave = () => {
-    void saveCurrentChapter({ silent: false })
-  }
-
-  // 静默 flush 脏数据：切章 / 返回 / 关窗 / 自动保存调用。
-  const flushIfDirty = () => {
-    void saveCurrentChapter({ silent: true })
-  }
-
-  const flushIfDirtyRef = useRef(flushIfDirty)
-  useEffect(() => {
-    flushIfDirtyRef.current = flushIfDirty
-  })
-
-  // 编辑器内容变化包装：置 dirty
-  const handleEditorChange = (val: string) => {
-    setEditorContent(val)
-    isDirtyRef.current = true
-    // 正向字数增量累计今日（字数口径 = countWords 差值）；记录活跃时间戳
-    const curWords = countWords(val)
-    const delta = curWords - prevLenRef.current
-    prevLenRef.current = curWords
-    if (delta > 0) {
-      setStats(s => addWords(s, delta))
-    }
-    lastActivityRef.current = Date.now()
-  }
-
-  // 自动保存：按配置间隔静默写盘（不弹 toast）
-  useEffect(() => {
-    if (!currentChapter || !autoSaveEnabled) return
-    startAutoSave({
-      interval: autoSaveInterval,
-      onSave: () => {
-        void flushIfDirtyRef.current()
-        return editorContentRef.current
-      }
-    })
-    return () => stopAutoSave()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意只依赖章节 id（切换章时重启定时器），非整个 currentChapter 对象
-  }, [currentChapter?.id, autoSaveEnabled, autoSaveInterval])
-
-  // 写作时长：每 60s，若近 IDLE 阈值内有按键则今日 +1 分钟
-  useEffect(() => {
-    if (!projectPath) return
-    const timer = setInterval(() => {
-      if (Date.now() - lastActivityRef.current < STATS_IDLE_THRESHOLD_MS) {
-        setStats(s => addMinutes(s, 1))
-      }
-    }, STATS_DURATION_TICK_MS)
-    return () => clearInterval(timer)
-  }, [projectPath])
-
-  // 统计持久化：变化后防抖 3s 写盘
-  useEffect(() => {
-    if (!projectPath || !statsLoadedRef.current) return
-    const t = setTimeout(() => { void saveStats(projectPath, stats) }, 3000)
-    return () => clearTimeout(t)
-  }, [stats, projectPath, saveStats])
-
-  // 关窗/退出兜底：fire-and-forget 触发一次 flush（异步 IPC，尽力而为）。
-  // 主要保障是切章/返回的显式 flush；此处为最后兜底。
-  useEffect(() => {
-    const handler = () => {
-      flushIfDirtyRef.current()
-      if (projectPathRef.current) void saveStats(projectPathRef.current, statsRef.current)
-    }
+    const handler = () => { flushIfDirty(); persistNow() }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
-    // saveStats 由 useCallback([门面]) 提供，身份跨渲染稳定，加入 deps 不会重复订阅
-  }, [saveStats])
+  }, [flushIfDirty, persistNow])
 
-  // 返回首页
-  const handleBack = () => {
-    flushIfDirty()
-    if (projectPath) void saveStats(projectPath, statsRef.current)
-    navigate('/')
-  }
+  // 返回首页：先 fire-and-forget flush + 统计落盘，再路由
+  const handleBack = () => { flushIfDirty(); persistNow(); navigate('/') }
+
+  // 手动保存（Ctrl+S / 菜单保存 / 工具栏）：带成功提示，不门控 dirty。
+  const handleSave = () => { void save({ silent: false }) }
 
   // 导出 Markdown：flush 当前章 → 磁盘读权威章节 → 按范围选 → 拼装 → 保存框 → 写盘
   const handleExport = async (options: ExportOptions): Promise<{ ok: boolean }> => {
     if (!projectPath) return { ok: false }
     // 1) 先把当前章未保存编辑落盘（复用批次1 chokepoint）
-    await saveCurrentChapter({ silent: true })
+    await save({ silent: true })
     // 2) 从磁盘读权威最新章节列表，按 order 排序
     const all = await getAllChapters(projectPath)
     const sorted = [...all].sort((a, b) => a.order - b.order)
     // 3) 按范围选章
     let selected: Chapter[]
-    if (options.includeChapters === 'current') {
-      selected = sorted.filter(c => c.id === currentChapter?.id)
-    } else if (options.includeChapters === 'selected') {
+    if (options.includeChapters === 'current') selected = sorted.filter(c => c.id === currentChapter?.id)
+    else if (options.includeChapters === 'selected') {
       const ids = options.selectedChapterIds ?? []
       selected = sorted.filter(c => ids.includes(c.id))
-    } else {
-      selected = sorted
-    }
+    } else selected = sorted
     // 4) 空集合兜底
-    if (selected.length === 0) {
-      message.warning('无章节可导出')
-      return { ok: false }
-    }
+    if (selected.length === 0) { message.warning('无章节可导出'); return { ok: false } }
     // 5) 按格式选扩展名 + 过滤器
     const fmt = options.format
     const ext = fmt === 'word' ? 'docx' : fmt === 'pdf' ? 'pdf' : fmt === 'epub' ? 'epub' : 'md'
     const filterName = fmt === 'word' ? 'Word' : fmt === 'pdf' ? 'PDF' : fmt === 'epub' ? 'ePub' : 'Markdown'
-    const savePath = await saveFile(`${sanitizeFilename(projectName)}.${ext}`, [
-      { name: filterName, extensions: [ext] }
-    ])
+    const savePath = await saveFile(`${sanitizeFilename(projectName)}.${ext}`, [{ name: filterName, extensions: [ext] }])
     if (!savePath) return { ok: false }
     // 6) 生成/写盘：markdown 走本地拼装；word/pdf/epub 走主进程
+    const addFrontMatter = options.options?.addFrontMatter ?? true
+    const addToc = options.options?.addToc ?? true
     let ok = false
     try {
       if (fmt === 'markdown') {
         const md = assembleMarkdown({
-          projectName,
-          chapters: selected,
-          addFrontMatter: options.options?.addFrontMatter ?? true,
-          addToc: options.options?.addToc ?? true,
+          projectName, chapters: selected, addFrontMatter, addToc,
           date: new Date().toISOString().slice(0, 10)
         })
         ok = await writeFile(savePath, md)
       } else {
         ok = await exportDocument(fmt as 'word' | 'pdf' | 'epub', {
-          chapters: selected,
-          projectName,
-          options: {
-            addFrontMatter: options.options?.addFrontMatter ?? true,
-            addToc: options.options?.addToc ?? true
-          },
-          savePath
+          chapters: selected, projectName, options: { addFrontMatter, addToc }, savePath
         })
       }
     } catch (e) {
       console.error('导出失败:', e)
       ok = false
     }
-    if (ok) {
-      message.success('导出成功')
-      return { ok: true }
-    }
+    if (ok) { message.success('导出成功'); return { ok: true } }
     message.error('导出失败')
     return { ok: false }
   }
@@ -367,20 +138,11 @@ function Workspace() {
   // 命令面板处理
   const handleCommand = useCallback((command: string) => {
     switch (command) {
-      case 'file:save':
-        handleSave()
-        break
-      case 'chapter:new':
-        handleCreateChapter()
-        break
-      case 'view:focusMode':
-        setFocusMode(prev => !prev)
-        break
-      case 'view:typewriterMode':
-        setTypewriterMode(prev => !prev)
-        break
-      default:
-        break
+      case 'file:save': handleSave(); break
+      case 'chapter:new': createChapter(); break
+      case 'view:focusMode': setFocusMode(prev => !prev); break
+      case 'view:typewriterMode': setTypewriterMode(prev => !prev); break
+      default: break
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 依赖 chapters/模式状态；命令内调用的 handler 非稳定引用，按现状即可
   }, [chapters, focusMode, typewriterMode])
@@ -388,303 +150,107 @@ function Workspace() {
   // 菜单栏事件
   useMenu((event, ...args) => {
     switch (event) {
-      case 'newChapter':
-        handleCreateChapter()
-        break
-      case 'save':
-        handleSave()
-        break
-      case 'focusMode':
-        setFocusMode(args[0] as boolean)
-        break
-      case 'typewriterMode':
-        setTypewriterMode(args[0] as boolean)
-        break
-      case 'toggleOutline':
-        setOutlineVisible((v) => !v)
-        break
-      case 'toggleChapterTree':
-        setSidebarCollapsed((v) => !v)
-        break
+      case 'newChapter': createChapter(); break
+      case 'save': handleSave(); break
+      case 'focusMode': setFocusMode(args[0] as boolean); break
+      case 'typewriterMode': setTypewriterMode(args[0] as boolean); break
+      case 'toggleOutline': setOutlineVisible((v) => !v); break
+      case 'toggleChapterTree': setSidebarCollapsed((v) => !v); break
+      // 菜单 → 侧栏对应 tab 并展开；'settings' 为「世界观设定」(Ctrl+2) → 侧栏设定 tab（非偏好页）
       case 'characters':
-        setSidebarTab('characters')
-        setSidebarCollapsed(false)
-        break
-      case 'settings': // 菜单「世界观设定」(Ctrl+2) → 侧栏设定 tab（非偏好页）
-        setSidebarTab('settings')
-        setSidebarCollapsed(false)
-        break
+      case 'settings':
       case 'wordCount':
       case 'dailyStats':
-        setSidebarTab('stats')
+        setSidebarTab(event === 'characters' ? 'characters' : event === 'settings' ? 'settings' : 'stats')
         setSidebarCollapsed(false)
         break
       // 'plot' (Ctrl+3) 无对应面板，暂不处理
-      case 'export':
-        setExportDialogOpen(true)
-        break
-      case 'shortcuts':
-        setShortcutDialogOpen(true)
-        break
-      default:
-        break
+      case 'export': setExportDialogOpen(true); break
+      case 'shortcuts': setShortcutDialogOpen(true); break
+      default: break
     }
   })
 
   // 键盘快捷键
   useKeyboard({
-    onSave: handleSave,
-    onNew: handleCreateChapter,
+    onSave: handleSave, onNew: createChapter,
     onToggleFocusMode: () => setFocusMode(prev => !prev),
     onToggleTypewriterMode: () => setTypewriterMode(prev => !prev),
     onToggleCommandPalette: () => setCommandPaletteOpen(prev => !prev),
-    onToggleSidebar: () => setSidebarCollapsed((v) => !v),
-    onOutline: () => setOutlineVisible((v) => !v)
+    onToggleSidebar: () => setSidebarCollapsed((v) => !v), onOutline: () => setOutlineVisible((v) => !v)
   })
 
-  // 侧边栏Tab配置
-  const sidebarTabs = [
-    { key: 'chapters', label: '章节', icon: <FileTextOutlined /> },
-    { key: 'characters', label: '角色', icon: <UserOutlined /> },
-    { key: 'settings', label: '设定', icon: <SettingOutlined /> },
-    { key: 'stats', label: '统计', icon: <BarChartOutlined /> }
-  ]
+  // 主区渲染单一出口（§7.6 布局接缝）：M1 恒返回编辑器+大纲视图，M3 在此切出图谱视图
+  const renderMainView = () => (
+    <>
+      {/* Tab栏 */}
+      <EditorTabs
+        chapters={openedChapters} activeChapterId={currentChapter?.id ?? null}
+        currentChapter={currentChapter}
+        onSelectChapter={openChapter} onCloseChapter={closeChapter}
+      />
+      {/* 工具栏 */}
+      <Header style={{ padding: 0, background: 'var(--color-bg-base)', height: 'auto', lineHeight: 'normal' }}>
+        <EditorToolbar
+          onSave={handleSave} onExport={() => setExportDialogOpen(true)}
+          chapterTitle={chapterTitle} onTitleChange={setChapterTitle}
+          wordCount={countWords(editorContent)}
+          focusMode={focusMode} typewriterMode={typewriterMode}
+          onToggleFocus={setFocusMode} onToggleTypewriter={setTypewriterMode}
+        />
+      </Header>
+      {/* 编辑器 + 大纲 */}
+      <Layout>
+        <Content style={{ background: 'var(--color-bg-base)', padding: 0, flex: 1 }}>
+          {currentChapter ? (
+            <MonacoEditor
+              ref={editorRef} value={editorContent}
+              onChange={handleEditorChange} onSave={handleSave}
+              focusMode={focusMode} typewriterMode={typewriterMode}
+              fontSize={fontSize} wordWrap={wordWrap} showLineNumbers={showLineNumbers}
+            />
+          ) : (
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-tertiary)' }}>
+              <BookOutlined style={{ fontSize: 48, marginBottom: 16 }} />
+              <Text style={{ color: 'var(--color-text-secondary)' }}>
+                {chapters.length === 0 ? '暂无章节，点击新建章节开始创作' : '选择一个章节开始编辑'}
+              </Text>
+              {chapters.length === 0 && (
+                <Button type="primary" icon={<PlusOutlined />} onClick={createChapter} style={{ marginTop: 16 }}>
+                  新建章节
+                </Button>
+              )}
+            </div>
+          )}
+        </Content>
+        {outlineVisible && currentChapter && (
+          <Sider width={260} style={{ background: 'var(--color-bg-elevated)', borderLeft: '1px solid var(--color-border)', overflow: 'auto' }}>
+            <OutlineView content={editorContent} onNavigateToLine={(ln) => editorRef.current?.revealLineInCenter(ln)} />
+          </Sider>
+        )}
+      </Layout>
+    </>
+  )
+  const mainView = renderMainView()
 
   return (
     <Layout style={{ height: '100vh' }}>
       {/* 命令面板 */}
-      <CommandPalette
-        open={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        onExecute={handleCommand}
-      />
-      <ExportDialog
-        open={exportDialogOpen}
-        onClose={() => setExportDialogOpen(false)}
-        chapters={chapters}
-        projectName={projectName}
-        onExport={handleExport}
-      />
-
+      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} onExecute={handleCommand} />
+      <ExportDialog open={exportDialogOpen} onClose={() => setExportDialogOpen(false)} chapters={chapters} projectName={projectName} onExport={handleExport} />
       {/* 左侧边栏 */}
-      <Sider
-        width={sidebarCollapsed ? 0 : 280}
-        collapsedWidth={48}
-        collapsed={sidebarCollapsed || focusMode}
-        style={{ background: 'var(--color-bg-elevated)', overflow: 'hidden' }}
-      >
-        {/* 顶部项目信息 */}
-        <div style={{
-          padding: sidebarCollapsed ? '12px 0' : '12px 16px',
-          borderBottom: '1px solid var(--color-border)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: sidebarCollapsed ? 'center' : 'space-between'
-        }}>
-          {!sidebarCollapsed && (
-            <Space>
-              <Button
-                type="text"
-                icon={<LeftOutlined />}
-                onClick={handleBack}
-                style={{ color: 'var(--color-text)' }}
-              />
-              <Text style={{ color: 'var(--color-text)', fontWeight: 500, fontSize: 13 }} ellipsis>
-                {projectName}
-              </Text>
-            </Space>
-          )}
-          {!sidebarCollapsed && (
-            <Button
-              type="text"
-              icon={<SettingOutlined />}
-              onClick={() => navigate('/settings')}
-              style={{ color: 'var(--color-text)' }}
-            />
-          )}
-          {sidebarCollapsed && (
-            <Button
-              type="text"
-              icon={<LeftOutlined />}
-              onClick={handleBack}
-              style={{ color: 'var(--color-text)' }}
-            />
-          )}
-        </div>
-
-        {/* 侧边栏Tab */}
-        {!sidebarCollapsed && (
-          <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 50px)' }}>
-            {/* Tab按钮栏 */}
-            <div style={{
-              display: 'flex',
-              borderBottom: '1px solid var(--color-border)',
-              background: 'var(--color-bg-base)'
-            }}>
-              {sidebarTabs.map(tab => (
-                <Button
-                  key={tab.key}
-                  type="text"
-                  onClick={() => setSidebarTab(tab.key as SidebarTab)}
-                  style={{
-                    flex: 1,
-                    height: 36,
-                    borderRadius: 0,
-                    color: sidebarTab === tab.key ? 'var(--color-text)' : 'var(--color-text-secondary)',
-                    background: sidebarTab === tab.key ? 'var(--color-bg-elevated)' : 'transparent',
-                    borderBottom: sidebarTab === tab.key ? '2px solid var(--color-primary)' : '2px solid transparent',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 4,
-                    fontSize: 12
-                  }}
-                >
-                  {tab.icon}
-                  {tab.label}
-                </Button>
-              ))}
-            </div>
-
-            {/* Tab内容区 */}
-            <div style={{ flex: 1, overflow: 'auto', background: 'var(--color-bg-elevated)' }}>
-              {sidebarTab === 'chapters' && (
-                <ChapterTree
-                  projectPath={projectPath || ''}
-                  chapters={chapters}
-                  selectedChapterId={currentChapter?.id}
-                  onSelectChapter={handleOpenChapter}
-                  onChapterChange={loadChapters}
-                />
-              )}
-              {sidebarTab === 'characters' && (
-                <CharacterPanel
-                  projectPath={projectPath || ''}
-                />
-              )}
-              {sidebarTab === 'settings' && (
-                <SettingPanel
-                  projectPath={projectPath || ''}
-                />
-              )}
-              {sidebarTab === 'stats' && (
-                <StatsPanel
-                  todayWordCount={todayWords(stats)}
-                  totalWordCount={chapters.reduce((sum, c) => sum + c.wordCount, 0)}
-                  writingDuration={todayMinutes(stats)}
-                  streak={computeStreak(stats)}
-                  dailyGoal={config?.dailyGoal ?? 2000}
-                  history={recentHistory(stats, 14)}
-                />
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 收起按钮 */}
-        <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          padding: '8px',
-          borderTop: '1px solid var(--color-border)',
-          textAlign: 'center'
-        }}>
-          <Button
-            type="text"
-            icon={sidebarCollapsed ? <FolderOpenOutlined /> : <FolderOpenOutlined />}
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            style={{ color: 'var(--color-text-tertiary)' }}
-          />
-        </div>
-      </Sider>
-
-      {/* 主内容区 */}
+      <SidebarPanel
+        projectPath={projectPath || ''} projectName={projectName}
+        tab={sidebarTab} collapsed={sidebarCollapsed} focusMode={focusMode}
+        chapters={chapters} selectedChapterId={currentChapter?.id ?? null}
+        statsView={stats} dailyGoal={config?.dailyGoal ?? 2000}
+        onOpenChapter={openChapter} onChaptersChanged={loadChapters}
+        onBack={handleBack} onOpenSettings={() => navigate('/settings')}
+        onSetTab={setSidebarTab} onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+      />
+      {/* 主内容区：单一出口 */}
       <Layout>
-        {/* Tab栏 */}
-        <EditorTabs
-          chapters={openedChapters}
-          activeChapterId={currentChapter?.id ?? null}
-          currentChapter={currentChapter}
-          onSelectChapter={handleOpenChapter}
-          onCloseChapter={handleCloseChapter}
-        />
-
-        {/* 工具栏 */}
-        <Header style={{
-          padding: 0,
-          background: 'var(--color-bg-base)',
-          height: 'auto',
-          lineHeight: 'normal'
-        }}>
-          <EditorToolbar
-            onSave={handleSave}
-            onExport={() => setExportDialogOpen(true)}
-            chapterTitle={chapterTitle}
-            onTitleChange={setChapterTitle}
-            wordCount={countWords(editorContent)}
-            focusMode={focusMode}
-            typewriterMode={typewriterMode}
-            onToggleFocus={setFocusMode}
-            onToggleTypewriter={setTypewriterMode}
-          />
-        </Header>
-
-        {/* 编辑器 + 大纲 */}
-        <Layout>
-          <Content style={{ background: 'var(--color-bg-base)', padding: 0, flex: 1 }}>
-            {currentChapter ? (
-              <MonacoEditor
-                ref={editorRef}
-                value={editorContent}
-                onChange={handleEditorChange}
-                onSave={handleSave}
-                focusMode={focusMode}
-                typewriterMode={typewriterMode}
-                fontSize={fontSize}
-                wordWrap={wordWrap}
-                showLineNumbers={showLineNumbers}
-              />
-            ) : (
-              <div style={{
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--color-text-tertiary)'
-              }}>
-                <BookOutlined style={{ fontSize: 48, marginBottom: 16 }} />
-                <Text style={{ color: 'var(--color-text-secondary)' }}>
-                  {chapters.length === 0 ? '暂无章节，点击新建章节开始创作' : '选择一个章节开始编辑'}
-                </Text>
-                {chapters.length === 0 && (
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={handleCreateChapter}
-                    style={{ marginTop: 16 }}
-                  >
-                    新建章节
-                  </Button>
-                )}
-              </div>
-            )}
-          </Content>
-
-          {outlineVisible && currentChapter && (
-            <Sider
-              width={260}
-              style={{ background: 'var(--color-bg-elevated)', borderLeft: '1px solid var(--color-border)', overflow: 'auto' }}
-            >
-              <OutlineView
-                content={editorContent}
-                onNavigateToLine={(ln) => editorRef.current?.revealLineInCenter(ln)}
-              />
-            </Sider>
-          )}
-        </Layout>
+        {mainView}
       </Layout>
     </Layout>
   )
