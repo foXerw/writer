@@ -129,7 +129,7 @@ function ProjectDialog({
       console.error('打开项目失败:', error)
       const errorMessage = error instanceof Error ? error.message : String(error)
       if (errorMessage.includes('INVALID_PROJECT')) {
-        setErrorModalContent('该文件夹不是有效的 Novel Writer 项目。请选择包含 .novelwriter.json 配置文件的文件夹。')
+        setErrorModalContent('该文件夹不是有效的完美小说项目。请选择包含 .novelwriter.json 配置文件的文件夹。')
       } else {
         setErrorModalContent(errorMessage)
       }

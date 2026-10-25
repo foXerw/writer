@@ -44,7 +44,7 @@
 ## 项目结构
 
 ```
-novel-writer/
+perfect-novel/
 ├── electron/
 │   ├── main/
 │   │   ├── index.ts              # 主进程入口
@@ -71,7 +71,7 @@ novel-writer/
 │       ├── pages/                # 页面（Home / Workspace / Settings）
 │       ├── stores/               # 状态管理（Zustand）
 │       ├── hooks/                # 自定义钩子（useIPC / useKeyboard / useMenu）
-│       ├── services/             # 前端服务（fileService / ipcService）
+│       ├── services/             # 前端服务（statsService / exportService / shortcutService）
 │       └── styles/              # 样式（global.css）
 ├── resources/icons/              # 图标资源
 ├── docs/                         # 开发文档（DEVELOPMENT.md）

@@ -74,6 +74,13 @@ function Workspace() {
   // 自动保存：按项目配置间隔静默 flush（取代原 services/autoSave.ts）
   useAutoSave({ enabled: autoSaveEnabled, intervalMs: autoSaveInterval, chapterId: currentChapter?.id ?? null, flush: flushIfDirty })
 
+  // save/createChapter 每次渲染刷新镜像 ref（同 useEditorSession 的 flushIfDirtyStable 惯用法）：
+  // 供被 memo 的事件回调（命令面板）调用最新闭包，防止陈旧 editorContent/chapters 造成丢保存或旧编号建章。
+  const saveRef = useRef(save)
+  saveRef.current = save
+  const createChapterRef = useRef(createChapter)
+  createChapterRef.current = createChapter
+
   // 关窗/退出兜底：fire-and-forget flush + 统计落盘（稳定引用，内部读最新镜像）；主要保障仍是切章/返回的显式 flush
   useEffect(() => {
     const handler = () => { flushIfDirty(); persistNow() }
@@ -135,17 +142,18 @@ function Workspace() {
     return { ok: false }
   }
 
-  // 命令面板处理
+  // 命令面板处理：memo 引用保持恒定，所有易变逻辑经 ref 读最新闭包。
+  // （曾用 [chapters, focusMode, typewriterMode] 作依赖 → 捕获旧渲染的 save 闭包，
+  //   面板保存会写陈旧 editorContent 并清 dirty，关窗 flush 被跳过导致丢字。）
   const handleCommand = useCallback((command: string) => {
     switch (command) {
-      case 'file:save': handleSave(); break
-      case 'chapter:new': createChapter(); break
+      case 'file:save': void saveRef.current({ silent: false }); break
+      case 'chapter:new': void createChapterRef.current(); break
       case 'view:focusMode': setFocusMode(prev => !prev); break
       case 'view:typewriterMode': setTypewriterMode(prev => !prev); break
       default: break
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 依赖 chapters/模式状态；命令内调用的 handler 非稳定引用，按现状即可
-  }, [chapters, focusMode, typewriterMode])
+  }, [])
 
   // 菜单栏事件
   useMenu((event, ...args) => {

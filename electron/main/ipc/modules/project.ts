@@ -54,7 +54,7 @@ export function registerProjectHandlers(): void {
     const configPath = path.join(projectPath, '.novelwriter.json')
 
     if (!fs.existsSync(configPath)) {
-      throw new Error('INVALID_PROJECT: Project configuration file not found. Please select a valid Novel Writer project folder.')
+      throw new Error('INVALID_PROJECT: Project configuration file not found. Please select a valid Perfect Novel project folder.')
     }
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))

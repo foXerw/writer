@@ -1,7 +1,6 @@
 import React from 'react'
 import { Tree, Button, Dropdown, message, Modal, Input, Typography } from 'antd'
 import type { MenuProps, TreeProps } from 'antd'
-import type { DataNode, EventDataNode } from 'antd/es/tree'
 import {
   PlusOutlined,
   FileTextOutlined,
@@ -29,7 +28,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
   onSelectChapter,
   onChapterChange
 }) => {
-  const { createChapter, deleteChapter, reorderChapters, renameChapter } = useChapter()
+  const { createChapter, deleteChapter, renameChapter } = useChapter()
   const [messageApi, contextHolder] = message.useMessage()
   const [modal, contextModalHolder] = Modal.useModal()
 
@@ -151,22 +150,9 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
     }
   }
 
-  // 处理拖拽排序
-  // 注意：antd onDragEnd 的类型只保证 event/node 两个字段，dragNode 需显式收窄为可选，
-  // 缺失时直接返回（拖拽排序的完整实现将在后续任务重做）
-  const handleDragEnd: TreeProps['onDragEnd'] = async (info) => {
-    const { node } = info
-    const dragNode = (info as { dragNode?: EventDataNode<DataNode> }).dragNode
-    if (!node.key || !dragNode?.key || node.key === dragNode.key) return
-
-    try {
-      await reorderChapters(projectPath, dragNode.key as string, node.key as string)
-      messageApi.success('章节顺序已更新')
-      onChapterChange()
-    } catch (error) {
-      messageApi.error('排序失败')
-    }
-  }
+  // 拖拽排序：M1 不提供。此前 Tree 挂了拖拽属性与 onDragEnd 收尾回调，但 rc-tree 在
+  // onDragEnd 不传 dragNode，回调恒为 no-op——纯视觉误导，已整体移除；
+  // 后端 chapter:reorder 保留，待 M2 用真正的 onDrop 实现接线。
 
   // 新建章节
   const handleCreateChapter = () => {
@@ -232,8 +218,6 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
           treeData={treeData}
           selectedKeys={selectedChapterId ? [selectedChapterId] : []}
           onSelect={handleSelect}
-          draggable
-          onDragEnd={handleDragEnd}
           blockNode
           showIcon
           style={{ padding: '8px 12px' }}
