@@ -119,7 +119,7 @@ function EditorTabs({
               width: 6,
               height: 6,
               borderRadius: '50%',
-              background: '#52c41a',
+              background: 'var(--color-success)',
               flexShrink: 0
             }} title="已完成" />
           )}
@@ -128,7 +128,7 @@ function EditorTabs({
               width: 6,
               height: 6,
               borderRadius: '50%',
-              background: '#faad14',
+              background: 'var(--color-warning)',
               flexShrink: 0
             }} title="修改中" />
           )}
@@ -158,6 +158,7 @@ function EditorTabs({
 
   return (
     <div
+      className="editor-tabs"
       style={{
         height: 36,
         background: 'var(--color-bg-elevated)',
@@ -199,42 +200,7 @@ function EditorTabs({
           {chapters.length} 个标签
         </span>
       </div>
-
-      <style>{`
-        .ant-tabs-nav {
-          margin-bottom: 0 !important;
-        }
-        .ant-tabs-tab {
-          background: transparent !important;
-          border: none !important;
-          margin-right: 0 !important;
-          padding: 0 !important;
-          min-width: unset !important;
-          height: 32px;
-        }
-        .ant-tabs-tab-active {
-          background: var(--color-bg-base) !important;
-        }
-        .ant-tabs-tab .anticon {
-          color: var(--color-text-secondary);
-        }
-        .ant-tabs-tab-active .anticon {
-          color: var(--color-primary);
-        }
-        .tab-close {
-          opacity: 0;
-          transition: opacity 0.2s;
-        }
-        .ant-tabs-tab:hover .tab-close {
-          opacity: 1;
-        }
-        .ant-tabs-nav::before {
-          border-bottom: none !important;
-        }
-        .ant-tabs-extra-content {
-          display: none !important;
-        }
-      `}</style>
+      {/* 原此处内联样式注入已全部迁入 global.css 的 .editor-tabs 作用域 */}
     </div>
   )
 }

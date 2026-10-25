@@ -1,3 +1,7 @@
+/* ============================================================
+   设计 token：两套主题各值。刻度类（space/font/radius）双主题同值，
+   颜色类按主题切换。theme.ts（antd ThemeConfig）与这里保持同一色板。
+   ============================================================ */
 :root,
 [data-theme='dark'] {
   --color-bg-base: #1e1e1e;
@@ -20,6 +24,27 @@
   --color-scrollbar-thumb: #424242;
   --color-mask-bg: rgba(0, 0, 0, 0.7);
   --color-danger: #f14c4c;
+  --color-success: #52c41a;
+  --color-warning: #faad14;
+  /* 稿纸模式背景（Task 10 使用） */
+  --color-paper: #1f1e1c;
+  /* 间距刻度 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  /* 字号刻度 */
+  --font-xs: 12px;
+  --font-sm: 13px;
+  --font-md: 14px;
+  --font-lg: 16px;
+  --font-xl: 20px;
+  /* 圆角刻度 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
 }
 
 [data-theme='light'] {
@@ -43,6 +68,27 @@
   --color-scrollbar-thumb: #c1c1c1;
   --color-mask-bg: rgba(0, 0, 0, 0.45);
   --color-danger: #ff4d4f;
+  --color-success: #52c41a;
+  --color-warning: #faad14;
+  /* 稿纸模式背景（Task 10 使用） */
+  --color-paper: #faf8f2;
+  /* 间距刻度 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  /* 字号刻度 */
+  --font-xs: 12px;
+  --font-sm: 13px;
+  --font-md: 14px;
+  --font-lg: 16px;
+  --font-xl: 20px;
+  /* 圆角刻度 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
 }
 
 * {
@@ -90,20 +136,8 @@ body {
   color: #ffffff;
 }
 
-/* Ant Design Input placeholder 样式 */
-.ant-input::placeholder,
-.ant-input-affix-wrapper input::placeholder {
-  color: var(--color-text-tertiary) !important;
-}
-
-/* Ant Design Modal 深色主题 */
-.ant-modal .ant-modal-close {
-  color: var(--color-text-secondary);
-}
-
-.ant-modal .ant-modal-close:hover {
-  color: var(--color-text);
-}
+/* Input placeholder 颜色已迁至 theme.ts（Input.colorTextPlaceholder）；
+   Modal 关闭按钮颜色已由 theme.ts 的 colorIcon/colorIconHover 覆盖（原规则与默认值等值，删除）。 */
 
 /* Electron 窗口拖动区域 */
 .no-drag {
@@ -114,7 +148,11 @@ body {
   -webkit-app-region: drag;
 }
 
-/* Ant Design Tree 深色主题 */
+/* ============================================================
+   Ant Design Tree 章节树
+   hover/选中背景已迁至 theme.ts（Tree.nodeHoverBg / nodeSelectedBg，双主题），
+   以下仅保留 token 无法表达的结构覆盖（内边距、选中左侧竖条等），不含强制优先级声明。
+   ============================================================ */
 .chapter-tree {
   background: var(--color-bg-elevated);
 }
@@ -122,26 +160,18 @@ body {
 .chapter-tree .ant-tree-treenode {
   padding: 0;
   width: 100%;
-  background: var(--color-bg-elevated) !important;
+  background: var(--color-bg-elevated);
 }
 
 .chapter-tree .ant-tree-node-content-wrapper {
-  color: var(--color-text) !important;
-  background: transparent !important;
   border-radius: 0;
-  padding: 6px 8px !important;
-  margin-left: 0 !important;
-  width: 100% !important;
+  padding: 6px 8px;
+  margin-left: 0;
+  width: 100%;
   border-left: 2px solid transparent;
 }
 
-.chapter-tree .ant-tree-node-content-wrapper:hover {
-  background: var(--color-bg-hover) !important;
-}
-
 .chapter-tree .ant-tree-node-selected .ant-tree-node-content-wrapper {
-  background: var(--color-bg-selected) !important;
-  color: var(--color-text) !important;
   border-left-color: var(--color-primary);
 }
 
@@ -157,24 +187,23 @@ body {
 
 .chapter-tree .chapter-tree-title {
   color: var(--color-text);
-  font-size: 13px;
+  font-size: var(--font-sm);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   overflow: hidden;
-  textOverflow: ellipsis;
-  whiteSpace: nowrap;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 章节树头部 */
 .chapter-tree-header {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--color-border);
 }
 
-.chapter-tree-header .ant-space {
-  gap: 8px !important;
-}
+/* 注：原 .chapter-tree-header .ant-space 的 gap 强制覆盖规则已删除——
+   章节树头部不使用 antd Space（v4 遗留死规则）。 */
 
 .chapter-tree-header .ant-btn-dashed {
   border-color: var(--color-border-secondary);
@@ -187,102 +216,110 @@ body {
   color: var(--color-primary);
 }
 
-/* Ant Design Button 深色主题 - 移除3D边框效果 */
+/* ============================================================
+   Ant Design Button 深色主题
+   原 .ant-btn-primary 大块强制覆盖 → theme.ts
+   Button.colorPrimary/Hover/Active(#0d419d) + primaryShadow/dangerShadow('none')。
+   无法用 token 表达、保留为窄范围高优先级声明（共 2 处强制声明，计入预算）：
+   1) 边框 #1f6feb 比底色浅——实心按钮的边框色在 token 层恒等于 colorPrimary，无法分离；
+      且迁移前所有 .ant-btn-primary 都无底边框（3D 效果移除）。
+   2) type="primary" danger（“删除章节”确认按钮）的底色由 colorError 派生——
+      改 Button.colorError 会波及 text-danger 删除图标按钮，只能窄范围覆盖。
+   ============================================================ */
+[data-theme='dark'] .ant-btn-primary.ant-btn-dangerous {
+  background: var(--color-primary-bg) !important;
+}
+
 [data-theme='dark'] .ant-btn-primary {
-  background: #0d419d !important;
-  border-color: #1f6feb !important;
-  color: #fff !important;
-  box-shadow: none !important;
-  border-bottom: none !important;
+  border-color: var(--color-primary-border) !important;
+  border-bottom-width: 0;
 }
 
-[data-theme='dark'] .ant-btn-primary:hover,
-[data-theme='dark'] .ant-btn-primary:focus {
-  background: #0d419d !important;
-  border-color: #1f6feb !important;
-  color: #fff !important;
-  box-shadow: none !important;
-  border-bottom: none !important;
+/* 禁用态保真：迁移前的主按钮强制块同样命中 :disabled（类选择器不排除禁用态），
+   旧观感 = 实底 #0d419d + 白字 + #1f6feb 边框；若放任 antd 的 colorBgContainerDisabled/
+   colorTextDisabled 生效，会与仍被强制的边框拼成从未有过的“灰底暗字蓝边”分裂态，故显式补回。
+   普通声明即可赢：本选择器特异度 (0,5,0) > antd 禁用规则
+   .css-hash.ant-btn.ant-btn-variant-solid:disabled 的 (0,4,0)，不占用强制声明预算。
+   （M2 候选：改用 antd 标准灰化禁用态——属观感决策，留给人类。） */
+[data-theme='dark'] .ant-btn.ant-btn-primary.ant-btn-variant-solid:disabled,
+[data-theme='dark'] .ant-btn.ant-btn-primary.ant-btn-variant-solid.ant-btn-disabled {
+  color: #ffffff;
+  background: var(--color-primary-bg);
 }
 
-[data-theme='dark'] .ant-btn-primary:active {
-  background: #0d419d !important;
-  border-color: #1f6feb !important;
-  color: #fff !important;
-  box-shadow: none !important;
-  border-bottom: none !important;
-}
-
-/* Ant Design Modal 深色主题 */
-[data-theme='dark'] .dark-modal .ant-modal-content {
-  background: #000000 !important;
-  border: 1px solid #333;
-}
-
-[data-theme='dark'] .dark-modal .ant-modal-header {
-  background: #000000 !important;
-  border-bottom: 1px solid #333 !important;
-}
-
+/* ============================================================
+   Ant Design Modal 深色主题
+   全局 Modal 色板已由 theme.ts 组件 token 承担（contentBg/headerBg/footerBg/titleColor）。
+   这里只剩 .dark-modal（ProjectDialog 无效项目弹窗）专属覆盖：
+   调用点通过 styles API 注入内联背景，样式表只有更高优先级声明才能压过内联样式（保留 1 处强制声明）。
+   原 .dark-modal .ant-modal-title { color: transparent }、.ant-modal-close 两态、
+   .dark-modal + .ant-modal-mask 及 .ant-confirm-* 系列均已删除——前两者与全局/内联等值，
+   后者从未命中（v4 遗留死选择器），详见 task-9-report.md 迁移表。
+   ============================================================ */
+[data-theme='dark'] .dark-modal .ant-modal-content,
+[data-theme='dark'] .dark-modal .ant-modal-header,
 [data-theme='dark'] .dark-modal .ant-modal-body {
   background: #000000 !important;
-  color: #ffffff !important;
 }
 
-[data-theme='dark'] .dark-modal .ant-modal-close {
-  color: #888;
-}
-
-[data-theme='dark'] .dark-modal .ant-modal-close:hover {
-  color: #d4d4d4;
-}
-
-[data-theme='dark'] .dark-modal .ant-modal-title {
-  color: transparent !important;
+[data-theme='dark'] .dark-modal .ant-modal-content {
+  border: 1px solid var(--color-border);
 }
 
 [data-theme='dark'] .dark-modal .ant-modal-footer {
-  border-top: 1px solid #333 !important;
+  border-top: 1px solid var(--color-border);
 }
 
-/* Modal 遮罩层 */
-[data-theme='dark'] .dark-modal + .ant-modal-mask {
-  background: rgba(0, 0, 0, 0.7) !important;
+/* ============================================================
+   编辑器标签栏（原 EditorTabs 内联 <style> 注入，现收敛到 .editor-tabs 作用域，无强制声明）
+   选中色/墨条已迁至 theme.ts Tabs token；其余为结构覆盖。
+   ============================================================ */
+.editor-tabs .ant-tabs-nav {
+  margin-bottom: 0;
 }
 
-/* Modal.error 特殊样式 - 覆盖 Ant Design 默认 */
-[data-theme='dark'] .dark-modal.ant-modal.confirm .ant-modal-body {
-  padding: 24px !important;
+.editor-tabs .ant-tabs-nav::before {
+  border-bottom: none;
 }
 
-[data-theme='dark'] .dark-modal.ant-modal.confirm .ant-modal-body > .anticon {
-  color: var(--color-danger) !important;
+.editor-tabs .ant-tabs-tab {
+  background: transparent;
+  border: none;
+  margin-right: 0;
+  padding: 0;
+  min-width: unset;
+  height: 32px;
 }
 
-[data-theme='dark'] .dark-modal.ant-modal.confirm .ant-modal-body .ant-confirm-content {
-  color: #ffffff !important;
-  font-size: 14px;
-  margin-top: 8px;
+.editor-tabs .ant-tabs-tab:hover {
+  background: transparent;
 }
 
-[data-theme='dark'] .dark-modal.ant-modal.confirm .ant-confirm-title {
-  color: #ffffff !important;
-  font-size: 16px;
-  font-weight: 500;
+.editor-tabs .ant-tabs-tab-active {
+  background: var(--color-bg-base);
 }
 
-[data-theme='dark'] .dark-modal.ant-modal.confirm .ant-confirm-btns {
-  margin-top: 16px;
+.editor-tabs .ant-tabs-tab-active:hover {
+  background: var(--color-bg-base);
 }
 
-[data-theme='dark'] .dark-modal.ant-modal.confirm .ant-confirm-btns .ant-btn {
-  background: #2d2d2d;
-  border-color: #444;
-  color: #d4d4d4;
+.editor-tabs .ant-tabs-tab .anticon {
+  color: var(--color-text-secondary);
 }
 
-[data-theme='dark'] .dark-modal.ant-modal.confirm .ant-confirm-btns .ant-btn-primary {
-  background: #0d419d;
-  border-color: #1f6feb;
-  color: #ffffff;
+.editor-tabs .ant-tabs-tab-active .anticon {
+  color: var(--color-primary);
+}
+
+.editor-tabs .ant-tabs-extra-content {
+  display: none;
+}
+
+.editor-tabs .tab-close {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.editor-tabs .ant-tabs-tab:hover .tab-close {
+  opacity: 1;
 }
