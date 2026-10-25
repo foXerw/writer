@@ -76,6 +76,16 @@ describe('serializeChapterDoc + parseChapterDoc round-trip', () => {
     }
   })
 
+  it('CRLF 正文逐字节原样保留（body 零转义拼接）', () => {
+    const body = '第一行\r\n\r\n第二行带尾随空格 \r\n末行'
+
+    const raw = serializeChapterDoc(META, body)
+    const doc = parseChapterDoc(raw)
+
+    expect(doc.body).toBe(body)
+    expect(serializeChapterDoc(doc.meta, doc.body)).toBe(raw) // 字节级恒等
+  })
+
   it('volumeId 为字符串时同样 round-trip', () => {
     const meta: ChapterMeta = { ...META, volumeId: '3c8d5e2f-0b4e-4f6a-9c7d-2b3c4d5e6f70' }
 
@@ -139,5 +149,21 @@ describe('parseChapterDoc 错误契约', () => {
 
   it('未传 source 时错误串用占位 source（不抛裸 undefined）', () => {
     expect(() => parseChapterDoc('纯正文')).toThrow(/FRONTMATTER_MISSING: .+/)
+  })
+
+  it('CRLF front-matter fail-closed：定界行带 \\r 不识别，抛 FRONTMATTER_MISSING（不静默错析）', () => {
+    const crlf = [
+      '---\r',
+      'id: 2b7c4f1e-9a3d-4e5f-8b6c-1a2b3c4d5e6f\r',
+      'title: 第一章\r',
+      'volumeId: null\r',
+      'order: 1\r',
+      'status: draft\r',
+      '---\r',
+      '\r',
+      '正文'
+    ].join('\n')
+
+    expect(() => parseChapterDoc(crlf, 'crlf.md')).toThrow('FRONTMATTER_MISSING: crlf.md')
   })
 })

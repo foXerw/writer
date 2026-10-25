@@ -18,10 +18,11 @@ import {
   rmSync,
   statSync
 } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type {
   BookMeta,
+  ChapterDoc,
   ChapterMeta,
   CharacterV2,
   EntityLink,
@@ -50,6 +51,7 @@ import { listYamlFiles, readYamlFile, writeTextFileAtomic, writeYamlFileAtomic }
 import { V1_MARKER_FILE, V1_MIGRATED_FILE } from './format'
 import {
   BACKUP_DIR_NAME,
+  backupRoot,
   backupStamp,
   bookJsonPath,
   chapterFile,
@@ -74,18 +76,19 @@ const V1_DEFAULT_CONFIG: ProjectConfig = {
 }
 
 export function migrateBook(projectPath: string): MigrationReport {
-  // 防重入双保险：book.json 已存在 → 绝不再动手术（Review Focus 1：反复打开不得二次迁移/二份备份）
-  if (existsSync(bookJsonPath(projectPath))) {
-    throw new Error(`ALREADY_MIGRATED: ${projectPath} 已有 book.json（v2），拒绝重复迁移`)
-  }
   const markerPath = join(projectPath, V1_MARKER_FILE)
   const migratedPath = join(projectPath, V1_MIGRATED_FILE)
-  // 半迁移救援：标记已改名 .migrated 而 book.json 未落成 → 以 .migrated 为配置源继续完成迁移
-  const marker = existsSync(markerPath)
-    ? markerPath
-    : existsSync(migratedPath)
-      ? migratedPath
-      : null
+  const bookExists = existsSync(bookJsonPath(projectPath))
+  const markerExists = existsSync(markerPath)
+
+  // 幂等门（Review Focus 1）：成功的迁移以「标记改名 .migrated」收尾——
+  // - book.json 在 + 旧标记已改名/不在 = 完成态 → 绝不再动手术（ALREADY_MIGRATED）；
+  // - book.json 在 + .novelwriter.json 仍在 = 唯一无歧义的中断态（写了 book.json 后崩溃）→ 允许重入补完；
+  // - book.json 不在 → 全新迁移或半迁移救援（.migrated 作配置源）。
+  if (bookExists && !markerExists) {
+    throw new Error(`ALREADY_MIGRATED: ${projectPath} 已有 book.json（v2），拒绝重复迁移`)
+  }
+  const marker = markerExists ? markerPath : existsSync(migratedPath) ? migratedPath : null
   if (!marker) {
     throw new Error(`CORRUPT_BOOK: ${projectPath} — 未找到 v1 项目标记（${V1_MARKER_FILE}）`)
   }
@@ -95,22 +98,28 @@ export function migrateBook(projectPath: string): MigrationReport {
   }
 
   const warnings: string[] = []
+  const resuming = bookExists // 走到这里必然 markerExists
 
-  // 语义1：先备份后动刀；复制失败 → 抛错，书目录原样未动
-  const backupPath = createBackup(projectPath)
+  // 语义1：先备份后动刀；复制失败 → 抛错，书目录原样未动。
+  // 续迁复用崩溃 run 留下的备份（那份才是原始 v1 状态），不产生重复备份。
+  const backupPath = resuming ? resumeBackup(projectPath) : createBackup(projectPath)
 
-  // 语义2：.novelwriter.json → book.json
-  writeYamlFileAtomic(bookJsonPath(projectPath), toBookMeta(v1Config, warnings))
-  // 语义3：chapters/NNN-标题.md → chapters/<uuid>.md（front-matter + 正文原样）
+  // 语义2：.novelwriter.json → book.json（续迁不重写——已落盘的书 id 必须稳定保留）
+  if (!resuming) {
+    writeYamlFileAtomic(bookJsonPath(projectPath), toBookMeta(v1Config, warnings))
+  }
+  // 语义3：chapters/NNN-标题.md → chapters/<uuid>.md（front-matter + 正文原样；已是 v2 的跳过）
   migrateChapters(projectPath)
-  // 语义4：characters/<id>.json → characters/<id>.yaml（关系 name→id 仅唯一匹配连边）
+  // 语义4：characters/<id>.json → characters/<id>.yaml（关系边：characterId 直解 → 唯一名字 → 丢弃+warning）
   migrateCharacters(projectPath, warnings)
   // 语义5：settings/<cat>/<…>.json → world/<cat>/<全id>.yaml（parentId 经 old→new 映射）
   migrateSettings(projectPath, warnings)
 
-  // 语义6：空伏笔台账 + 标记改名（此后 detectFormat 见 book.json 即 v2 —— 幂等关键）
-  const ledger: ForeshadowLedger = { entries: [] }
-  writeYamlFileAtomic(foreshadowFile(projectPath), ledger)
+  // 语义6：空伏笔台账（已存在则不覆盖——续迁/外部台账数据不可毁）+ 标记改名（幂等关键）
+  if (!existsSync(foreshadowFile(projectPath))) {
+    const ledger: ForeshadowLedger = { entries: [] }
+    writeYamlFileAtomic(foreshadowFile(projectPath), ledger)
+  }
   if (existsSync(markerPath)) {
     renameSync(markerPath, migratedPath)
   }
@@ -120,10 +129,20 @@ export function migrateBook(projectPath: string): MigrationReport {
 }
 
 /**
- * 迁移后自检：每个 YAML 过 Task 1 校验器、章节 front-matter 可读、order 无重复。
- * 永不抛错（单文件问题进错误串）；调用方（project:open）仅记日志不阻塞。
+ * 迁移后自检：每个 YAML 过 Task 1 校验器、章节 front-matter 可读、order 无重复、v1 残留扫描。
+ * 永不外抛（单文件问题进错误串；整体异常兜底为 `自检异常: …`）；调用方（project:open）仅记日志不阻塞。
  */
 export function validateMigration(projectPath: string): string[] {
+  try {
+    return collectValidationIssues(projectPath)
+  } catch (err) {
+    // 全函数兜底：readdirSync/statSync 等文件系统操作在任何一段都可能抛（路径被文件占位等），
+    // 自检永远不许把裸异常抛穿 project:open
+    return [`自检异常: ${errMessage(err)}`]
+  }
+}
+
+function collectValidationIssues(projectPath: string): string[] {
   const errors: string[] = []
 
   try {
@@ -208,11 +227,40 @@ export function validateMigration(projectPath: string): string[] {
     errors.push(`foreshadow.yaml: ${errMessage(err)}`)
   }
 
+  // v1 残留扫描：迁移中断/未完成的痕迹（detectFormat 对此盲区，这里补上）
+  if (existsSync(charDir)) {
+    for (const f of readdirSync(charDir)) {
+      if (f.endsWith('.json')) errors.push(`v1 残留: ${join('characters', f)}`)
+    }
+  }
+  if (existsSync(chDir)) {
+    for (const f of readdirSync(chDir)) {
+      // NNN- 前缀 = v1 命名；但 v2 uuid 文件名首段可能全是数字（如 11111111-…），须排除 uuid 名
+      if (
+        f.endsWith('.md') &&
+        /^\d+-/.test(f) &&
+        !UUID_PATTERN.test(f.slice(0, -'.md'.length))
+      ) {
+        errors.push(`v1 残留: ${join('chapters', f)}`)
+      }
+    }
+  }
+  const settingsRoot = join(projectPath, V1_SETTINGS_DIR)
+  if (existsSync(settingsRoot) && statSync(settingsRoot).isDirectory()) {
+    for (const abs of collectJsonFilesRecursive(settingsRoot)) {
+      errors.push(`v1 残留: ${relative(projectPath, abs)}`)
+    }
+  }
+
   return errors
 }
 
 /** project:create 的 v2 骨架：book.json + 四个实体目录 + 空台账；不写任何 v1 标记。 */
 export function createBookSkeleton(projectDir: string, name: string, type: ProjectType): BookMeta {
+  // 拒绝覆盖既有书：BOOK_EXISTS 必须在任何写盘之前抛出（v1 时代的静默覆盖不可接受；渲染层文案归 Task 10）
+  if (existsSync(bookJsonPath(projectDir))) {
+    throw new Error(`BOOK_EXISTS: ${projectDir}`)
+  }
   const meta: BookMeta = {
     id: randomUUID(),
     name,
@@ -264,6 +312,19 @@ function createBackup(projectPath: string): string {
   return dest
 }
 
+/** 续迁场景：崩溃 run 已建过备份 → 复用其中最新的一份（时间戳目录名按字典序即时间序）；没有则补建。 */
+function resumeBackup(projectPath: string): string {
+  const root = backupRoot(projectPath)
+  if (existsSync(root) && statSync(root).isDirectory()) {
+    const stamps = readdirSync(root, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort((a, b) => a.localeCompare(b))
+    if (stamps.length > 0) return join(root, stamps[stamps.length - 1])
+  }
+  return createBackup(projectPath)
+}
+
 // ---------------------------------------------------------------------------
 // 语义2：book.json
 // ---------------------------------------------------------------------------
@@ -304,21 +365,38 @@ function migrateChapters(projectPath: string): void {
   const files = readdirSync(dir)
     .filter((f) => f.endsWith('.md') && statSync(join(dir, f)).isFile())
     .sort((a, b) => a.localeCompare(b))
-  files.forEach((file, index) => {
-    const abs = join(dir, file)
-    const raw = readFileSync(abs, 'utf8')
-    // 半迁移救援：已带合法 front-matter 的文件视为 v2 成品，原样不动
-    if (isAlreadyV2Chapter(raw)) return
+
+  // 第一遍：识别待转 v1 文件；收集既有 order 上限——含续迁场景已转好的 v2 文件的 front-matter order
+  const pending: { file: string; raw: string; numberedOrder: number | null }[] = []
+  let maxOrder = 0
+  for (const file of files) {
+    const raw = readFileSync(join(dir, file), 'utf8')
+    const done = tryParseV2Chapter(raw)
+    if (done) {
+      // 半迁移救援/续迁：已带合法 front-matter 的文件视为 v2 成品，原样不动，但其 order 参与上限
+      maxOrder = Math.max(maxOrder, done.meta.order)
+      continue
+    }
     const stem = file.slice(0, -'.md'.length)
     const numbered = stem.match(/^(\d+)-(.*)$/)
-    const order = numbered ? parseInt(numbered[1], 10) : index + 1
+    const order = numbered ? parseInt(numbered[1], 10) : null
+    if (order !== null) maxOrder = Math.max(maxOrder, order)
+    pending.push({ file, raw, numberedOrder: order })
+  }
+
+  // 第二遍：转换。有编号用编号；无编号回退 max+n 递增——绝不用列表位次（会与既有编号相撞，如 002-b.md + 番外.md 同为 2）
+  for (const item of pending) {
+    const abs = join(dir, item.file)
+    const stem = item.file.slice(0, -'.md'.length)
+    const numbered = stem.match(/^(\d+)-(.*)$/)
+    const order = item.numberedOrder !== null ? item.numberedOrder : ++maxOrder
     // 与 v1 chapter:getAll 同款正则（首个顶格 `# ` 行）→ 迁移后标题与 v1 展示一致（Review Focus 1）
-    const heading = raw.match(/^#\s+(.+)$/m)
+    const heading = item.raw.match(/^#\s+(.+)$/m)
     let title: string
     if (heading) title = heading[1]
     else if (numbered && numbered[2] !== '') title = numbered[2]
     else if (stem !== '') title = stem
-    else title = file
+    else title = item.file
     const meta: ChapterMeta = {
       id: randomUUID(),
       title,
@@ -327,17 +405,16 @@ function migrateChapters(projectPath: string): void {
       status: 'draft'
     }
     // 正文原样：v1 全文（含 `# 标题` 行）就是 v2 body，与 Task 4 createChapter 手感一致
-    writeTextFileAtomic(chapterFile(projectPath, meta.id), serializeChapterDoc(meta, raw))
+    writeTextFileAtomic(chapterFile(projectPath, meta.id), serializeChapterDoc(meta, item.raw))
     rmSync(abs, { force: true })
-  })
+  }
 }
 
-function isAlreadyV2Chapter(raw: string): boolean {
+function tryParseV2Chapter(raw: string): ChapterDoc | null {
   try {
-    parseChapterDoc(raw)
-    return true
+    return parseChapterDoc(raw)
   } catch {
-    return false
+    return null
   }
 }
 
@@ -362,13 +439,28 @@ function migrateCharacters(projectPath: string, warnings: string[]): void {
     parsed.push({ file, id: obj.id, raw: obj })
   }
 
-  // 全库 name → ids：唯一匹配才连边的判定基础（重名 = 歧义 = 丢弃）
+  // 全库 id 集合 + name → ids：characterId 直解与唯一名匹配的判定基础（重名 = 歧义）
+  const idSet = new Set<string>(parsed.map((p) => p.id))
   const nameToIds = new Map<string, string[]>()
+  const registerName = (name: string, charId: string): void => {
+    const ids = nameToIds.get(name) ?? []
+    ids.push(charId)
+    nameToIds.set(name, ids)
+  }
   for (const { id, raw } of parsed) {
-    if (typeof raw.name !== 'string' || raw.name === '') continue
-    const ids = nameToIds.get(raw.name) ?? []
-    ids.push(id)
-    nameToIds.set(raw.name, ids)
+    if (typeof raw.name === 'string' && raw.name !== '') registerName(raw.name, id)
+  }
+  // 续迁场景：已转好的 characters/*.yaml 也参与 characterId 直解与重名歧义判定
+  // （否则崩溃 run 已转的角色会从名册消失，指向它的边被误判"无匹配"而丢弃）
+  for (const file of listYamlFiles(dir)) {
+    try {
+      const doc = readYamlFile<unknown>(join(dir, file))
+      if (!isRecord(doc) || typeof doc.id !== 'string' || doc.id === '' || idSet.has(doc.id)) continue
+      idSet.add(doc.id)
+      if (typeof doc.name === 'string' && doc.name !== '') registerName(doc.name, doc.id)
+    } catch {
+      // 损坏 yaml 不参与解析；validateMigration 的残留/校验扫描会报告
+    }
   }
 
   const now = new Date().toISOString()
@@ -379,9 +471,14 @@ function migrateCharacters(projectPath: string, warnings: string[]): void {
       for (const rel of raw.relationships) {
         if (!isRecord(rel)) continue
         const targetName = typeof rel.characterName === 'string' ? rel.characterName : ''
+        // 救援顺序：1) v1 characterId 在本书角色 id 集内 → 直解（名字歧义也能救回）；
+        //           2) 名字全库唯一匹配；3) 都不行 → 丢弃 + warning
+        const cid = typeof rel.characterId === 'string' ? rel.characterId : ''
+        const byId = cid !== '' && idSet.has(cid) ? cid : null
         const candidates = nameToIds.get(targetName) ?? []
-        if (candidates.length === 1) {
-          const link: EntityLink = { targetId: candidates[0], kind: relationshipKind(rel.relationship) }
+        const targetId = byId ?? (candidates.length === 1 ? candidates[0] : null)
+        if (targetId !== null) {
+          const link: EntityLink = { targetId, kind: relationshipKind(rel.relationship) }
           if (typeof rel.description === 'string' && rel.description !== '') {
             link.note = rel.description
           }
@@ -433,16 +530,7 @@ function migrateSettings(projectPath: string, warnings: string[]): void {
   if (!existsSync(root) || !statSync(root).isDirectory()) return
 
   // 递归收集（与 v1 setting:getAll 的递归一致）
-  const found: string[] = []
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const abs = join(dir, entry.name)
-      if (entry.isDirectory()) walk(abs)
-      else if (entry.isFile() && entry.name.endsWith('.json')) found.push(abs)
-    }
-  }
-  walk(root)
-  found.sort((a, b) => a.localeCompare(b))
+  const found = collectJsonFilesRecursive(root)
 
   const parsed: { abs: string; id: string; raw: Record<string, unknown> }[] = []
   for (const abs of found) {
@@ -462,6 +550,18 @@ function migrateSettings(projectPath: string, warnings: string[]): void {
     } else {
       idMap.set(id, randomUUID())
       warnings.push(`设定 id 重建: ${settingLabel(raw, abs)}`)
+    }
+  }
+  // 续迁场景：已转好的 world yaml（文件名 stem 即 id）也入映射，
+  // 防止指向它们的 parentId 被误判悬挂而置空
+  const wDirExisting = worldDir(projectPath)
+  if (existsSync(wDirExisting) && statSync(wDirExisting).isDirectory()) {
+    for (const sub of readdirSync(wDirExisting, { withFileTypes: true })) {
+      if (!sub.isDirectory()) continue
+      for (const file of listYamlFiles(join(wDirExisting, sub.name))) {
+        const yamlId = file.slice(0, -'.yaml'.length)
+        if (!idMap.has(yamlId)) idMap.set(yamlId, yamlId)
+      }
     }
   }
 
@@ -519,6 +619,21 @@ function toCategory(
 // ---------------------------------------------------------------------------
 // 小工具
 // ---------------------------------------------------------------------------
+
+/** 递归收集目录下全部 .json 文件（绝对路径，排序稳定）。 */
+function collectJsonFilesRecursive(root: string): string[] {
+  const found: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const abs = join(dir, entry.name)
+      if (entry.isDirectory()) walk(abs)
+      else if (entry.isFile() && entry.name.endsWith('.json')) found.push(abs)
+    }
+  }
+  walk(root)
+  found.sort((a, b) => a.localeCompare(b))
+  return found
+}
 
 function pruneEmptyDirs(dir: string): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

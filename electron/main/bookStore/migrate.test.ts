@@ -4,7 +4,7 @@ import { basename, dirname, join } from 'node:path'
 import { mkTmpBook } from '../../../tests/tmp'
 import { createBookSkeleton, migrateBook, validateMigration } from './migrate'
 import { detectFormat } from './format'
-import { readYamlFile } from './docStore'
+import { readYamlFile, writeYamlFileAtomic } from './docStore'
 import {
   BACKUP_DIR_NAME,
   backupRoot,
@@ -17,11 +17,12 @@ import {
   worldDir,
   worldEntryFile
 } from './paths'
-import { parseChapterDoc } from '../../../src/common/chapterDoc'
+import { parseChapterDoc, serializeChapterDoc } from '../../../src/common/chapterDoc'
 import {
   UUID_PATTERN,
   validateBookMeta,
   type BookMeta,
+  type ChapterMeta,
   type CharacterV2,
   type ForeshadowLedger,
   type WorldEntryV2
@@ -88,12 +89,14 @@ function makeV1Book(dir: string): void {
     characterFile(dir, UUID_AMING_A).replace('.yaml', '.json'),
     v1Character(UUID_AMING_A, '阿明', [
       { id: 'r1', characterId: UUID_LISI, characterName: '李四', relationship: '朋友', description: '青梅竹马' },
-      { id: 'r2', characterId: UUID_AMING_B, characterName: '阿明', relationship: '兄弟' }
+      // r2 故意不带 characterId：名字歧义（两个阿明）→ 必须走名字路径并丢弃
+      { id: 'r2', characterName: '阿明', relationship: '兄弟' }
     ])
   )
   writeJson(
     characterFile(dir, UUID_AMING_B).replace('.yaml', '.json'),
-    v1Character(UUID_AMING_B, '阿明', [])
+    // 无 characterId 但名字唯一 → 走名字回退路径连边成功
+    v1Character(UUID_AMING_B, '阿明', [{ id: 'r5', characterName: '李四', relationship: '同窗' }])
   )
   writeJson(
     characterFile(dir, UUID_LISI).replace('.yaml', '.json'),
@@ -203,7 +206,7 @@ describe('migrateBook — 主场景（brief Step 3 样本书）', () => {
     expect(c.updatedAt).toBe('2025-03-02T09:30:00.000Z')
   })
 
-  it('语义4：唯一名"李四"连边成功（name→id），kind 取 v1 relationship 标签，note=description', () => {
+  it('语义4：characterId 直解优先——阿明A→李四连边，kind=v1 relationship 标签，note=description', () => {
     const c = readYamlFile<CharacterV2>(characterFile(dir, UUID_AMING_A))
 
     expect(c.relationships).toHaveLength(1)
@@ -212,15 +215,22 @@ describe('migrateBook — 主场景（brief Step 3 样本书）', () => {
     expect(c.relationships[0].note).toBe('青梅竹马')
   })
 
-  it('语义4：重名"阿明"歧义边与无匹配"幽灵"边全部丢弃并进 warnings', () => {
-    expect(report.warnings).toContain('关系丢弃: 阿明→阿明')
-    expect(report.warnings).toContain('关系丢弃: 李四→阿明')
-    expect(report.warnings).toContain('关系丢弃: 李四→幽灵')
+  it('语义4：characterId 缺失时按唯一名字匹配回退——阿明B→李四连边', () => {
+    const b = readYamlFile<CharacterV2>(characterFile(dir, UUID_AMING_B))
 
+    expect(b.relationships).toEqual([{ targetId: UUID_LISI, kind: '同窗' }])
+  })
+
+  it('语义4：名字歧义的边被 characterId 救援——李四→阿明（characterId 指阿明A）必须连边', () => {
     const lisi = readYamlFile<CharacterV2>(characterFile(dir, UUID_LISI))
-    expect(lisi.relationships).toEqual([])
-    const amingB = readYamlFile<CharacterV2>(characterFile(dir, UUID_AMING_B))
-    expect(amingB.relationships).toEqual([])
+
+    expect(lisi.relationships).toEqual([{ targetId: UUID_AMING_A, kind: '朋友' }])
+  })
+
+  it('语义4：characterId 缺失且名字歧义/无匹配的边仍丢弃进 warnings', () => {
+    expect(report.warnings).toContain('关系丢弃: 阿明→阿明') // r2 无 characterId、名字歧义
+    expect(report.warnings).toContain('关系丢弃: 李四→幽灵') // r4 characterId 无效且名字无匹配
+    expect(report.warnings).not.toContain('关系丢弃: 李四→阿明') // 已被 characterId 救援
   })
 
   it('语义5：设定 → world/<cat>/<全id>.yaml，存活 parentId 保留，悬挂 parentId 置 null 并记 warning', () => {
@@ -319,14 +329,181 @@ describe('migrateBook — 损坏文件容错', () => {
     expect(titles).toContain('番外')
   })
 
-  it('无数字前缀的章节文件也被迁移（order 回退排序位次），不留 v1 孤儿文件', () => {
+  it('无数字前缀的章节文件也被迁移（order 回退 max+n），不留 v1 孤儿文件', () => {
     const files = readdirSync(chaptersDir(dir))
     expect(files).toHaveLength(2)
     expect(existsSync(join(chaptersDir(dir), '番外.md'))).toBe(false)
-    const orders = files.map(
-      (f) => parseChapterDoc(readFileSync(join(chaptersDir(dir), f), 'utf8'), f).meta.order
+    const orders = files
+      .map((f) => parseChapterDoc(readFileSync(join(chaptersDir(dir), f), 'utf8'), f).meta.order)
+      .sort((a, b) => a - b)
+    expect(orders).toEqual([10, 11]) // 010-深夜=10，番外=max+1=11（不是排序位次 2）
+  })
+})
+
+// ---------------------------------------------------------------------------
+// (d) 无序号章节 order 回退 = max(既有编号)+n（不得与编号章节相撞）
+// ---------------------------------------------------------------------------
+
+describe('migrateBook — 无序号章节 order 回退（max+n，非列表位次）', () => {
+  function bookWithChapters(fileNames: [string, string][]): string {
+    const dir = mkTmpBook()
+    writeJson(join(dir, '.novelwriter.json'), V1_CONFIG)
+    mkdirSync(join(dir, 'chapters'), { recursive: true })
+    for (const [name, content] of fileNames) {
+      writeFileSync(join(dir, 'chapters', name), content, 'utf8')
+    }
+    migrateBook(dir)
+    return dir
+  }
+
+  function ordersOf(dir: string): number[] {
+    return readdirSync(chaptersDir(dir))
+      .map((f) => parseChapterDoc(readFileSync(join(chaptersDir(dir), f), 'utf8'), f).meta.order)
+      .sort((a, b) => a - b)
+  }
+
+  it('002-b.md 与 番外.md 不得同为 order 2：编号占 2，无序号取 3', () => {
+    const dir = bookWithChapters([
+      ['002-b.md', '# b\n\n正文b\n'],
+      ['番外.md', '番外正文\n']
+    ])
+
+    expect(ordersOf(dir)).toEqual([2, 3])
+    expect(validateMigration(dir)).toEqual([])
+  })
+
+  it('多个无序号章节依次取 max+1、max+2，全体 order 无重复', () => {
+    const dir = bookWithChapters([
+      ['001-a.md', '# a\n\n正文a\n'],
+      ['序章.md', '序章正文\n'],
+      ['番外.md', '番外正文\n']
+    ])
+
+    expect(ordersOf(dir)).toEqual([1, 2, 3])
+    expect(validateMigration(dir)).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// (a) 断点续迁：book.json 已写 + 转换中途崩溃 → 唯一无歧义的中断态，允许重入补完
+// ---------------------------------------------------------------------------
+
+describe('migrateBook — 中断续迁（book.json 在 + .novelwriter.json 未改名）', () => {
+  it('补完剩余转换：复用备份不重复、book.json id 保留、.migrated 改名、二次调用 ALREADY_MIGRATED', () => {
+    const dir = mkTmpBook()
+    writeJson(join(dir, '.novelwriter.json'), V1_CONFIG)
+
+    // 崩溃 run 已把第 1 章转为 v2（原 v1 文件已删），第 2 章仍是 v1
+    mkdirSync(join(dir, 'chapters'), { recursive: true })
+    const doneMeta: ChapterMeta = {
+      id: '11111111-2222-4333-8444-555555555555',
+      title: '黎明',
+      volumeId: null,
+      order: 1,
+      status: 'draft'
+    }
+    writeFileSync(
+      join(dir, 'chapters', `${doneMeta.id}.md`),
+      serializeChapterDoc(doneMeta, CH1_RAW),
+      'utf8'
     )
-    expect(new Set(orders).size).toBe(2) // order 无重复
+    writeFileSync(join(dir, 'chapters', '002-黄昏.md'), CH2_RAW, 'utf8')
+
+    // 李四已转 yaml（json 已删）；阿明仍是 json，且有一条指向李四的 characterId 边
+    writeYamlFileAtomic(characterFile(dir, UUID_LISI), {
+      id: UUID_LISI,
+      name: '李四',
+      gender: 'male',
+      age: 30,
+      role: 'supporting',
+      appearance: '',
+      personality: '',
+      background: '',
+      relationships: [],
+      arc: [],
+      tags: [],
+      links: [],
+      createdAt: '2025-03-01T00:00:00.000Z',
+      updatedAt: '2025-03-01T00:00:00.000Z'
+    } satisfies CharacterV2)
+    writeJson(
+      join(dir, 'characters', `${UUID_AMING_A}.json`),
+      v1Character(UUID_AMING_A, '阿明', [
+        { id: 'r1', characterId: UUID_LISI, characterName: '李四', relationship: '朋友' }
+      ])
+    )
+
+    // 崩溃 run 已建备份、已写 book.json（书 id 必须原样保留，不得重写）
+    const run1Backup = join(dir, BACKUP_DIR_NAME, '2026-01-01T00-00-00.000Z')
+    mkdirSync(run1Backup, { recursive: true })
+    const bookId = '99999999-8888-4777-8666-555555555555'
+    writeYamlFileAtomic(bookJsonPath(dir), {
+      id: bookId,
+      name: '星海拾荒者',
+      type: 'novel',
+      formatVersion: 2,
+      config: V1_CONFIG.settings,
+      synopsis: ''
+    } satisfies BookMeta)
+
+    const report = migrateBook(dir)
+
+    // 不重复备份：复用崩溃 run 的备份目录
+    expect(report.backupPath).toBe(run1Backup)
+    expect(readdirSync(backupRoot(dir))).toEqual(['2026-01-01T00-00-00.000Z'])
+    // book.json 未被重写，稳定书 id 保留
+    expect(readYamlFile<BookMeta>(bookJsonPath(dir)).id).toBe(bookId)
+    // 章节补完：2 个 v2 章节、order 1/2、v1 文件清干净
+    const chFiles = readdirSync(chaptersDir(dir))
+    expect(chFiles).toHaveLength(2)
+    expect(existsSync(join(chaptersDir(dir), '002-黄昏.md'))).toBe(false)
+    expect(
+      chFiles
+        .map((f) => parseChapterDoc(readFileSync(join(chaptersDir(dir), f), 'utf8'), f).meta.order)
+        .sort((a, b) => a - b)
+    ).toEqual([1, 2])
+    // 角色补完：阿明 json→yaml，且跨文件（李四已是 yaml）的 characterId 边连边成功
+    const aming = readYamlFile<CharacterV2>(characterFile(dir, UUID_AMING_A))
+    expect(aming.relationships).toEqual([{ targetId: UUID_LISI, kind: '朋友' }])
+    expect(readdirSync(charactersDir(dir)).filter((f) => f.endsWith('.json'))).toEqual([])
+    // 标记改名、自检全绿
+    expect(existsSync(join(dir, '.novelwriter.json'))).toBe(false)
+    expect(existsSync(join(dir, '.novelwriter.json.migrated'))).toBe(true)
+    expect(validateMigration(dir)).toEqual([])
+    // 幂等：标记已改名 → 完成态，拒绝重入且不再新增备份
+    expect(() => migrateBook(dir)).toThrow('ALREADY_MIGRATED')
+    expect(readdirSync(backupRoot(dir))).toEqual(['2026-01-01T00-00-00.000Z'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// (b) validateMigration：v1 残留扫描 + 全函数 try/catch 兜底
+// ---------------------------------------------------------------------------
+
+describe('validateMigration — 残留扫描与兜底', () => {
+  it('v1 残留（characters/*.json、settings/**/*.json、chapters/NNN-*.md）以警示串返回', () => {
+    const dir = mkTmpBook()
+    createBookSkeleton(dir, '骨架书', 'novel')
+    mkdirSync(join(dir, 'settings', 'location'), { recursive: true })
+    writeFileSync(join(dir, 'characters', 'x.json'), '{}', 'utf8')
+    writeFileSync(join(dir, 'settings', 'location', 'y.json'), '{}', 'utf8')
+    writeFileSync(join(dir, 'chapters', '001-旧章.md'), '# 旧\n', 'utf8')
+
+    const issues = validateMigration(dir)
+
+    expect(issues.some((s) => s.includes('v1 残留') && s.includes(join('characters', 'x.json')))).toBe(true)
+    expect(issues.some((s) => s.includes('v1 残留') && s.includes(join('settings', 'location', 'y.json')))).toBe(true)
+    expect(issues.some((s) => s.includes('v1 残留') && s.includes(join('chapters', '001-旧章.md')))).toBe(true)
+  })
+
+  it('内部文件系统异常不外抛：返回 [自检异常: …]（chapters 是文件不是目录）', () => {
+    const dir = mkTmpBook()
+    writeFileSync(join(dir, 'chapters'), '我不是目录', 'utf8')
+
+    const issues = validateMigration(dir)
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0].startsWith('自检异常: ')).toBe(true)
   })
 })
 
@@ -470,5 +647,15 @@ describe('createBookSkeleton — project:create v2 骨架', () => {
     expect(existsSync(join(dir, '.novelwriter.json'))).toBe(false)
     expect(detectFormat(dir)).toBe('v2')
     expect(validateMigration(dir)).toEqual([])
+  })
+
+  it('目标已有 book.json → 抛 BOOK_EXISTS: <path>，既有书零字节改动', () => {
+    const dir = mkTmpBook()
+    const first = createBookSkeleton(dir, '新书', 'novel')
+    const bookBefore = readFileSync(bookJsonPath(dir), 'utf8')
+
+    expect(() => createBookSkeleton(dir, '新书', 'novel')).toThrow(`BOOK_EXISTS: ${dir}`)
+    expect(readFileSync(bookJsonPath(dir), 'utf8')).toBe(bookBefore) // 未被覆盖
+    expect(readYamlFile<BookMeta>(bookJsonPath(dir)).id).toBe(first.id)
   })
 })
