@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
 import type { editor } from 'monaco-editor'
 import { useSettingsStore } from '../../stores'
+import { countWords } from '@/common/wordCount'
 
 // 动态导入 Monaco（避免 SSR 问题）
 let monaco: typeof import('monaco-editor') | null = null
@@ -94,6 +95,8 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  // 底部状态条字数（countWords 口径），从初始 value 起算，编辑/切章时更新
+  const [currentWordCount, setCurrentWordCount] = useState(() => countWords(value))
   const themeMode = useSettingsStore((s) => s.themeMode)
 
   useImperativeHandle(ref, () => ({
@@ -224,11 +227,9 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
         editor.onDidChangeModelContent(() => {
           const newValue = editor.getValue()
           onChange?.(newValue)
-          updateWordCount(newValue)
+          setCurrentWordCount(countWords(newValue))
         })
 
-        // 初始字数统计
-        updateWordCount(value)
         setIsLoading(false)
       } catch (error) {
         console.error('Failed to load Monaco:', error)
@@ -319,16 +320,6 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
     }
   }, [themeMode])
 
-  // 更新字数统计
-  const updateWordCount = (text: string) => {
-    const wordCountEl = document.getElementById('editor-word-count')
-    if (wordCountEl) {
-      const words = text.trim().split(/\s+/).filter(Boolean).length
-      const chars = text.length
-      wordCountEl.textContent = `字数: ${chars} | 词数: ${words}`
-    }
-  }
-
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div
@@ -353,7 +344,6 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
       )}
       {wordCount && (
         <div
-          id="editor-word-count"
           style={{
             height: 24,
             lineHeight: '24px',
@@ -365,7 +355,7 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
             textAlign: 'right'
           }}
         >
-          字数: 0 | 词数: 0
+          字数: {currentWordCount.toLocaleString()}
         </div>
       )}
     </div>

@@ -5,6 +5,7 @@ import * as os from 'os'
 import * as url from 'url'
 import { randomUUID } from 'crypto'
 import { Chapter, ProjectType, Character, Setting, StatsData, ExportParams } from '../../../src/common/ipc'
+import { countWords } from '../../../src/common/wordCount'
 import { setCurrentTheme } from '../theme'
 
 // 存储最近项目
@@ -157,7 +158,7 @@ ipcMain.handle('chapter:getAll', async (_, projectPath: string) => {
     const title = titleMatch ? titleMatch[1] : file.replace('.md', '')
 
     // 计算字数
-    const wordCount = content.replace(/[#*`[\]()]/g, '').length
+    const wordCount = countWords(content)
 
     return {
       id: file.replace('.md', ''),
@@ -197,7 +198,7 @@ ipcMain.handle('chapter:create', async (_, params: { projectPath: string; title:
     content,
     order,
     status: 'draft' as const,
-    wordCount: content.length,
+    wordCount: countWords(content),
     createdAt: new Date(),
     updatedAt: new Date()
   }
@@ -264,7 +265,7 @@ ipcMain.handle('chapter:rename', async (_, params: { projectPath: string; chapte
     content: newContent,
     order: parseInt(chapterId.split('-')[0]) || 0,
     status: 'draft' as const,
-    wordCount: newContent.length,
+    wordCount: countWords(newContent),
     createdAt: new Date(),
     updatedAt: new Date()
   }
@@ -329,7 +330,7 @@ ipcMain.handle('chapter:getById', async (_, params: { projectPath: string; chapt
   const titleMatch = content.match(/^#\s+(.+)$/m)
   const title = titleMatch ? titleMatch[1] : file.replace('.md', '')
 
-  const wordCount = content.replace(/[#*`[\]()]/g, '').length
+  const wordCount = countWords(content)
 
   return {
     id: file.replace('.md', ''),

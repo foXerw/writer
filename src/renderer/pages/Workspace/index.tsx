@@ -35,6 +35,7 @@ import { useChapter } from '../../hooks/useIPC'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import type { Chapter, ProjectConfig } from '@/common/ipc'
 import type { StatsData } from '@/common/ipc'
+import { countWords } from '@/common/wordCount'
 
 const { Header, Content, Sider } = Layout
 const { Text } = Typography
@@ -84,7 +85,7 @@ function Workspace() {
   const statsRef = useRef(stats)
   statsRef.current = stats
   const statsLoadedRef = useRef(false)
-  const prevLenRef = useRef(0)           // 当前章上一刻长度，用于增量
+  const prevLenRef = useRef(0)           // 当前章上一刻字数（countWords 口径），用于增量
   const lastActivityRef = useRef(0)      // 最近一次按键时间戳
 
   const projectPath = state?.project?.path || state?.projectPath
@@ -164,7 +165,7 @@ function Workspace() {
     setCurrentChapter(chapter)
     setEditorContent(chapter.content)
     setChapterTitle(chapter.title)
-    prevLenRef.current = chapter.content.length   // 切章不计增量
+    prevLenRef.current = countWords(chapter.content)   // 切章不计增量
   }
 
   // 新建章节
@@ -232,9 +233,10 @@ function Workspace() {
   const handleEditorChange = (val: string) => {
     setEditorContent(val)
     isDirtyRef.current = true
-    // 正向字数增量累计今日；记录活跃时间戳
-    const delta = val.length - prevLenRef.current
-    prevLenRef.current = val.length
+    // 正向字数增量累计今日（字数口径 = countWords 差值）；记录活跃时间戳
+    const curWords = countWords(val)
+    const delta = curWords - prevLenRef.current
+    prevLenRef.current = curWords
     if (delta > 0) {
       setStats(s => addWords(s, delta))
     }
@@ -616,7 +618,7 @@ function Workspace() {
             onExport={() => setExportDialogOpen(true)}
             chapterTitle={chapterTitle}
             onTitleChange={setChapterTitle}
-            wordCount={editorContent.length}
+            wordCount={countWords(editorContent)}
             focusMode={focusMode}
             typewriterMode={typewriterMode}
             onToggleFocus={setFocusMode}
