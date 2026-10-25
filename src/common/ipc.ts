@@ -2,7 +2,14 @@
 
 // 仅类型导入（双向 type-only 环：schema.ts 从这里取枚举类型，这里从 schema 取 CharacterV2——
 // tsc/vite 编译期即擦除，无运行时循环依赖）。
-import type { CharacterV2, WorldEntryV2 } from './schema'
+import type {
+  CharacterV2,
+  ChoiceNodeV2,
+  ForeshadowEntry,
+  ForeshadowLedger,
+  PlotlineV2,
+  WorldEntryV2
+} from './schema'
 
 // 主进程 -> 渲染进程 事件
 export type MainToRendererEvents = {
@@ -78,6 +85,31 @@ export type RendererToMainRequests = {
   'setting:update': (params: { projectPath: string; setting: WorldEntryV2 }) => Promise<WorldEntryV2>
   'setting:delete': (params: { projectPath: string; settingId: string }) => Promise<boolean>
 
+  // 剧情线相关（Task 8：plotlines/<id>.yaml = PlotlineV2——stages[] 对章/实体 id 做「新引用」检查；
+  // 纯数据层，录入 UI 按 M1 裁定随 M4）
+  'plotline:getAll': (projectPath: string) => Promise<PlotlineV2[]>
+  'plotline:create': (params: { projectPath: string; plotline: Partial<PlotlineV2> }) => Promise<PlotlineV2>
+  'plotline:update': (params: { projectPath: string; plotline: PlotlineV2 }) => Promise<PlotlineV2>
+  'plotline:delete': (params: { projectPath: string; plotlineId: string }) => Promise<boolean>
+
+  // 关键选项相关（Task 8：choices/<id>.yaml = ChoiceNodeV2——chapterId 单值引用检查，改到幻影才拒）
+  'choice:getAll': (projectPath: string) => Promise<ChoiceNodeV2[]>
+  'choice:create': (params: { projectPath: string; choice: Partial<ChoiceNodeV2> }) => Promise<ChoiceNodeV2>
+  'choice:update': (params: { projectPath: string; choice: ChoiceNodeV2 }) => Promise<ChoiceNodeV2>
+  'choice:delete': (params: { projectPath: string; choiceId: string }) => Promise<boolean>
+
+  // 伏笔台账相关（Task 8：foreshadow.yaml 单文件台账；转移函数返回整本新台账，渲染层直接替换。
+  // foreshadow:reopen 为 Task 8 裁定新增——brief 清单未列，但 resolved/abandoned→open 撤回边别无入口）
+  'foreshadow:get': (projectPath: string) => Promise<ForeshadowLedger>
+  'foreshadow:upsert': (params: { projectPath: string; entry: ForeshadowEntry }) => Promise<ForeshadowLedger>
+  'foreshadow:resolve': (params: {
+    projectPath: string
+    foreshadowId: string
+    resolvedChapterId: string
+  }) => Promise<ForeshadowLedger>
+  'foreshadow:abandon': (params: { projectPath: string; foreshadowId: string }) => Promise<ForeshadowLedger>
+  'foreshadow:reopen': (params: { projectPath: string; foreshadowId: string }) => Promise<ForeshadowLedger>
+
   // 系统相关
   'dialog:openDirectory': () => Promise<string | null>
   'dialog:openFile': (filters: FileFilter[]) => Promise<string | null>
@@ -139,6 +171,25 @@ export interface NovelWriterApi {
     create: RendererToMainRequests['setting:create']
     update: RendererToMainRequests['setting:update']
     delete: RendererToMainRequests['setting:delete']
+  }
+  plotline: {
+    getAll: RendererToMainRequests['plotline:getAll']
+    create: RendererToMainRequests['plotline:create']
+    update: RendererToMainRequests['plotline:update']
+    delete: RendererToMainRequests['plotline:delete']
+  }
+  choice: {
+    getAll: RendererToMainRequests['choice:getAll']
+    create: RendererToMainRequests['choice:create']
+    update: RendererToMainRequests['choice:update']
+    delete: RendererToMainRequests['choice:delete']
+  }
+  foreshadow: {
+    get: RendererToMainRequests['foreshadow:get']
+    upsert: RendererToMainRequests['foreshadow:upsert']
+    resolve: RendererToMainRequests['foreshadow:resolve']
+    abandon: RendererToMainRequests['foreshadow:abandon']
+    reopen: RendererToMainRequests['foreshadow:reopen']
   }
   dialog: {
     openDirectory: RendererToMainRequests['dialog:openDirectory']

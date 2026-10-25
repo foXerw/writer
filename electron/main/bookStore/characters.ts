@@ -11,7 +11,7 @@
 // - 引用检查（控制器裁定 1，抛 `REF_BROKEN: <targetId>` 先于任何写盘）：比较「本补丁的新边」与
 //   「存量已存的旧边」——只拒绝本次新引入的幻影 targetId；存量悬挂边（对方后来被删）必须原样保留且
 //   可继续编辑（否则任何一次删除都会把指向它的全部卡永久锁死）。合法目标集 = 本书角色 ∪ 卷 ∪
-//   世界观词条（Task 7 起由 world.ts 的 listWorldEntryIds 单一定源）；arc[].chapterIds 对章 id 同一规则。
+//   世界观词条（Task 8 起由 refs.ts 单一定源，卷/词条为 stem 直扫）；arc[].chapterIds 对章 id 同一规则。
 //   删除不做级联清理（他人 edges 保留，UI 降级显示「已删除角色」，M4 AI 整理再治）；
 // - 时间戳：一律 ISO 字符串；updateCharacter 仓库侧刷新 updatedAt、createdAt 以存量为准
 //   （渲染层回显垃圾值不影响落盘）。
@@ -24,11 +24,9 @@ import { UUID_PATTERN, validateCharacterV2 } from '../../../src/common/schema'
 import { characterFile, charactersDir } from './paths'
 import { listYamlFiles, readYamlFile, writeYamlFileAtomic } from './docStore'
 import { listChapters } from './chapters'
-import { listVolumes } from './volumes'
-// Task 7 单一定源：世界观词条 id 直扫从 world.ts 导入（本文件曾有的临时私扫助手已删，语义逐字保留）。
-// 注意 world.ts ↔ characters.ts 互为「函数级」循环依赖（各自 assertReferences 只在调用期取对方函数，
-// 两端都是 hoisted function 声明，vitest/esbuild 的 ESM/CJS 语义下安全）。
-import { listWorldEntryIds } from './world'
+// Task 8 环拆重构：卷/词条 id 直扫改从 refs 单一定源导入（曾直接从 world.ts/volumes.ts 取函数，
+// 与 world.ts → characters.ts 构成函数级循环；refs.ts 零仓库导入，任何仓库引它都不成环）。
+import { volumeIds, worldIds } from './refs'
 
 const YAML_EXT = '.yaml'
 
@@ -195,8 +193,8 @@ function assertValidForWrite(doc: CharacterV2): void {
 function assertReferences(p: string, next: CharacterV2, prev: CharacterV2 | null): void {
   const knownTargets = new Set<string>([
     ...loadAll(p).map((c) => c.id),
-    ...listVolumes(p).map((v) => v.id),
-    ...listWorldEntryIds(p)
+    ...volumeIds(p),
+    ...worldIds(p)
   ])
   const previousTargets = new Set<string>()
   if (prev) {

@@ -18,8 +18,8 @@
 //   必然较新，故陈旧残影对上层不可见，仅磁盘留垃圾文件（M4 整理）；
 // - 列表只认枚举分类目录（SettingCategory slug，未知目录整体忽略）；listWorldEntryIds 是全目录宽容直扫
 //   （Task 6 characters 临时助手的单一定源替换——只认 stem 存在性、不校验内容，引用检查两侧共用此集合，
-//   避免「宽容扫描」与「严格列表」的目标集分裂）。
-import { existsSync, readdirSync, unlinkSync } from 'node:fs'
+//   避免「宽容扫描」与「严格列表」的目标集分裂；Task 8 环拆重构后直扫本体在 refs.ts，本文件仅薄转接）。
+import { existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { SettingCategory } from '../../../src/common/ipc'
@@ -27,8 +27,9 @@ import type { WorldEntryV2 } from '../../../src/common/schema'
 import { SETTING_CATEGORIES, UUID_PATTERN, validateWorldEntryV2 } from '../../../src/common/schema'
 import { worldDir, worldEntryFile } from './paths'
 import { listYamlFiles, readYamlFile, writeYamlFileAtomic } from './docStore'
-import { listCharacters } from './characters'
-import { listVolumes } from './volumes'
+// Task 8 环拆重构：角色/卷 id 直扫改从 refs 单一定源导入（曾直接从 characters.ts/volumes.ts 取
+// listCharacters/listVolumes，与 characters.ts → world.ts 构成函数级循环；refs.ts 零仓库导入不成环）。
+import { characterIds, volumeIds, worldIds } from './refs'
 
 const YAML_EXT = '.yaml'
 
@@ -147,21 +148,12 @@ export function getWorldEntry(p: string, id: string): WorldEntryV2 | null {
 }
 
 /**
- * 词条 id 宽容直扫（Task 6 characters 临时助手的单一定源，语义逐字保留）：
- * world/ 下任意子目录里的 `<stem>.yaml` 都算存在——只认 stem，不校验内容（轻），
- * 供角色/词条引用检查共用；目录整体缺失 → 空数组。
+ * 词条 id 宽容直扫（Task 8 起本体迁入 refs.worldIds——「本书存在哪些实体 id」的单一定源；
+ * 语义逐字不变：world/ 下任意子目录的 `<stem>.yaml` 都算存在，只认 stem、不校验内容，目录缺失 → []。
+ * 本导出保留为薄转接，既有消费方（world.test.ts 等）无需改断言。
  */
 export function listWorldEntryIds(p: string): string[] {
-  const root = worldDir(p)
-  if (!existsSync(root)) return []
-  const ids: string[] = []
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    for (const file of listYamlFiles(join(root, entry.name))) {
-      ids.push(file.slice(0, -YAML_EXT.length))
-    }
-  }
-  return ids
+  return worldIds(p)
 }
 
 // ---------------------------------------------------------------------------
@@ -272,8 +264,8 @@ function assertReferences(p: string, next: WorldEntryV2, prev: WorldEntryV2 | nu
   }
 
   const knownLinkTargets = new Set<string>([
-    ...listCharacters(p).map((c) => c.id),
-    ...listVolumes(p).map((v) => v.id),
+    ...characterIds(p),
+    ...volumeIds(p),
     ...knownWorldIds
   ])
   const previousTargets = new Set<string>()

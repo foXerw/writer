@@ -6,6 +6,7 @@ import { registerVolumeHandlers } from './modules/volume'
 import { registerDialogHandlers } from './modules/dialog'
 import { registerCharacterHandlers } from './modules/character'
 import { registerSettingHandlers } from './modules/setting'
+import { registerNarrativeHandlers } from './modules/narrative'
 import { registerStatsHandlers } from './modules/stats'
 import { registerExportHandlers } from './modules/export'
 
@@ -21,6 +22,7 @@ export function registerAllIpcHandlers(): void {
   registerDialogHandlers()
   registerCharacterHandlers()
   registerSettingHandlers()
+  registerNarrativeHandlers()
   registerStatsHandlers()
   registerExportHandlers()
 }

@@ -43,6 +43,22 @@ const projectAPI: RendererToMainRequests = {
   'setting:update': (params) => ipcRenderer.invoke('setting:update', params),
   'setting:delete': (params) => ipcRenderer.invoke('setting:delete', params),
 
+  'plotline:getAll': (projectPath) => ipcRenderer.invoke('plotline:getAll', projectPath),
+  'plotline:create': (params) => ipcRenderer.invoke('plotline:create', params),
+  'plotline:update': (params) => ipcRenderer.invoke('plotline:update', params),
+  'plotline:delete': (params) => ipcRenderer.invoke('plotline:delete', params),
+
+  'choice:getAll': (projectPath) => ipcRenderer.invoke('choice:getAll', projectPath),
+  'choice:create': (params) => ipcRenderer.invoke('choice:create', params),
+  'choice:update': (params) => ipcRenderer.invoke('choice:update', params),
+  'choice:delete': (params) => ipcRenderer.invoke('choice:delete', params),
+
+  'foreshadow:get': (projectPath) => ipcRenderer.invoke('foreshadow:get', projectPath),
+  'foreshadow:upsert': (params) => ipcRenderer.invoke('foreshadow:upsert', params),
+  'foreshadow:resolve': (params) => ipcRenderer.invoke('foreshadow:resolve', params),
+  'foreshadow:abandon': (params) => ipcRenderer.invoke('foreshadow:abandon', params),
+  'foreshadow:reopen': (params) => ipcRenderer.invoke('foreshadow:reopen', params),
+
   'dialog:openDirectory': () => ipcRenderer.invoke('dialog:openDirectory'),
   'dialog:openFile': (filters) => ipcRenderer.invoke('dialog:openFile', filters),
   'dialog:saveFile': (params) => ipcRenderer.invoke('dialog:saveFile', params),
@@ -123,6 +139,31 @@ const novelWriter: NovelWriterApi = {
     create: projectAPI['setting:create'],
     update: projectAPI['setting:update'],
     delete: projectAPI['setting:delete']
+  },
+
+  // 剧情线相关（Task 8，纯数据层）
+  plotline: {
+    getAll: projectAPI['plotline:getAll'],
+    create: projectAPI['plotline:create'],
+    update: projectAPI['plotline:update'],
+    delete: projectAPI['plotline:delete']
+  },
+
+  // 关键选项相关（Task 8，纯数据层）
+  choice: {
+    getAll: projectAPI['choice:getAll'],
+    create: projectAPI['choice:create'],
+    update: projectAPI['choice:update'],
+    delete: projectAPI['choice:delete']
+  },
+
+  // 伏笔台账相关（Task 8；转移通道返回整本新台账）
+  foreshadow: {
+    get: projectAPI['foreshadow:get'],
+    upsert: projectAPI['foreshadow:upsert'],
+    resolve: projectAPI['foreshadow:resolve'],
+    abandon: projectAPI['foreshadow:abandon'],
+    reopen: projectAPI['foreshadow:reopen']
   },
 
   // 对话框

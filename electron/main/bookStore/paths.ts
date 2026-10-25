@@ -52,8 +52,16 @@ export function plotlinesDir(p: string): string {
   return join(p, 'plotlines')
 }
 
+export function plotlineFile(p: string, id: string): string {
+  return join(plotlinesDir(p), `${id}.yaml`)
+}
+
 export function choicesDir(p: string): string {
   return join(p, 'choices')
+}
+
+export function choiceFile(p: string, id: string): string {
+  return join(choicesDir(p), `${id}.yaml`)
 }
 
 export function foreshadowFile(p: string): string {

@@ -9,7 +9,14 @@ import type {
   StatsData,
   ExportParams
 } from '@/common/ipc'
-import type { CharacterV2, WorldEntryV2 } from '@/common/schema'
+import type {
+  CharacterV2,
+  ChoiceNodeV2,
+  ForeshadowEntry,
+  ForeshadowLedger,
+  PlotlineV2,
+  WorldEntryV2
+} from '@/common/schema'
 
 // 导出格式（原通用服务层的 ExportFormat，随门面迁移）
 export type ExportFormat = 'word' | 'pdf' | 'epub'
@@ -289,6 +296,112 @@ export function useSetting() {
     createSetting,
     updateSetting,
     deleteSetting
+  }
+}
+
+// 叙事三域 Hook（Task 8：剧情线/关键选项/伏笔台账——纯数据层，录入 UI 随 M4）。
+// 与 useCharacter/useSetting 同一薄包装纪律（一通道一函数）；foreshadow 转移通道返回整本新台账，
+// 渲染层拿它直接替换本地状态。reopen 为状态机撤回边的唯一入口（Task 8 裁定新增通道）。
+export function useNarrative() {
+  const ipc = getIPC()
+
+  const getAllPlotlines = useCallback(async (projectPath: string): Promise<PlotlineV2[]> => {
+    return ipc.plotline.getAll(projectPath)
+  }, [ipc])
+
+  const createPlotline = useCallback(async (
+    projectPath: string,
+    plotline: Partial<PlotlineV2>
+  ): Promise<PlotlineV2> => {
+    return ipc.plotline.create({ projectPath, plotline })
+  }, [ipc])
+
+  const updatePlotline = useCallback(async (
+    projectPath: string,
+    plotline: PlotlineV2
+  ): Promise<PlotlineV2> => {
+    return ipc.plotline.update({ projectPath, plotline })
+  }, [ipc])
+
+  const deletePlotline = useCallback(async (
+    projectPath: string,
+    plotlineId: string
+  ): Promise<boolean> => {
+    return ipc.plotline.delete({ projectPath, plotlineId })
+  }, [ipc])
+
+  const getAllChoices = useCallback(async (projectPath: string): Promise<ChoiceNodeV2[]> => {
+    return ipc.choice.getAll(projectPath)
+  }, [ipc])
+
+  const createChoice = useCallback(async (
+    projectPath: string,
+    choice: Partial<ChoiceNodeV2>
+  ): Promise<ChoiceNodeV2> => {
+    return ipc.choice.create({ projectPath, choice })
+  }, [ipc])
+
+  const updateChoice = useCallback(async (
+    projectPath: string,
+    choice: ChoiceNodeV2
+  ): Promise<ChoiceNodeV2> => {
+    return ipc.choice.update({ projectPath, choice })
+  }, [ipc])
+
+  const deleteChoice = useCallback(async (
+    projectPath: string,
+    choiceId: string
+  ): Promise<boolean> => {
+    return ipc.choice.delete({ projectPath, choiceId })
+  }, [ipc])
+
+  const getForeshadowLedger = useCallback(async (projectPath: string): Promise<ForeshadowLedger> => {
+    return ipc.foreshadow.get(projectPath)
+  }, [ipc])
+
+  const upsertForeshadow = useCallback(async (
+    projectPath: string,
+    entry: ForeshadowEntry
+  ): Promise<ForeshadowLedger> => {
+    return ipc.foreshadow.upsert({ projectPath, entry })
+  }, [ipc])
+
+  const resolveForeshadow = useCallback(async (
+    projectPath: string,
+    foreshadowId: string,
+    resolvedChapterId: string
+  ): Promise<ForeshadowLedger> => {
+    return ipc.foreshadow.resolve({ projectPath, foreshadowId, resolvedChapterId })
+  }, [ipc])
+
+  const abandonForeshadow = useCallback(async (
+    projectPath: string,
+    foreshadowId: string
+  ): Promise<ForeshadowLedger> => {
+    return ipc.foreshadow.abandon({ projectPath, foreshadowId })
+  }, [ipc])
+
+  const reopenForeshadow = useCallback(async (
+    projectPath: string,
+    foreshadowId: string
+  ): Promise<ForeshadowLedger> => {
+    return ipc.foreshadow.reopen({ projectPath, foreshadowId })
+  }, [ipc])
+
+  return {
+    getAllPlotlines,
+    createPlotline,
+    updatePlotline,
+    deletePlotline,
+    getAllChoices,
+    createChoice,
+    updateChoice,
+    deleteChoice,
+    getForeshadowLedger,
+    upsertForeshadow,
+    resolveForeshadow,
+    abandonForeshadow,
+    reopenForeshadow
   }
 }
 
