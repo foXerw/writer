@@ -1,72 +1,95 @@
+// 项目 create/open：一切书目录读写经 bookStore（M2 Global Constraint——本文件零直接 fs 手术）。
+// - project:create → v2 骨架（book.json + chapters/volumes/characters/world + 空台账），不再写 .novelwriter.json；
+// - project:open → detectFormat 三态：v1 先就地迁移（带时间戳备份）再按 v2 读；v2 直读；invalid 抛 INVALID_PROJECT；
+//   CORRUPT_BOOK 一律捕获后以用户可读文案重抛（前缀契约：渲染层按 `CORRUPT_BOOK:` 展示，toast 接线在 Task 10）。
+// - ProjectData.id 自此为 book.json 的稳定书 id（不再每次打开 randomUUID）。
 import { ipcMain } from 'electron'
-import * as fs from 'fs'
-import * as path from 'path'
-import { randomUUID } from 'crypto'
-import { ProjectType } from '../../../../src/common/ipc'
+import { join } from 'node:path'
+import type { MigrationReport, ProjectData, ProjectType } from '../../../../src/common/ipc'
+import type { BookMeta } from '../../../../src/common/schema'
+import { readYamlFile } from '../../bookStore/docStore'
+import { detectFormat } from '../../bookStore/format'
+import { createBookSkeleton, migrateBook, validateMigration } from '../../bookStore/migrate'
+import { bookJsonPath } from '../../bookStore/paths'
 import { formatFilePath } from '../helpers'
 
 export function registerProjectHandlers(): void {
-  // 项目相关处理
-  ipcMain.handle('project:create', async (_, params: { name: string; path: string; type: ProjectType }) => {
-    const { name, path: projectPath, type } = params
-    const projectDir = path.join(projectPath, name)
+  // 创建项目：v2 骨架
+  ipcMain.handle(
+    'project:create',
+    async (_, params: { name: string; path: string; type: ProjectType }) => {
+      const { name, path: parentPath, type } = params
+      const projectDir = join(parentPath, name)
 
-    // 创建项目目录
-    if (!fs.existsSync(projectDir)) {
-      fs.mkdirSync(projectDir, { recursive: true })
-    }
+      const meta = createBookSkeleton(projectDir, name, type)
 
-    // 创建项目配置
-    const config = {
-      name,
-      type,
-      version: '1.0.0',
-      settings: {
-        wordCountGoal: 0,
-        dailyGoal: 2000,
-        autoSave: true,
-        autoSaveInterval: 30000
+      const projectData: ProjectData = {
+        id: meta.id,
+        name: meta.name,
+        path: formatFilePath(projectDir),
+        type: meta.type,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        config: meta.config,
+        migration: null
       }
+      return projectData
     }
+  )
 
-    fs.writeFileSync(
-      path.join(projectDir, '.novelwriter.json'),
-      JSON.stringify(config, null, 2)
-    )
-
-    // 创建章节目录
-    fs.mkdirSync(path.join(projectDir, 'chapters'), { recursive: true })
-
-    const projectData = {
-      id: randomUUID(),
-      name,
-      path: formatFilePath(projectDir),
-      type,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      config: config.settings
-    }
-
-    return projectData
-  })
-
+  // 打开项目：v1 → 先迁移再按 v2 读；迁移报告随 ProjectData.migration 返回
   ipcMain.handle('project:open', async (_, projectPath: string) => {
-    const configPath = path.join(projectPath, '.novelwriter.json')
+    try {
+      const format = detectFormat(projectPath)
+      if (format === 'invalid') {
+        throw new Error(
+          'INVALID_PROJECT: 未找到 book.json 或 .novelwriter.json 项目标记。请选择有效的完美小说项目文件夹。'
+        )
+      }
 
-    if (!fs.existsSync(configPath)) {
-      throw new Error('INVALID_PROJECT: Project configuration file not found. Please select a valid Perfect Novel project folder.')
-    }
+      let migration: MigrationReport | null = null
+      if (format === 'v1') {
+        migration = migrateBook(projectPath)
+        console.warn(
+          `[migrate] v1→v2 完成：备份在 ${migration.backupPath}，warnings ${migration.warnings.length} 条`
+        )
+        for (const w of migration.warnings) {
+          console.warn(`[migrate] ${w}`)
+        }
+      }
 
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      const book = readYamlFile<BookMeta>(bookJsonPath(projectPath))
 
-    return {
-      id: randomUUID(),
-      name: config.name,
-      path: formatFilePath(projectPath),
-      type: config.type,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      config: config.settings
+      // 迁移后自检（open 后跑一次；问题仅记日志，不阻塞打开）
+      const problems = validateMigration(projectPath)
+      if (problems.length > 0) {
+        console.error(`[bookStore] 书目录自检发现 ${problems.length} 处问题（不阻塞）:`)
+        for (const p of problems) {
+          console.error(`[bookStore] ${p}`)
+        }
+      }
+
+      const projectData: ProjectData = {
+        id: book.id, // 稳定书 id（book.json 持久化，跨次打开不变）
+        name: book.name,
+        path: formatFilePath(projectPath),
+        type: book.type,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        config: book.config,
+        migration
+      }
+      return projectData
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.startsWith('CORRUPT_BOOK')) {
+        // 决不让原始异常作为裸 IPC 错误逃逸：记录后按前缀契约重抛用户可读文案
+        console.error('project:open 书籍损坏（fail-closed，书目录未做修改）:', err)
+        throw new Error(
+          `CORRUPT_BOOK: ${projectPath} — 书籍数据已损坏，未做任何修改，请从 .migration-backup 或备份恢复`
+        )
+      }
+      throw err
     }
   })
 }

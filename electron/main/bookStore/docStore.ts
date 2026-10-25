@@ -41,6 +41,23 @@ export function writeYamlFileAtomic(absPath: string, obj: unknown): void {
   }
 }
 
+/**
+ * 原始文本的原子写（章节 .md 等不经 YAML 序列化的书文件）：
+ * 与 writeYamlFileAtomic 同一纪律——mkdir -p 父目录 → 同级 `<basename>.tmp-<uuid>` → renameSync 覆盖。
+ * 文本字节级原样落盘（front-matter/空行/emoji 零转义）。
+ */
+export function writeTextFileAtomic(absPath: string, text: string): void {
+  const dir = dirname(absPath)
+  mkdirSync(dir, { recursive: true })
+  const tmpPath = join(dir, `${basename(absPath)}.tmp-${randomUUID()}`)
+  try {
+    writeFileSync(tmpPath, text, 'utf8')
+    renameSync(tmpPath, absPath)
+  } finally {
+    rmSync(tmpPath, { force: true })
+  }
+}
+
 /** 列出目录下的 *.yaml 文件名（不含子目录/其他后缀）；目录不存在返回 []；升序排序保证迭代稳定。 */
 export function listYamlFiles(dirAbs: string): string[] {
   if (!existsSync(dirAbs)) return []

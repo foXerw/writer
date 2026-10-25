@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mkTmpBook } from '../../../tests/tmp'
-import { readYamlFile, writeYamlFileAtomic, listYamlFiles } from './docStore'
+import { readYamlFile, writeYamlFileAtomic, writeTextFileAtomic, listYamlFiles } from './docStore'
 import {
   bookJsonPath,
   backupRoot,
@@ -93,6 +93,29 @@ describe('listYamlFiles', () => {
     mkdirSync(join(dir, 'deep.yaml'))
 
     expect(listYamlFiles(dir)).toEqual(['a.yaml', 'z.yaml'])
+  })
+})
+
+describe('writeTextFileAtomic（章节 .md 等原始文本的原子写）', () => {
+  it('字节级原样落盘（front-matter/空行/emoji 不经 YAML 转义），父目录自动建', () => {
+    const dir = mkTmpBook()
+    const abs = chapterFile(dir, '3c8d5e2f-0b4e-4f6a-9c7d-2b3c4d5e6f70')
+    const text = '---\ntitle: 第一章\n---\n\n正文\n\n带空行🌅\n'
+
+    writeTextFileAtomic(abs, text)
+
+    expect(readFileSync(abs, 'utf8')).toBe(text)
+  })
+
+  it('覆盖写后目录内无 .tmp- 残留', () => {
+    const dir = mkTmpBook()
+    const abs = join(dir, 'chapters', 'a.md')
+
+    writeTextFileAtomic(abs, 'v1')
+    writeTextFileAtomic(abs, 'v2')
+
+    expect(readFileSync(abs, 'utf8')).toBe('v2')
+    expect(readdirSync(join(dir, 'chapters')).filter((f) => f.includes('.tmp-'))).toEqual([])
   })
 })
 
