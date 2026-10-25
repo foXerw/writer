@@ -190,7 +190,10 @@ function locateFiles(p: string, id: string): string[] {
   return found
 }
 
-/** 同 id 多落点时按 updatedAt 新者为准（与 loadAll 去重同一规则）；首个坏档把 WORLD_INVALID 抛穿。 */
+/**
+ * 同 id 多落点时按 updatedAt 新者为准；首个坏档把 WORLD_INVALID 抛穿。
+ * 平局规则：同 updatedAt 时后枚举者（SETTING_CATEGORIES 序）胜——与 loadAll 是同一规则，两处必须同步，改动需同步。
+ */
 function pickNewest(paths: string[]): WorldEntryV2 {
   let best: WorldEntryV2 | null = null
   for (const abs of paths) {
@@ -204,7 +207,10 @@ function stemOf(abs: string): string {
   return abs.slice(0, -YAML_EXT.length).replace(/^.*[\\/]/, '')
 }
 
-/** 列出全部枚举分类目录的 *.yaml 并校验；坏档 warn + 跳过；跨类重复 id 保留 updatedAt 较新的一份。 */
+/**
+ * 列出全部枚举分类目录的 *.yaml 并校验；坏档 warn + 跳过；跨类重复 id 保留 updatedAt 较新的一份。
+ * 平局规则：同 updatedAt 时后枚举者（SETTING_CATEGORIES 序）胜——与 pickNewest 是同一规则，两处必须同步，改动需同步。
+ */
 function loadAll(p: string): WorldEntryV2[] {
   const byId = new Map<string, WorldEntryV2>()
   for (const category of SETTING_CATEGORIES) {

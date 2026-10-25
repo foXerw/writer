@@ -172,6 +172,67 @@ describe('createWorldEntry + listWorldEntries', () => {
     expect(list[0].title).toBe('新位置')
     expect((getWorldEntry(p, dupId) as WorldEntryV2).title).toBe('新位置')
   })
+
+  it('评审 I1(1)：强制双文件（同 id 落两个分类目录）→ delete 返回 true 且两处文件全消失、list 无残影', () => {
+    const p = mkTmpBook()
+    const dupId = randomUUID()
+    const stale: WorldEntryV2 = {
+      id: dupId,
+      title: '旧位置',
+      category: 'magic',
+      content: 'stale',
+      parentId: null,
+      order: 0,
+      tags: [],
+      links: [],
+      createdAt: '2020-01-01T00:00:00.000Z',
+      updatedAt: '2020-01-01T00:00:00.000Z'
+    }
+    const oldAbs = worldEntryFile(p, 'location', dupId)
+    const newAbs = worldEntryFile(p, 'magic', dupId)
+    writeYamlFileAtomic(oldAbs, stale)
+    writeYamlFileAtomic(newAbs, { ...stale, title: '新位置', updatedAt: '2026-01-01T00:00:00.000Z' })
+
+    expect(deleteWorldEntry(p, dupId)).toBe(true) // 跨类全部落点一并清理
+    expect(existsSync(oldAbs)).toBe(false)
+    expect(existsSync(newAbs)).toBe(false)
+    expect(listWorldEntries(p)).toEqual([]) // 绝无 ghost
+    expect(getWorldEntry(p, dupId)).toBeNull()
+  })
+
+  it('评审 I1(2)：搬迁失败状态手工复现（新副本在 B 目录）→ update 的陈旧 unlink 清扫删掉 A 目录残影，list 仍只一条', () => {
+    const p = mkTmpBook()
+    const dupId = randomUUID()
+    const stale: WorldEntryV2 = {
+      id: dupId,
+      title: '旧位置',
+      category: 'magic',
+      content: 'stale',
+      parentId: null,
+      order: 0,
+      tags: [],
+      links: [],
+      createdAt: '2020-01-01T00:00:00.000Z',
+      updatedAt: '2020-01-01T00:00:00.000Z'
+    }
+    const oldAbs = worldEntryFile(p, 'location', dupId) // A：unlink 失败假定的残留副本
+    writeYamlFileAtomic(oldAbs, stale)
+    writeYamlFileAtomic(worldEntryFile(p, 'magic', dupId), {
+      ...stale,
+      title: '新位置',
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    }) // B：较新副本（搬迁语义上的「新档」）
+
+    const stored = getWorldEntry(p, dupId) as WorldEntryV2
+    expect(stored.title).toBe('新位置') // 点读已按 updatedAt 新者取 B
+
+    const saved = updateWorldEntry(p, { ...stored, content: '清扫旧残影' })
+    expect(existsSync(oldAbs)).toBe(false) // update 的陈旧路径清扫把 A 删掉
+    expect(saved.content).toBe('清扫旧残影')
+    const list = listWorldEntries(p)
+    expect(list.map((e) => e.id)).toEqual([dupId]) // 去重后仍只有一条
+    expect(readYamlFile<WorldEntryV2>(worldEntryFile(p, 'magic', dupId)).title).toBe('新位置')
+  })
 })
 
 // ---------------------------------------------------------------------------
