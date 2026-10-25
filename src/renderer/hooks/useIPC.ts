@@ -3,14 +3,13 @@ import type {
   NovelWriterApi,
   ProjectData,
   Chapter,
-  Setting,
   Volume,
   ProjectType,
   FileFilter,
   StatsData,
   ExportParams
 } from '@/common/ipc'
-import type { CharacterV2 } from '@/common/schema'
+import type { CharacterV2, WorldEntryV2 } from '@/common/schema'
 
 // 导出格式（原通用服务层的 ExportFormat，随门面迁移）
 export type ExportFormat = 'word' | 'pdf' | 'epub'
@@ -252,28 +251,28 @@ export function useCharacter() {
 export function useSetting() {
   const ipc = getIPC()
 
-  const getAllSettings = useCallback(async (projectPath: string): Promise<Setting[]> => {
+  const getAllSettings = useCallback(async (projectPath: string): Promise<WorldEntryV2[]> => {
     return ipc.setting.getAll(projectPath)
   }, [ipc])
 
   const getSettingById = useCallback(async (
     projectPath: string,
     settingId: string
-  ): Promise<Setting | null> => {
+  ): Promise<WorldEntryV2 | null> => {
     return ipc.setting.getById({ projectPath, settingId })
   }, [ipc])
 
   const createSetting = useCallback(async (
     projectPath: string,
-    setting: Partial<Setting>
-  ): Promise<Setting> => {
+    setting: Partial<WorldEntryV2>
+  ): Promise<WorldEntryV2> => {
     return ipc.setting.create({ projectPath, setting })
   }, [ipc])
 
   const updateSetting = useCallback(async (
     projectPath: string,
-    setting: Setting
-  ): Promise<Setting> => {
+    setting: WorldEntryV2
+  ): Promise<WorldEntryV2> => {
     return ipc.setting.update({ projectPath, setting })
   }, [ipc])
 

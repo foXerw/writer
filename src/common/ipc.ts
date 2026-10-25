@@ -2,7 +2,7 @@
 
 // 仅类型导入（双向 type-only 环：schema.ts 从这里取枚举类型，这里从 schema 取 CharacterV2——
 // tsc/vite 编译期即擦除，无运行时循环依赖）。
-import type { CharacterV2 } from './schema'
+import type { CharacterV2, WorldEntryV2 } from './schema'
 
 // 主进程 -> 渲染进程 事件
 export type MainToRendererEvents = {
@@ -70,11 +70,12 @@ export type RendererToMainRequests = {
   'character:update': (params: { projectPath: string; character: CharacterV2 }) => Promise<CharacterV2>
   'character:delete': (params: { projectPath: string; characterId: string }) => Promise<boolean>
 
-  // 世界观设定相关
-  'setting:getAll': (projectPath: string) => Promise<Setting[]>
-  'setting:getById': (params: { projectPath: string; settingId: string }) => Promise<Setting | null>
-  'setting:create': (params: { projectPath: string; setting: Partial<Setting> }) => Promise<Setting>
-  'setting:update': (params: { projectPath: string; setting: Setting }) => Promise<Setting>
+  // 世界观设定相关（Task 7：v2 词条 WorldEntryV2——world/<类别>/<全id>.yaml，时间戳 ISO 字符串；
+  // 通道名不变，v1 Setting 接口随仓库重写退役）
+  'setting:getAll': (projectPath: string) => Promise<WorldEntryV2[]>
+  'setting:getById': (params: { projectPath: string; settingId: string }) => Promise<WorldEntryV2 | null>
+  'setting:create': (params: { projectPath: string; setting: Partial<WorldEntryV2> }) => Promise<WorldEntryV2>
+  'setting:update': (params: { projectPath: string; setting: WorldEntryV2 }) => Promise<WorldEntryV2>
   'setting:delete': (params: { projectPath: string; settingId: string }) => Promise<boolean>
 
   // 系统相关
@@ -277,15 +278,5 @@ export interface CharacterTag {
 // 世界观设定分类
 export type SettingCategory = 'location' | 'history' | 'magic' | 'culture' | 'other'
 
-// 世界观设定
-export interface Setting {
-  id: string
-  title: string
-  category: SettingCategory
-  content: string
-  parentId?: string
-  order: number
-  tags: string[]
-  createdAt: Date
-  updatedAt: Date
-}
+// v1 Setting 已随 Task 7 世界观词条 v2 仓库重写退役：
+// 通道载荷类型统一为 schema.ts 的 WorldEntryV2（parentId 世界层级、links 按 id 引用、时间戳 ISO 字符串）。

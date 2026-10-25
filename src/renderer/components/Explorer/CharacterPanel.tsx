@@ -38,10 +38,11 @@ interface CharacterPanelProps {
 }
 
 // 关系行/弧线行是编辑期状态（Form 外的受控列表）：
-// - 关系行 = EntityLink（targetId + kind + 可选 note）。存量悬挂边（对方后来被删）照样入行，
-//   Select 以「已删除角色」禁用项降级显示，kind/note 仍可见可改——仓库裁定：旧边不拦保存；
+// - 关系行 = EntityLink（targetId + kind + 可选 note）。存量边（对方后来被删/指向卷·词条）照样入行，
+//   Select 以禁用项降级显示（能解析到名字显示名字，解析不到显示「已删除或不存在」），kind/note 仍可见可改
+//   ——仓库裁定：旧边不拦保存；
 // - 弧线行 chapterIds 在 M2 恒为空数组（新建行）或原样透传（存量行），M4 AI 整理时再填充。
-const DELETED_LABEL = '已删除角色'
+const DELETED_LABEL = '已删除或不存在'
 
 const CharacterPanel: React.FC<CharacterPanelProps> = ({
   projectPath,
@@ -78,10 +79,10 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
     loadCharacters()
   }, [loadCharacters])
 
-  // 名字解析花名册（关系边 targetId → 显示名）：卷与设定各拉一次即可——仅用于标签展示，
-  // 失败静默降级（对应边显示「已删除角色」，不阻塞面板）。
-  // Task 6 记录：setting:getAll 仍走 v1 通道（读 settings/*.json）；迁移后词条在 world/，
-  // 该通道返回空表 → 指向世界观词条的边在 M2 会降级为「已删除角色」，Task 7 换 world 列表后自愈。
+  // 名字解析花名册（关系边 targetId → 显示名）：卷与词条各拉一次即可——仅用于标签展示，
+  // 失败静默降级（对应边显示「已删除或不存在」，不阻塞面板）。
+  // Task 7 起 setting:getAll 已切 v2 world 仓库：迁移词条返回真实标题，指向词条的边可正常解析
+  //（Task 6 时该通道读 v1 settings/ 恒为空表、词条边一律降级的坑已填）。
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -148,9 +149,13 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
     const opts: { value: string; label: string; disabled?: boolean }[] = characters
       .filter((c) => c.id !== editingCharacter?.id) // 对方角色：不含自己
       .map((c) => ({ value: c.id, label: c.name }))
-    // 存量悬挂目标：补一个禁用的「已删除角色」选项，让 Select 有可读的回显而非裸 id
-    if (row.targetId && !nameById.has(row.targetId)) {
-      opts.unshift({ value: row.targetId, label: DELETED_LABEL, disabled: true })
+    // 存量边目标不在可选角色列表里（指向卷/词条、指向自己、或对方已被删）：
+    // 补一个禁用选项让 Select 有可读回显而非裸 id——能解析到名字（卷/词条标题）就显示名字，
+    // 解析不到才降级「已删除或不存在」（Task 7 评审整改：卷/词条目标此前渲染成裸 UUID）。
+    const selectable = characters.some((c) => c.id === row.targetId && c.id !== editingCharacter?.id)
+    if (row.targetId && !selectable) {
+      const resolved = nameById.get(row.targetId)
+      opts.unshift({ value: row.targetId, label: resolved || DELETED_LABEL, disabled: true })
     }
     return opts
   }
@@ -326,7 +331,7 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
                     <Popconfirm
                       key="delete"
                       title="删除角色"
-                      description="确定要删除这个角色吗？其他角色指向它的关系将保留并显示为「已删除角色」。"
+                      description="确定要删除这个角色吗？其他角色指向它的关系将保留并显示为「已删除或不存在」。"
                       onConfirm={(e) => {
                         e?.stopPropagation()
                         handleDelete(character.id)

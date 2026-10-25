@@ -25,7 +25,10 @@ import {
   DeleteOutlined,
   EditOutlined
 } from '@ant-design/icons'
-import type { Setting, SettingCategory } from '@/common/ipc'
+import type { SettingCategory } from '@/common/ipc'
+// Task 7：通道载荷类型切 v2 词条 WorldEntryV2（树状分类/CRUD 交互零变化裁定；
+// parentId/order/links 暂不在面板暴露——M2 不新增世界 UI，存量字段经 updateSetting 整条透传保存）
+import type { WorldEntryV2 } from '@/common/schema'
 import { useSetting } from '../../hooks/useIPC'
 
 const { Text } = Typography
@@ -33,7 +36,7 @@ const { TextArea } = Input
 
 interface SettingPanelProps {
   projectPath: string
-  onSelectSetting?: (setting: Setting) => void
+  onSelectSetting?: (setting: WorldEntryV2) => void
 }
 
 const CATEGORY_CONFIG: Record<SettingCategory, { label: string; color: string; icon: React.ReactNode }> = {
@@ -49,9 +52,9 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
   onSelectSetting
 }) => {
   const { getAllSettings, createSetting, updateSetting, deleteSetting } = useSetting()
-  const [settings, setSettings] = useState<Setting[]>([])
+  const [settings, setSettings] = useState<WorldEntryV2[]>([])
   const [modalVisible, setModalVisible] = useState(false)
-  const [editingSetting, setEditingSetting] = useState<Setting | null>(null)
+  const [editingSetting, setEditingSetting] = useState<WorldEntryV2 | null>(null)
   const [form] = Form.useForm()
   const [messageApi, contextHolder] = message.useMessage()
 
@@ -80,7 +83,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
   }
 
   // 打开编辑设定弹窗
-  const handleEdit = (setting: Setting) => {
+  const handleEdit = (setting: WorldEntryV2) => {
     setEditingSetting(setting)
     form.setFieldsValue({
       title: setting.title,
@@ -122,7 +125,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
 
   // 转换为树数据
   const treeData = React.useMemo(() => {
-    const categoryGroups: Record<string, Setting[]> = {}
+    const categoryGroups: Record<string, WorldEntryV2[]> = {}
 
     settings.forEach(setting => {
       if (!categoryGroups[setting.category]) {
