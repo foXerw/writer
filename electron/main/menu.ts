@@ -199,7 +199,7 @@ export function createMenu(options: MenuOptions): Menu {
           accelerator: 'F1',
           click: async () => {
             const { shell } = await import('electron')
-            await shell.openExternal('https://github.com/your-repo/novel-writer')
+            await shell.openExternal('https://github.com/foXerw/perfect-novel')
           }
         },
         { type: 'separator' as const },
@@ -209,7 +209,7 @@ export function createMenu(options: MenuOptions): Menu {
         },
         { type: 'separator' as const },
         {
-          label: '关于 Novel Writer',
+          label: '关于 完美小说',
           click: () => sendMenu('about')
         }
       ]

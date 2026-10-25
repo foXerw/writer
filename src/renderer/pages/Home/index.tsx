@@ -67,7 +67,7 @@ function Home() {
         }}>
           <Space size="small">
             <FileOutlined style={{ color: 'var(--color-primary)' }} />
-            <Title level={4} style={{ margin: 0, color: 'var(--color-text)', fontSize: 14 }}>Novel Writer</Title>
+            <Title level={4} style={{ margin: 0, color: 'var(--color-text)', fontSize: 14 }}>完美小说</Title>
             <Button
               size="small"
               icon={<PlusOutlined />}

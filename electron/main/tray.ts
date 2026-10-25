@@ -23,7 +23,7 @@ export function createTray(): Tray | null {
   }
 
   // 设置托盘提示
-  tray.setToolTip('Novel Writer')
+  tray.setToolTip('完美小说')
 
   // 创建托盘菜单
   const contextMenu = Menu.buildFromTemplate([

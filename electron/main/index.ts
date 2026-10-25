@@ -1,8 +1,10 @@
 import { app, BrowserWindow } from 'electron'
+import { join } from 'path'
 import { createMainWindow } from './window'
 import { setApplicationMenu } from './menu'
 import { createTray, destroyTray } from './tray'
 import { loadTheme } from './theme'
+import { migrateUserData } from './userData'
 import './ipc/handlers'
 
 // 开发环境禁用安全限制
@@ -13,6 +15,13 @@ if (import.meta.env.DEV) {
 }
 
 app.whenReady().then(() => {
+  // 更名搬运 novel-writer → perfect-novel：必须在 loadTheme() 与 createMainWindow() 之前，
+  // 否则 theme.json / 窗口状态会读旧目录缺失而被静默重置
+  migrateUserData(
+    join(app.getPath('appData'), 'novel-writer'),
+    join(app.getPath('appData'), 'perfect-novel')
+  )
+
   // 启动时加载持久化主题（必须在创建窗口之前，确保首帧 backgroundColor 正确）
   loadTheme()
 

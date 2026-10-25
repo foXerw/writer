@@ -1,7 +1,7 @@
 {
-  "name": "novel-writer",
+  "name": "perfect-novel",
   "version": "1.0.0",
-  "description": "A professional writer application with VSCode style",
+  "description": "完美小说 – AI 共著的小说创作工作台",
   "main": "dist-electron/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

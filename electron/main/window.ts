@@ -94,7 +94,7 @@ export function createSettingsWindow(): BrowserWindow {
     minWidth: 600,
     minHeight: 400,
     backgroundColor: getThemeBackgroundColor(),
-    title: '设置 - Novel Writer',
+    title: '设置 - 完美小说',
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       color: getThemeTitleBarColor(),
