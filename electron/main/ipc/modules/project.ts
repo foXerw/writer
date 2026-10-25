@@ -3,7 +3,10 @@
 // - project:open → detectFormat 三态：v1 先就地迁移（带时间戳备份）再按 v2 读；v2 直读；invalid 抛 INVALID_PROJECT；
 //   CORRUPT_BOOK 一律捕获后以用户可读文案重抛（前缀契约：渲染层按 `CORRUPT_BOOK:` 展示，toast 接线在 Task 10）。
 // - ProjectData.id 自此为 book.json 的稳定书 id（不再每次打开 randomUUID）。
-import { ipcMain } from 'electron'
+// - Task 9 接线（裁定 4/8）：create 成功后、open 的迁移+自检全部完成后 → startWatching(projectPath, win)。
+//   顺序钉死：watch 绝不在迁移期间启动（大规模文件改写不得进 watcher 事件）；startWatching 内部先停
+//   前一个监听并清其五域缓存——打开另一本书天然完成切换与陈旧缓存清理。
+import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { join } from 'node:path'
 import type { MigrationReport, ProjectData, ProjectType } from '../../../../src/common/ipc'
 import type { BookMeta } from '../../../../src/common/schema'
@@ -11,17 +14,29 @@ import { readYamlFile } from '../../bookStore/docStore'
 import { detectFormat } from '../../bookStore/format'
 import { createBookSkeleton, migrateBook, validateMigration } from '../../bookStore/migrate'
 import { bookJsonPath } from '../../bookStore/paths'
+import { startWatching } from '../../bookStore/watcher'
 import { formatFilePath } from '../helpers'
+
+/**
+ * 从 IPC 事件解析窗口并启动书目录监听。防御：sender 缺失/解析不到窗口 → 跳过（监听只影响
+ * 外部变更的自动刷新，绝不反过来阻塞 create/open 主流程；startWatching 自身永不抛，见 watcher.ts）。
+ */
+function beginWatching(event: IpcMainInvokeEvent | null, p: string): void {
+  const sender = event?.sender
+  const win = sender ? BrowserWindow.fromWebContents(sender) : null
+  if (win) startWatching(p, win)
+}
 
 export function registerProjectHandlers(): void {
   // 创建项目：v2 骨架
   ipcMain.handle(
     'project:create',
-    async (_, params: { name: string; path: string; type: ProjectType }) => {
+    async (event, params: { name: string; path: string; type: ProjectType }) => {
       const { name, path: parentPath, type } = params
       const projectDir = join(parentPath, name)
 
       const meta = createBookSkeleton(projectDir, name, type)
+      beginWatching(event, projectDir) // 骨架已落盘（无迁移环节）→ 立即监听（Task 9 裁定 4）
 
       const projectData: ProjectData = {
         id: meta.id,
@@ -38,7 +53,7 @@ export function registerProjectHandlers(): void {
   )
 
   // 打开项目：v1 → 先迁移再按 v2 读；迁移报告随 ProjectData.migration 返回
-  ipcMain.handle('project:open', async (_, projectPath: string) => {
+  ipcMain.handle('project:open', async (event, projectPath: string) => {
     try {
       const format = detectFormat(projectPath)
       if (format === 'invalid') {
@@ -68,6 +83,10 @@ export function registerProjectHandlers(): void {
           console.error(`[bookStore] ${p}`)
         }
       }
+
+      // Task 9 裁定 4/8：迁移 + 自检全部完成后才启动监听（v1 迁移的大规模文件改写绝不进 watcher 事件；
+      // resume 续迁路径同样先于 watch 完成）；打开另一本书经由 startWatching 的 stop-previous 天然切换
+      beginWatching(event, projectPath)
 
       const projectData: ProjectData = {
         id: book.id, // 稳定书 id（book.json 持久化，跨次打开不变）

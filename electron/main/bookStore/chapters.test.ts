@@ -11,6 +11,7 @@ import {
   createChapter,
   deleteChapter,
   getChapter,
+  invalidateCache,
   listChapters,
   moveChapter,
   renameChapter,
@@ -441,5 +442,62 @@ describe('瞬态窗口关闭：migrateBook → listChapters', () => {
     expect(deleteChapter(p, list[1].id)).toBe(true)
     expect(listChapters(p).map((c) => c.title)).toEqual(['丙', '甲改'])
     expect(readdirSync(chaptersDir(p)).filter((f) => /^\d+-/.test(f))).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 9 域缓存语义（裁定 1 的唯一钉死点——其余四仓库镜像同一契约，不重复铺测试）
+// ---------------------------------------------------------------------------
+
+describe('缓存语义（list/get 命中缓存、mutation 就地同步、invalidateCache 分域清空）', () => {
+  it('(a) list → updateChapter → list 立即见新内容（mutation 先写盘后就地更新缓存，无需 invalidate）', () => {
+    const p = mkTmpBook()
+    const c = createChapter(p, '甲章')
+    expect(listChapters(p)[0].content).toBe('# 甲章\n\n') // 首次访问：读盘并填充缓存
+
+    updateChapter(p, c.id, { content: '新正文。\n' }) // mutation：原子写盘 → 缓存就地同步
+
+    // 缓存命中也必须 == 磁盘真相（裁定 1 字节级契约：缓存条目 = 刚写盘的内容）
+    expect(listChapters(p)[0].content).toBe('新正文。\n')
+    expect(getChapter(p, c.id)?.content).toBe('新正文。\n') // getX 与 listX 同一缓存权威
+    expect(parseChapterDoc(rawOf(p, c.id), c.id).body).toBe('新正文。\n')
+  })
+
+  it('(b) list → 绕过仓库直写磁盘 → list 仍显旧值（缓存权威）→ invalidateCache → list 见新值', () => {
+    const p = mkTmpBook()
+    const c = createChapter(p, '乙章')
+    expect(listChapters(p)[0].title).toBe('乙章') // 填充缓存
+
+    // 绕过仓库直写磁盘（模拟外部编辑器；生产环境由 watcher 失效兜底，测试里手动 invalidate）
+    writeFileSync(
+      join(chaptersDir(p), `${c.id}.md`),
+      serializeChapterDoc(
+        { id: c.id, title: '外部改写', volumeId: null, order: 1, status: 'draft' },
+        '外部正文。\n'
+      ),
+      'utf8'
+    )
+
+    expect(listChapters(p)[0].title).toBe('乙章') // 缓存权威：直写不被感知（接受的陈旧窗口）
+    invalidateCache(p) // 分域清空（只治 chapters 域）
+    expect(listChapters(p)[0].title).toBe('外部改写') // 重读磁盘
+    expect(listChapters(p)[0].content).toBe('外部正文。\n')
+  })
+
+  it('create/delete/move 全部就地同步缓存：mutation 之后 list 即磁盘状态', () => {
+    const p = mkTmpBook()
+    expect(listChapters(p)).toEqual([]) // 空目录也填充（[] 也是缓存条目——空书同样单次 IO）
+
+    const a = createChapter(p, '甲')
+    const b = createChapter(p, '乙')
+    expect(listChapters(p).map((c) => c.title)).toEqual(['甲', '乙']) // create 追加尾端（order=max+1）
+
+    expect(moveChapter(p, b.id, 1)).toBe(true)
+    expect(listChapters(p).map((c) => c.title)).toEqual(['乙', '甲']) // move 重排后整条重建
+    expect(listChapters(p).map((c) => c.order)).toEqual([1, 2])
+
+    expect(deleteChapter(p, a.id)).toBe(true)
+    expect(listChapters(p).map((c) => c.id)).toEqual([b.id]) // delete 就地摘除
+    expect(getChapter(p, a.id)).toBeNull() // getX 同源：缓存里已无 a
   })
 })

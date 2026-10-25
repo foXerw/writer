@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { NovelWriterApi } from '../../src/common/ipc'
+import type { BookChangedEvent, NovelWriterApi } from '../../src/common/ipc'
 import {
   RendererToMainRequests,
   ProjectData,
@@ -196,7 +196,16 @@ const novelWriter: NovelWriterApi = {
     projectCreated: rendererListeners['project:created'],
     projectOpened: rendererListeners['project:opened'],
     fileSaved: rendererListeners['file:saved'],
-    statsUpdated: rendererListeners['stats:updated']
+    statsUpdated: rendererListeners['stats:updated'],
+    // Task 9：book:changed 订阅返回反订阅函数（镜像 menu.onEvent 先例——removeListener
+    // 精确摘除本次注册的监听，绝不用 removeAllListeners 误伤其他订阅者）
+    bookChanged: (handler: (event: BookChangedEvent) => void) => {
+      const listener = (_e: IpcRendererEvent, event: BookChangedEvent): void => handler(event)
+      ipcRenderer.on('book:changed', listener)
+      return () => {
+        ipcRenderer.removeListener('book:changed', listener)
+      }
+    }
   },
 
   // 菜单事件

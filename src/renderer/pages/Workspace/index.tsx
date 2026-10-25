@@ -11,6 +11,7 @@ import CommandPalette from '../../components/Dialogs/CommandPalette'
 import ExportDialog, { type ExportOptions } from '../../components/Dialogs/ExportDialog'
 import { useMenu } from '../../hooks/useMenu'
 import { useKeyboard } from '../../hooks/useKeyboard'
+import { useBookEvents } from '../../hooks/useBookEvents'
 import { useChapter, useDialog, useExport, useFile } from '../../hooks/useIPC'
 import { assembleMarkdown, sanitizeFilename } from '../../services/exportService'
 import { useEditorStore, useShortcutStore } from '../../stores'
@@ -33,7 +34,7 @@ function Workspace() {
   const location = useLocation()
   const navigate = useNavigate()
   const state = location.state as WorkspaceState
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
 
   const { fontSize, wordWrap, showLineNumbers } = useEditorStore()
   const setShortcutDialogOpen = useShortcutStore((s) => s.setDialogOpen)
@@ -65,7 +66,8 @@ function Workspace() {
   // 章节会话：save/flush 并发语义（dirty 门控 / LIVE id 镜像 / 函数式回写）全部在 hook 内
   const session = useEditorSession(projectPath)
   const { chapters, openedChapters, currentChapter, editorContent, chapterTitle, setChapterTitle,
-    loadChapters, openChapter, closeChapter, createChapter, mergeUpdatedChapters, save, flushIfDirty, handleEditorChange } = session
+    loadChapters, openChapter, closeChapter, createChapter, mergeUpdatedChapters, save, flushIfDirty, handleEditorChange,
+    isDirtyNow, setFlushPaused, discardEdits } = session
 
   // 写作统计：countWords 增量（切章重置基线）/ 60s 活跃分钟 / 3s 防抖落盘
   const stats = useWritingStats({ projectPath, chapters, editorContent, currentChapterId: currentChapter?.id ?? null })
@@ -73,6 +75,86 @@ function Workspace() {
 
   // 自动保存：按项目配置间隔静默 flush（取代原 services/autoSave.ts）
   useAutoSave({ enabled: autoSaveEnabled, intervalMs: autoSaveInterval, chapterId: currentChapter?.id ?? null, flush: flushIfDirty })
+
+  // -------------------------------------------------------------------------
+  // Task 9 外部变更订阅（裁定 5）：book:changed → 静默刷新会话；当前脏章被外部改 → 冲突弹窗
+  // -------------------------------------------------------------------------
+  // book:changed 回调需读最新 currentChapter——镜像 ref（惯用法同下方 saveRef）
+  const currentChapterRef = useRef(currentChapter)
+  currentChapterRef.current = currentChapter
+  // 冲突弹窗单例门：弹窗期间到达的后续事件不再叠开（走静默刷新分支）
+  const conflictOpenRef = useRef(false)
+
+  // 冲突弹窗状态机（裁定 5）：
+  // 打开 = conflictOpenRef 置位 + setFlushPaused(当前章) → 该章的一切静默 flush（自动保存 tick /
+  //   selectChapter 离章 flush / 关窗兜底）在 session.saveCurrentChapter 单点短路，其他章不受影响；
+  // 决议（保留我的 / 重新加载 / X 关闭）→ 总是先 setFlushPaused(null) 恢复，再执行决议动作。
+  const openConflictModal = (chapter: Chapter) => {
+    conflictOpenRef.current = true
+    setFlushPaused(chapter.id)
+    let resolved = false
+    const finish = () => {
+      resolved = true
+      conflictOpenRef.current = false
+      setFlushPaused(null) // 决议 → 永远解除暂停（裁定 5：无论走哪条决议，含 X 关闭）
+      instance.destroy()
+    }
+    // 「保留我的」= 本地缓冲强制覆盖磁盘：暂停门解除后走 save({silent:true})——chapter:update
+    // 仓库写 → 缓存就地同步（不会陈旧）；save 成功清 dirty，后续回声落干净路径静默刷新。
+    const keepMine = () => {
+      if (resolved) return
+      finish()
+      void save({ silent: true })
+    }
+    // 「重新加载」= 弃本地编辑：清 dirty → loadChapters 的非脏路径用磁盘内容回灌
+    // editorContent/chapterTitle（复用 Task 5 的会话保留语义，不另造回灌路径）。
+    const reload = () => {
+      if (resolved) return
+      finish()
+      discardEdits()
+      void loadChapters()
+    }
+    const instance = modal.warning({
+      title: '文件被外部修改',
+      content: `「${chapter.title}」在磁盘上被其他程序修改，而你本地有未保存的编辑。请选择冲突解决方式。`,
+      closable: true,     // 显示 X：X 关闭按默认「保留我的」处理（见 onCancel 注释）
+      maskClosable: false,
+      keyboard: false,    // Esc 不触发误决议——隐式关闭只剩 X 一条路，同样归入「保留我的」默认
+      // 恰好两个按钮（裁定 5）。自定义 footer 而非默认 ok/cancel：默认 onCancel 无法区分
+      // 「点了重新加载」与「X 关闭」，两者决议必须不同（前者弃本地、后者保留本地）。
+      footer: () => (
+        <>
+          <Button onClick={reload}>重新加载</Button>
+          <Button type="primary" onClick={keepMine}>保留我的</Button>
+        </>
+      ),
+      // X 关闭（及其他任何「未显式选择」的关闭路径）= 按默认「保留我的」处理（裁定 5）——
+      // 绝不静默丢弃用户编辑：保留只是重写一次盘，丢弃却不可逆。
+      onCancel: keepMine
+    })
+  }
+
+  const handleBookChanged = (paths: string[]) => {
+    if (!projectPath) return
+    const cur = currentChapterRef.current
+    const currentFile = cur ? `chapters/${cur.id}.md` : null
+    if (
+      cur !== null &&
+      currentFile !== null &&
+      paths.includes(currentFile) &&
+      isDirtyNow() &&
+      !conflictOpenRef.current
+    ) {
+      openConflictModal(cur)
+      return
+    }
+    // 非脏 / 其他章 / 其他域变更 → 静默刷新（Task 5 loadChapters：tab 布局与当前章保留，
+    // 脏编辑器不回灌）。自写回声也落这里（裁定 5 接受噪音）：重拉相同值 = 无害 no-op。
+    // 已知窗口：自动保存写盘后的 300ms debounce 内用户又打字 → 回声到达时变脏 → 误开弹窗；
+    // 「保留我的」把本地缓冲重写回盘即无损解决（接受，不做写指纹抑制——裁定 5）。
+    void loadChapters()
+  }
+  useBookEvents({ onBookChanged: handleBookChanged })
 
   // save/createChapter 每次渲染刷新镜像 ref（同 useEditorSession 的 flushIfDirtyStable 惯用法）：
   // 供被 memo 的事件回调（命令面板）调用最新闭包，防止陈旧 editorContent/chapters 造成丢保存或旧编号建章。

@@ -20,6 +20,13 @@ export interface EditorSession {
   save: (opts?: { silent?: boolean }) => Promise<void>
   flushIfDirty: () => void
   handleEditorChange: (value: string) => void
+  // Task 9 外部改动冲突（裁定 5）的三件接缝——冲突弹窗的开合/决议全部经由它们，不在 JSX 里塞标志位：
+  /** 当前章此刻是否有未保存编辑（book:changed 到达时判定「冲突 vs 静默刷新」）。 */
+  isDirtyNow: () => boolean
+  /** 冲突弹窗期间暂停指定章的静默 flush（chapterId=null 恢复）；其他章不受影响。 */
+  setFlushPaused: (chapterId: string | null) => void
+  /** 「重新加载」决议：只清 dirty 标志——内容回灌由随后的 loadChapters 非脏路径完成（复用 Task 5 语义）。 */
+  discardEdits: () => void
 }
 
 // 章节编辑会话 —— Task 7 自原 Workspace/index.tsx 章节状态段逐行迁移，save/flush 并发语义不变：
@@ -40,6 +47,9 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
   const [chapterTitle, setChapterTitle] = useState('')
 
   const isDirtyRef = useRef(false)
+  // Task 9 冲突弹窗暂停门：弹窗未决议期间，该章的一切静默 flush（自动保存 tick / selectChapter
+  // 离章 flush / 关窗兜底）短路；其他章不受影响；决议（保留我的/重新加载/X 关闭）总是 setFlushPaused(null)。
+  const flushPausedChapterIdRef = useRef<string | null>(null)
   // 镜像 LIVE current chapter id，每次渲染更新，确保异步 resolve 时读到最新值。
   const currentChapterIdRef = useRef<string | null>(currentChapter?.id ?? null)
   currentChapterIdRef.current = currentChapter?.id ?? null
@@ -181,6 +191,10 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
     // 静默 flush：无脏数据则跳过；手动保存（silent=false）尊重显式 Ctrl+S，不门控 dirty。
     if (opts?.silent && !isDirtyRef.current) return
     const outgoing = currentChapter
+    // Task 9 暂停门（裁定 5）：冲突弹窗未决议期间，该章的静默 flush 一律短路——自动保存 tick、
+    // selectChapter 离章 flush、关窗兜底全走本函数，单点拦截即全覆盖；其他章不受影响。
+    // 手动保存（silent=false）不进门：弹窗期间 Ctrl+S 等效「保留我的」（同一 repo 写，缓存照常同步）。
+    if (opts?.silent && flushPausedChapterIdRef.current === outgoing.id) return
     try {
       const updated = await updateChapter(projectPath, {
         ...outgoing,
@@ -229,6 +243,20 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
     isDirtyRef.current = true
   }
 
+  // Task 9 冲突接缝（裁定 5）：三件都是稳定引用（读 ref，不随渲染变化），供 Workspace 的
+  // book:changed 回调与冲突弹窗决议调用。
+  const isDirtyNow = useCallback(() => isDirtyRef.current, [])
+
+  const setFlushPaused = useCallback((chapterId: string | null) => {
+    flushPausedChapterIdRef.current = chapterId
+  }, [])
+
+  // 「重新加载」决议的丢编辑步：只清 dirty——loadChapters 的 `!isDirtyRef` 分支随即用磁盘内容
+  // 回灌 editorContent/chapterTitle（Task 5 保留语义原样复用，不另造回灌路径）
+  const discardEdits = useCallback(() => {
+    isDirtyRef.current = false
+  }, [])
+
   return {
     chapters,
     openedChapters,
@@ -243,6 +271,9 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
     mergeUpdatedChapters,
     save: saveCurrentChapter,
     flushIfDirty: flushIfDirtyStable,
-    handleEditorChange
+    handleEditorChange,
+    isDirtyNow,
+    setFlushPaused,
+    discardEdits
   }
 }

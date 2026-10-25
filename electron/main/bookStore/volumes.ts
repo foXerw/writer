@@ -13,6 +13,10 @@
 //   目标卷必须存在（null = 未分卷），封死「章指向幻影卷后在树上隐身」的孤儿引用；
 // - deleteVolume 无孤儿保证（Review Focus 5）：先把其下每章 volumeId→null（逐章 meta-only 写），
 //   任何一章更新抛错即整体中止——卷文件绝不先行删除，宁可删除失败，不可制造孤儿。
+//
+// Task 9 域缓存（裁定 1）：模块级 `Map<projectPath, VolumeDoc[]>`，契约逐条镜像 chapters.ts
+// （代表实现+测试钉死在 chapters）：list 命中缓存零 IO（返回浅拷贝）、缓存只在 list 侧惰性填充、
+// mutation 先写盘再就地更新缓存、`invalidateCache(projectPath)` 只清 volumes 域。
 import { existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -25,9 +29,21 @@ import { listChapters, updateChapter } from './chapters'
 
 const YAML_EXT = '.yaml'
 
-/** order 升序（同序按 id 稳定）；损坏档 warn + 跳过。 */
+/** Task 9 域缓存：projectPath → 与磁盘一致的 order 升序列表（mutation 就地维护；invalidateCache 整域清空）。 */
+const listCache = new Map<string, VolumeDoc[]>()
+
+/** 清空 volumes 域缓存（下次 listVolumes 重读磁盘）——只治本域（裁定 1，镜像 chapters.invalidateCache）。 */
+export function invalidateCache(p: string): void {
+  listCache.delete(p)
+}
+
+/** order 升序（同序按 id 稳定）；损坏档 warn + 跳过；命中缓存零 IO（Task 9 裁定 1）。 */
 export function listVolumes(p: string): VolumeDoc[] {
-  return loadAll(p).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+  const cached = listCache.get(p)
+  if (cached) return [...cached]
+  const list = loadAll(p).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+  listCache.set(p, list)
+  return [...list]
 }
 
 export function createVolume(p: string, title: string): VolumeDoc {
@@ -38,6 +54,9 @@ export function createVolume(p: string, title: string): VolumeDoc {
   const order = docs.reduce((max, d) => Math.max(max, d.order), 0) + 1 // 稠密追加
   const doc: VolumeDoc = { id: randomUUID(), title, order }
   writeYamlFileAtomic(volumeFile(p, doc.id), doc)
+  // 先写盘、后就地更新缓存（Task 9 裁定 1）：order = max+1 → 追加尾端即保持升序
+  const cached = listCache.get(p)
+  if (cached) cached.push(doc)
   return doc
 }
 
@@ -50,6 +69,17 @@ export function renameVolume(p: string, id: string, newTitle: string): VolumeDoc
   }
   const doc: VolumeDoc = { ...current, title: newTitle }
   writeYamlFileAtomic(volumeFile(p, id), doc)
+  // 就地整元素替换（order 不变 → 排序保持）；缓存缺本卷 = 外部直写漂移 → 补入重排（镜像 chapters.applyPatch）
+  const cached = listCache.get(p)
+  if (cached) {
+    const idx = cached.findIndex((v) => v.id === id)
+    if (idx !== -1) {
+      cached[idx] = doc
+    } else {
+      cached.push(doc)
+      cached.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+    }
+  }
   return doc
 }
 
@@ -64,10 +94,15 @@ export function deleteVolume(p: string, id: string): boolean {
   if (!existsSync(abs)) return false // 幂等：缺失返回 false，不抛
   for (const c of listChapters(p)) {
     if (c.volumeId === id) {
-      updateChapter(p, c.id, { volumeId: null }) // meta-only：正文逐字节不动
+      updateChapter(p, c.id, { volumeId: null }) // meta-only：正文逐字节不动（章域缓存由其就地维护）
     }
   }
   unlinkSync(abs)
+  const cached = listCache.get(p)
+  if (cached) {
+    const idx = cached.findIndex((v) => v.id === id)
+    if (idx !== -1) cached.splice(idx, 1) // 就地同步：缓存 == 刚写定的磁盘状态
+  }
   return true
 }
 
@@ -88,6 +123,10 @@ export function reorderVolumes(p: string, fromId: string, toId: string): boolean
       writeYamlFileAtomic(volumeFile(p, d.id), { ...d, order }) // 只重写变化者
     }
   })
+  // 重排落盘后整条重建缓存条目（docs 此刻与磁盘逐一对应，order 按新位次）——就地同步（Task 9 裁定 1）
+  if (listCache.has(p)) {
+    listCache.set(p, docs.map((d, i) => ({ ...d, order: i + 1 })))
+  }
   return true
 }
 

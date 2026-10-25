@@ -81,3 +81,34 @@ export function backupStamp(tsIso: string): string {
   const safe = tsIso.replace(/[:/]/g, '-')
   return `${BACKUP_DIR_NAME}/${safe}`
 }
+
+// ---------------------------------------------------------------------------
+// Task 9：文件监听 → 缓存域映射（裁定 3）
+// ---------------------------------------------------------------------------
+
+/** 缓存/监听域：五个 repository 各占一域（narrative 统辖 plotlines/choices/foreshadow.yaml）。 */
+export type BookDomain = 'chapters' | 'characters' | 'world' | 'volumes' | 'narrative'
+
+/**
+ * 相对书根的路径 → 所属域；不归属任何实体域 → null。
+ * 裁定 3 钉死映射：chapters/→chapters、characters/→characters、world/→world、volumes/→volumes、
+ * foreshadow.yaml | plotlines/ | choices/ →narrative；其余（含 book.json——配置变更不失效实体域、
+ * .migration-backup/ 迁移备份、未知散落文件）一律 null，watcher 据此忽略事件。
+ * 入参容反斜杠（先归一为正斜杠）。
+ *
+ * 裸目录名（'chapters' 等，无尾斜杠）刻意归 null：Windows recursive watch 在目录内建/删文件时
+ * 会额外上报目录自身的 mtime 事件，严格前缀语义把它们整体过滤（域归属只认文件路径）——
+ * 代价是「整个域目录被外部整体删除」不触发失效，属 watcher 停摆同级的可接受陈旧（裁定 2）。
+ */
+export function domainOf(relPath: string): BookDomain | null {
+  // 归一：反斜杠 → 正斜杠；尾斜杠剥除（部分平台的目录事件带尾分隔符——剥除后归入裸目录名 → null）
+  const rel = relPath.replace(/\\/g, '/').replace(/\/+$/, '')
+  if (rel.startsWith('chapters/')) return 'chapters'
+  if (rel.startsWith('characters/')) return 'characters'
+  if (rel.startsWith('world/')) return 'world'
+  if (rel.startsWith('volumes/')) return 'volumes'
+  if (rel === 'foreshadow.yaml') return 'narrative'
+  if (rel.startsWith('plotlines/')) return 'narrative'
+  if (rel.startsWith('choices/')) return 'narrative'
+  return null
+}

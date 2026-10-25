@@ -19,6 +19,12 @@
 // - 列表只认枚举分类目录（SettingCategory slug，未知目录整体忽略）；listWorldEntryIds 是全目录宽容直扫
 //   （Task 6 characters 临时助手的单一定源替换——只认 stem 存在性、不校验内容，引用检查两侧共用此集合，
 //   避免「宽容扫描」与「严格列表」的目标集分裂；Task 8 环拆重构后直扫本体在 refs.ts，本文件仅薄转接）。
+//
+// Task 9 域缓存（裁定 1）：模块级 `Map<projectPath, WorldEntryV2[]>`，契约逐条镜像 chapters.ts
+// （代表实现+测试钉死在 chapters）：list/get 命中缓存零 IO（list 返回浅拷贝）、缓存只在 list 侧
+// 惰性填充、mutation 先写盘再就地更新缓存（RMW 的读一律直读磁盘）、`invalidateCache` 只清 world 域；
+// getWorldEntry 命中缓存时坏档为 null 而非 WORLD_INVALID 抛穿（缓存里只有解析成功且去重后的档）；
+// listWorldEntryIds/refs 直扫永不走缓存（裁定 7：存在性检查必须见磁盘真相）。
 import { existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -33,6 +39,19 @@ import { characterIds, volumeIds, worldIds } from './refs'
 
 const YAML_EXT = '.yaml'
 
+/** createdAt 升序（同刻按 id 稳定）——list 填充与 create 就地插入共用同一比较器（改动需同步）。 */
+function byCreatedAt(a: WorldEntryV2, b: WorldEntryV2): number {
+  return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
+}
+
+/** Task 9 域缓存：projectPath → 与磁盘一致的 createdAt 升序列表（mutation 就地维护；invalidateCache 整域清空）。 */
+const listCache = new Map<string, WorldEntryV2[]>()
+
+/** 清空 world 域缓存（下次 listWorldEntries 重读磁盘）——只治本域（裁定 1，镜像 chapters.invalidateCache）。 */
+export function invalidateCache(p: string): void {
+  listCache.delete(p)
+}
+
 /** create 的必备两字段 + 可选正文（其余走 init 覆盖；标题门镜像卷 title 门）。 */
 export interface WorldSeed {
   title: string
@@ -40,9 +59,16 @@ export interface WorldSeed {
   content?: string
 }
 
-/** createdAt 升序（同刻按 id 稳定）；损坏档 warn + 跳过；跨类重复 id 按 updatedAt 新者去重。 */
+/**
+ * createdAt 升序（同刻按 id 稳定）；损坏档 warn + 跳过；跨类重复 id 按 updatedAt 新者去重；
+ * 命中缓存零 IO（Task 9 裁定 1——缓存条目 = 上次磁盘读的去重结果，mutation 就地维护）。
+ */
 export function listWorldEntries(p: string): WorldEntryV2[] {
-  return loadAll(p).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+  const cached = listCache.get(p)
+  if (cached) return [...cached]
+  const list = loadAll(p).sort(byCreatedAt)
+  listCache.set(p, list)
+  return [...list]
 }
 
 /**
@@ -77,6 +103,12 @@ export function createWorldEntry(p: string, seed: WorldSeed, init?: Partial<Worl
   assertValidForWrite(doc)
   assertReferences(p, doc, null)
   writeYamlFileAtomic(worldEntryFile(p, doc.category, doc.id), doc)
+  // 先写盘、后就地更新缓存（Task 9 裁定 1）：createdAt=now 通常最大，仍统一重排（同刻按 id 稳定）
+  const cached = listCache.get(p)
+  if (cached) {
+    cached.push(doc)
+    cached.sort(byCreatedAt)
+  }
   return doc
 }
 
@@ -114,6 +146,18 @@ export function updateWorldEntry(p: string, full: WorldEntryV2): WorldEntryV2 {
       )
     }
   }
+  // 就地整元素替换（搬迁的新旧路径都归到这一个 id 的缓存条目；createdAt 不变 → 排序保持）；
+  // 缓存缺本词条 = 外部直写漂移 → 补入重排（镜像 chapters.applyPatch）
+  const cached = listCache.get(p)
+  if (cached) {
+    const idx = cached.findIndex((e) => e.id === full.id)
+    if (idx !== -1) {
+      cached[idx] = doc
+    } else {
+      cached.push(doc)
+      cached.sort(byCreatedAt)
+    }
+  }
   return doc
 }
 
@@ -136,12 +180,23 @@ export function deleteWorldEntry(p: string, id: string): boolean {
     }
   }
   if (firstError !== undefined) throw firstError
+  const cached = listCache.get(p)
+  if (cached) {
+    const idx = cached.findIndex((e) => e.id === id)
+    if (idx !== -1) cached.splice(idx, 1) // 就地同步：缓存 == 刚写定的磁盘状态（跨类残影一并消失）
+  }
   return true
 }
 
-/** 点读单词条：坏形状 id → BAD_WORLD_ID 抛；缺失 → null；坏档 → WORLD_INVALID 抛穿。 */
+/**
+ * 点读单词条：坏形状 id → BAD_WORLD_ID 抛；缺失 → null；坏档 → WORLD_INVALID 抛穿。
+ * Task 9：命中缓存直接返回（缓存条目已过 updatedAt 去重——与 pickNewest 同一规则；
+ * 坏档在此路径为 null，抛穿契约只在磁盘路径兑现）。
+ */
 export function getWorldEntry(p: string, id: string): WorldEntryV2 | null {
   assertWorldId(id)
+  const cached = listCache.get(p)
+  if (cached) return cached.find((e) => e.id === id) ?? null
   const paths = locateFiles(p, id)
   if (paths.length === 0) return null
   return pickNewest(paths)

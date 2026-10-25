@@ -23,6 +23,14 @@
 //   upsertForeshadow 对 existing id 永不改机对状态（status + resolvedChapterId 以存量为准，其余载荷字段
 //   整份覆盖）；对 absent id 插入校验后的条目（机对初值由 schema 枚举把关，状态机只治「转移」）。
 //   台账条目对 plantedChapterId 不做存在性检查（Task 8 裁定：伏笔先埋后写很常见，跨档悬挂由 UI 降级显示）。
+//
+// Task 9 域缓存（裁定 1）：模块级 `Map<projectPath, NarrativeCacheEntry>`——narrative 域一个条目、
+// 三个惰性字段（plotlines/choices/ledger 各自由其读侧首次填充），契约逐条镜像 chapters.ts
+// （代表实现+测试钉死在 chapters）：list/readLedger 命中缓存零 IO（list 返回浅拷贝）、
+// mutation 先写盘再就地更新缓存、`invalidateCache` 整域清空（三字段一起丢——watcher 对
+// foreshadow.yaml|plotlines/|choices/ 任一变更都失效整个 narrative 域，宁可多读不误陈旧）。
+// 注意：readLedger 命中缓存返回同一对象引用（消费方一律按只读处理；转移/upsert 全部构造新对象，
+// 现状代码无突变路径）；坏台账在缓存前抛穿，绝不进缓存。
 import { existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -45,6 +53,35 @@ import { allEntityIds, chapterIds } from './refs'
 
 const YAML_EXT = '.yaml'
 
+/** createdAt 升序（同刻按 id 稳定）——plotlines/choices 的 list 填充与 create 就地插入共用（改动需同步）。 */
+function byCreatedAt(a: { createdAt: string; id: string }, b: { createdAt: string; id: string }): number {
+  return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
+}
+
+/** Task 9 narrative 域缓存条目：三个子集合各自惰性填充（undefined = 未填充，读侧走磁盘）。 */
+interface NarrativeCacheEntry {
+  plotlines?: PlotlineV2[]
+  choices?: ChoiceNodeV2[]
+  ledger?: ForeshadowLedger
+}
+
+const cache = new Map<string, NarrativeCacheEntry>()
+
+/** 清空 narrative 域缓存（plotlines/choices/ledger 一起丢，下次读重读磁盘）——只治本域（裁定 1）。 */
+export function invalidateCache(p: string): void {
+  cache.delete(p)
+}
+
+/** 取（或建）本域缓存条目——仅供读侧填充；mutation 用 cache.get 判断「已填充才就地更新」。 */
+function entryOf(p: string): NarrativeCacheEntry {
+  let entry = cache.get(p)
+  if (!entry) {
+    entry = {}
+    cache.set(p, entry)
+  }
+  return entry
+}
+
 /** PlotlineV2 的 create 必备字段走 seed，其余默认（init 覆盖纪律镜像 createWorldEntry）。 */
 export interface PlotlineSeed {
   title: string
@@ -62,11 +99,13 @@ export interface ChoiceSeed {
 // 剧情线
 // ---------------------------------------------------------------------------
 
-/** createdAt 升序（同刻按 id）；损坏档 warn + 跳过。 */
+/** createdAt 升序（同刻按 id）；损坏档 warn + 跳过；命中缓存零 IO（Task 9 裁定 1）。 */
 export function listPlotlines(p: string): PlotlineV2[] {
-  return loadAllPlotlines(p).sort(
-    (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
-  )
+  const cached = cache.get(p)?.plotlines
+  if (cached) return [...cached]
+  const list = loadAllPlotlines(p).sort(byCreatedAt)
+  entryOf(p).plotlines = list
+  return [...list]
 }
 
 /** 新建剧情线：一次原子写完成（seed + 默认 + init 覆盖 + 校验 + 引用检查同成败）。 */
@@ -92,6 +131,12 @@ export function createPlotline(p: string, seed: PlotlineSeed, init?: Partial<Plo
   assertValidPlotlineForWrite(doc)
   assertPlotlineReferences(p, doc, null)
   writeYamlFileAtomic(plotlineFile(p, doc.id), doc)
+  // 先写盘、后就地更新缓存（Task 9 裁定 1）
+  const cached = cache.get(p)?.plotlines
+  if (cached) {
+    cached.push(doc)
+    cached.sort(byCreatedAt)
+  }
   return doc
 }
 
@@ -111,6 +156,17 @@ export function updatePlotline(p: string, full: PlotlineV2): PlotlineV2 {
   assertValidPlotlineForWrite(doc)
   assertPlotlineReferences(p, doc, stored)
   writeYamlFileAtomic(plotlineFile(p, full.id), doc)
+  // 就地整元素替换（createdAt 不变 → 排序保持）；缓存缺本档 = 外部直写漂移 → 补入重排（镜像 chapters.applyPatch）
+  const cached = cache.get(p)?.plotlines
+  if (cached) {
+    const idx = cached.findIndex((x) => x.id === full.id)
+    if (idx !== -1) {
+      cached[idx] = doc
+    } else {
+      cached.push(doc)
+      cached.sort(byCreatedAt)
+    }
+  }
   return doc
 }
 
@@ -120,6 +176,11 @@ export function deletePlotline(p: string, id: string): boolean {
   const abs = plotlineFile(p, id)
   if (!existsSync(abs)) return false
   unlinkSync(abs)
+  const cached = cache.get(p)?.plotlines
+  if (cached) {
+    const idx = cached.findIndex((x) => x.id === id)
+    if (idx !== -1) cached.splice(idx, 1) // 就地同步：缓存 == 刚写定的磁盘状态
+  }
   return true
 }
 
@@ -127,11 +188,13 @@ export function deletePlotline(p: string, id: string): boolean {
 // 关键选项
 // ---------------------------------------------------------------------------
 
-/** createdAt 升序（同刻按 id）；损坏档 warn + 跳过。 */
+/** createdAt 升序（同刻按 id）；损坏档 warn + 跳过；命中缓存零 IO（Task 9 裁定 1）。 */
 export function listChoices(p: string): ChoiceNodeV2[] {
-  return loadAllChoices(p).sort(
-    (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
-  )
+  const cached = cache.get(p)?.choices
+  if (cached) return [...cached]
+  const list = loadAllChoices(p).sort(byCreatedAt)
+  entryOf(p).choices = list
+  return [...list]
 }
 
 export function createChoice(p: string, seed: ChoiceSeed, init?: Partial<ChoiceNodeV2>): ChoiceNodeV2 {
@@ -155,6 +218,12 @@ export function createChoice(p: string, seed: ChoiceSeed, init?: Partial<ChoiceN
   assertValidChoiceForWrite(doc)
   assertChoiceReferences(p, doc, null)
   writeYamlFileAtomic(choiceFile(p, doc.id), doc)
+  // 先写盘、后就地更新缓存（Task 9 裁定 1）
+  const cached = cache.get(p)?.choices
+  if (cached) {
+    cached.push(doc)
+    cached.sort(byCreatedAt)
+  }
   return doc
 }
 
@@ -173,6 +242,17 @@ export function updateChoice(p: string, full: ChoiceNodeV2): ChoiceNodeV2 {
   assertValidChoiceForWrite(doc)
   assertChoiceReferences(p, doc, stored)
   writeYamlFileAtomic(choiceFile(p, full.id), doc)
+  // 就地整元素替换；缓存缺本档 = 外部直写漂移 → 补入重排（镜像 chapters.applyPatch）
+  const cached = cache.get(p)?.choices
+  if (cached) {
+    const idx = cached.findIndex((x) => x.id === full.id)
+    if (idx !== -1) {
+      cached[idx] = doc
+    } else {
+      cached.push(doc)
+      cached.sort(byCreatedAt)
+    }
+  }
   return doc
 }
 
@@ -181,6 +261,11 @@ export function deleteChoice(p: string, id: string): boolean {
   const abs = choiceFile(p, id)
   if (!existsSync(abs)) return false
   unlinkSync(abs)
+  const cached = cache.get(p)?.choices
+  if (cached) {
+    const idx = cached.findIndex((x) => x.id === id)
+    if (idx !== -1) cached.splice(idx, 1) // 就地同步：缓存 == 刚写定的磁盘状态
+  }
   return true
 }
 
@@ -188,25 +273,40 @@ export function deleteChoice(p: string, id: string): boolean {
 // 伏笔台账（单文件 RMW）
 // ---------------------------------------------------------------------------
 
-/** 台账缺失 → {entries: []}（EMPTY 语义）；损坏台账 → FORESHADOW_INVALID 抛穿（点侧不容错）。 */
+/**
+ * 台账缺失 → {entries: []}（EMPTY 语义）；损坏台账 → FORESHADOW_INVALID 抛穿（点侧不容错）。
+ * Task 9：命中缓存零 IO（返回同一对象引用——消费方按只读处理，转移/upsert 全部构造新对象）；
+ * 坏台账在缓存前抛穿，绝不进缓存。
+ */
 export function readLedger(p: string): ForeshadowLedger {
+  const cached = cache.get(p)?.ledger
+  if (cached) return cached
   const abs = foreshadowFile(p)
-  if (!existsSync(abs)) return { entries: [] }
+  if (!existsSync(abs)) {
+    const empty: ForeshadowLedger = { entries: [] }
+    entryOf(p).ledger = empty
+    return empty
+  }
   const v = readYamlFile<unknown>(abs) // YAML 本身坏了 → 抛穿（镜像「点读把 parse 错误抛给上层」分工）
   const errors = validateForeshadowLedger(v)
   if (errors.length > 0) {
     throw new Error(`FORESHADOW_INVALID: ${abs}: ${errors.join('; ')}`)
   }
-  return v as ForeshadowLedger
+  const ledger = v as ForeshadowLedger
+  entryOf(p).ledger = ledger
+  return ledger
 }
 
-/** 整本台账原子写（先校验后落盘——RMW 的「W」是坏数据进不了磁盘的最后闸门）。 */
+/** 整本台账原子写（先校验后落盘——RMW 的「W」是坏数据进不了磁盘的最后闸门）；落盘后就地同步缓存。 */
 export function writeLedger(p: string, ledger: ForeshadowLedger): void {
   const errors = validateForeshadowLedger(ledger)
   if (errors.length > 0) {
     throw new Error(`FORESHADOW_INVALID: ${foreshadowFile(p)}: ${errors.join('; ')}`)
   }
   writeYamlFileAtomic(foreshadowFile(p), ledger)
+  // 先写盘、后就地更新缓存（Task 9 裁定 1）：缓存条目已存在才写（惰性纪律——mutation 不填充）
+  const entry = cache.get(p)
+  if (entry) entry.ledger = ledger
 }
 
 /**

@@ -15,6 +15,11 @@
 //   删除不做级联清理（他人 edges 保留，UI 降级显示「已删除角色」，M4 AI 整理再治）；
 // - 时间戳：一律 ISO 字符串；updateCharacter 仓库侧刷新 updatedAt、createdAt 以存量为准
 //   （渲染层回显垃圾值不影响落盘）。
+//
+// Task 9 域缓存（裁定 1）：模块级 `Map<projectPath, CharacterV2[]>`，契约逐条镜像 chapters.ts
+// （代表实现+测试钉死在 chapters）：list/get 命中缓存零 IO（list 返回浅拷贝）、缓存只在 list 侧
+// 惰性填充、mutation 先写盘再就地更新缓存（RMW 的读一律直读磁盘）、`invalidateCache` 只清 characters 域；
+// getCharacter 命中缓存时坏档为 null 而非 CHARACTER_INVALID 抛穿（缓存里只有解析成功的档）。
 import { existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -30,6 +35,19 @@ import { volumeIds, worldIds } from './refs'
 
 const YAML_EXT = '.yaml'
 
+/** createdAt 升序（同刻按 id 稳定）——list 填充与 create 就地插入共用同一比较器（改动需同步）。 */
+function byCreatedAt(a: CharacterV2, b: CharacterV2): number {
+  return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
+}
+
+/** Task 9 域缓存：projectPath → 与磁盘一致的 createdAt 升序列表（mutation 就地维护；invalidateCache 整域清空）。 */
+const listCache = new Map<string, CharacterV2[]>()
+
+/** 清空 characters 域缓存（下次 listCharacters 重读磁盘）——只治本域（裁定 1，镜像 chapters.invalidateCache）。 */
+export function invalidateCache(p: string): void {
+  listCache.delete(p)
+}
+
 /** create 的必备三字段（其余走 init 覆盖；名字门镜像章 title 门）。 */
 export interface CharacterSeed {
   name: string
@@ -37,9 +55,13 @@ export interface CharacterSeed {
   role: CharacterRole
 }
 
-/** createdAt 升序（同刻按 stem 稳定）；损坏档 warn + 跳过。 */
+/** createdAt 升序（同刻按 stem 稳定）；损坏档 warn + 跳过；命中缓存零 IO（Task 9 裁定 1）。 */
 export function listCharacters(p: string): CharacterV2[] {
-  return loadAll(p).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+  const cached = listCache.get(p)
+  if (cached) return [...cached]
+  const list = loadAll(p).sort(byCreatedAt)
+  listCache.set(p, list)
+  return [...list]
 }
 
 /**
@@ -82,6 +104,12 @@ export function createCharacter(
   assertValidForWrite(doc)
   assertReferences(p, doc, null)
   writeYamlFileAtomic(characterFile(p, doc.id), doc)
+  // 先写盘、后就地更新缓存（Task 9 裁定 1）：createdAt=now 通常最大，仍统一重排（同刻按 id 稳定）
+  const cached = listCache.get(p)
+  if (cached) {
+    cached.push(doc)
+    cached.sort(byCreatedAt)
+  }
   return doc
 }
 
@@ -105,6 +133,17 @@ export function updateCharacter(p: string, full: CharacterV2): CharacterV2 {
   assertValidForWrite(doc)
   assertReferences(p, doc, stored)
   writeYamlFileAtomic(characterFile(p, full.id), doc)
+  // 就地整元素替换（createdAt 不变 → 排序保持）；缓存缺本卡 = 外部直写漂移 → 补入重排（镜像 chapters.applyPatch）
+  const cached = listCache.get(p)
+  if (cached) {
+    const idx = cached.findIndex((c) => c.id === full.id)
+    if (idx !== -1) {
+      cached[idx] = doc
+    } else {
+      cached.push(doc)
+      cached.sort(byCreatedAt)
+    }
+  }
   return doc
 }
 
@@ -117,12 +156,22 @@ export function deleteCharacter(p: string, id: string): boolean {
   const abs = characterFile(p, id)
   if (!existsSync(abs)) return false // 幂等：缺失返回 false，不抛
   unlinkSync(abs)
+  const cached = listCache.get(p)
+  if (cached) {
+    const idx = cached.findIndex((c) => c.id === id)
+    if (idx !== -1) cached.splice(idx, 1) // 就地同步：缓存 == 刚写定的磁盘状态
+  }
   return true
 }
 
-/** 点读单卡：坏形状 id → BAD_CHARACTER_ID 抛；缺失 → null；坏档 → CHARACTER_INVALID 抛穿。 */
+/**
+ * 点读单卡：坏形状 id → BAD_CHARACTER_ID 抛；缺失 → null；坏档 → CHARACTER_INVALID 抛穿。
+ * Task 9：命中缓存直接返回（缓存里只有解析成功的档——坏档在此路径为 null，抛穿契约只在磁盘路径兑现）。
+ */
 export function getCharacter(p: string, id: string): CharacterV2 | null {
   assertCharacterId(id)
+  const cached = listCache.get(p)
+  if (cached) return cached.find((c) => c.id === id) ?? null
   const abs = characterFile(p, id)
   if (!existsSync(abs)) return null
   return parseDoc(readYamlFile<unknown>(abs), id, abs)

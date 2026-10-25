@@ -15,6 +15,16 @@
 // - moveChapter 重排后 order 重编为稠密 1..n（3.5 评审：碰撞场景靠稠密重编号扑灭）；
 // - title 变化（update patch 带 title 或 rename）：body 首非空行以 `# ` 开头 → 只替换该行
 //   （其余字节含 CRLF 原样），首非空行非 H1 → body 不动（不伪造 H1，title 只活在 front-matter）。
+//
+// Task 9 域缓存（裁定 1，五仓库同一契约，本文件是代表实现——测试钉死见 chapters.test.ts「缓存语义」）：
+// - 模块级 `Map<projectPath, Chapter[]>`：listChapters/getChapter 命中缓存直接返回（首次访问单次 IO），
+//   list 返回浅拷贝（调用方可自由排序，缓存本体不受污染）；缓存只在 list 侧惰性填充（空目录也缓存 []）；
+// - 一切 MUTATION（create/update/rename/delete/move）先写磁盘（原子路径不变），再就地更新缓存条目——
+//   mutation 后缓存条目必须与刚写盘的字节一致（RMW 的「读」一律直读磁盘，缓存绝不进写路径）；
+// - `invalidateCache(projectPath)` 只清 chapters 域：watcher 外部变更事件按域调用、stopWatching 全清；
+// - 直写磁盘绕过仓库（测试/外部编辑器）不会被缓存感知——生产环境由 watcher 失效兜底，这是接受的陈旧窗口；
+// - getChapter 命中缓存时，坏档（list 侧已 warn+跳过）返回 null 而非抛 FRONTMATTER_*——
+//   「点读抛穿」契约只在无缓存的磁盘路径兑现（缓存里只有解析成功的档）。
 import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -37,10 +47,22 @@ interface LoadedDoc {
   body: string
 }
 
+/** Task 9 域缓存：projectPath → 与磁盘一致的已排序列表（mutation 就地维护；invalidateCache 整域清空）。 */
+const listCache = new Map<string, Chapter[]>()
+
+/** 清空 chapters 域缓存（下次 listChapters 重读磁盘）——只治本域，不碰其他仓库（裁定 1）。 */
+export function invalidateCache(p: string): void {
+  listCache.delete(p)
+}
+
 export function listChapters(p: string): Chapter[] {
-  return loadAll(p)
+  const cached = listCache.get(p)
+  if (cached) return [...cached] // 命中缓存：零 IO；浅拷贝防调用方排序/增删污染缓存本体
+  const list = loadAll(p)
     .sort((a, b) => a.meta.order - b.meta.order || a.stem.localeCompare(b.stem))
     .map((d) => toChapter(d))
+  listCache.set(p, list) // 惰性填充：只有 list 侧填缓存，mutation/get 不填（miss 时走磁盘）
+  return [...list]
 }
 
 export function createChapter(p: string, title: string, volumeId?: string | null): Chapter {
@@ -59,7 +81,11 @@ export function createChapter(p: string, title: string, volumeId?: string | null
   const body = `# ${title}\n\n` // 与 v1 手感一致
   const abs = chapterFile(p, meta.id)
   writeDoc(abs, meta, body)
-  return toChapter({ stem: meta.id, abs, meta, body })
+  const chapter = toChapter({ stem: meta.id, abs, meta, body })
+  // 先写盘、后就地更新缓存（裁定 1）：order = max+1 → 追加尾端即保持升序；未填充则不动（惰性）
+  const cached = listCache.get(p)
+  if (cached) cached.push(chapter)
+  return chapter
 }
 
 /**
@@ -84,6 +110,11 @@ export function deleteChapter(p: string, id: string): boolean {
   const abs = chapterFile(p, id)
   if (!existsSync(abs)) return false // 幂等：缺失返回 false，不抛
   unlinkSync(abs)
+  const cached = listCache.get(p)
+  if (cached) {
+    const idx = cached.findIndex((c) => c.id === id)
+    if (idx !== -1) cached.splice(idx, 1) // 就地同步：缓存 == 刚写定的磁盘状态
+  }
   return true
 }
 
@@ -107,11 +138,22 @@ export function moveChapter(p: string, id: string, toOrder: number): boolean {
       writeDoc(d.abs, meta, d.body)
     }
   })
+  // 重排落盘后整条重建缓存条目（docs 此刻与磁盘逐一对应，order 按新位次）——就地同步（裁定 1）
+  if (listCache.has(p)) {
+    listCache.set(
+      p,
+      docs.map((d, i) => toChapter({ ...d, meta: { ...d.meta, order: i + 1 } }))
+    )
+  }
   return true
 }
 
 export function getChapter(p: string, id: string): Chapter | null {
   assertChapterId(id)
+  // 命中缓存直接返回（裁定 1：getX 与 listX 同一缓存权威；缓存里只有解析成功的档，
+  // 故坏档在此路径为 null 而非 FRONTMATTER_* 抛穿——见文件头注释）
+  const cached = listCache.get(p)
+  if (cached) return cached.find((c) => c.id === id) ?? null
   const abs = chapterFile(p, id)
   if (!existsSync(abs)) return null
   const doc = parseChapterDoc(readFileSync(abs, 'utf8'), abs)
@@ -158,7 +200,20 @@ function applyPatch(p: string, id: string, patch: MetaPatch & { content?: string
   if (patch.status !== undefined) meta.status = patch.status
 
   writeDoc(abs, meta, body)
-  return toChapter({ stem: id, abs, meta, body })
+  const updated = toChapter({ stem: id, abs, meta, body })
+  // 先写盘、后就地更新缓存（裁定 1）：整元素替换（不共享对象突变——旧持有者保留自己的快照）。
+  // 缓存有条目却缺本章 = 外部直写漂移（生产由 watcher 失效兜底）——补入并重排，维持「缓存==磁盘」不变量
+  const cached = listCache.get(p)
+  if (cached) {
+    const idx = cached.findIndex((c) => c.id === id)
+    if (idx !== -1) {
+      cached[idx] = updated
+    } else {
+      cached.push(updated)
+      cached.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+    }
+  }
+  return updated
 }
 
 /**

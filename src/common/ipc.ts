@@ -18,6 +18,14 @@ export type MainToRendererEvents = {
   'file:saved': (filePath: string) => void
   'stats:updated': (stats: WritingStats) => void
   'menu:event': (event: string, ...args: unknown[]) => void
+  // Task 9：书目录外部变更（watcher 300ms debounce 合并后一次广播；含本应用自写回声——裁定 5 接受）
+  'book:changed': (event: BookChangedEvent) => void
+}
+
+// book:changed 事件载荷（Task 9）：paths = 相对书根、正斜杠、升序去重的变更路径
+// （如 `chapters/<id>.md`、`world/location/<id>.yaml`；.tmp- 残留与 book.json 等非实体域路径已在主进程过滤）
+export interface BookChangedEvent {
+  paths: string[]
 }
 
 // 渲染进程 -> 主进程 请求
@@ -209,10 +217,13 @@ export interface NovelWriterApi {
     pdf: RendererToMainRequests['export:pdf']
   }
   on: {
+    // 注：以下四条为 M1 遗留死通道（主进程从未广播），M4 清理待办——保留不动（Task 9 裁定 6）
     projectCreated: (callback: (project: ProjectData) => void) => void
     projectOpened: (callback: (project: ProjectData) => void) => void
     fileSaved: (callback: (filePath: string) => void) => void
     statsUpdated: (callback: (stats: WritingStats) => void) => void
+    // Task 9：订阅 book:changed，返回精确反订阅函数（removeListener 只摘自己加的监听——镜像 menu.onEvent 先例）
+    bookChanged: (handler: (event: BookChangedEvent) => void) => () => void
   }
   menu: {
     onEvent: (handler: (event: string, ...args: unknown[]) => void) => () => void
