@@ -3,7 +3,6 @@ import type {
   NovelWriterApi,
   ProjectData,
   Chapter,
-  Character,
   Setting,
   Volume,
   ProjectType,
@@ -11,6 +10,7 @@ import type {
   StatsData,
   ExportParams
 } from '@/common/ipc'
+import type { CharacterV2 } from '@/common/schema'
 
 // 导出格式（原通用服务层的 ExportFormat，随门面迁移）
 export type ExportFormat = 'word' | 'pdf' | 'epub'
@@ -203,32 +203,32 @@ export function useVolume() {
   }
 }
 
-// 角色相关 Hook
+// 角色相关 Hook（Task 6：v2 人物卡 CharacterV2）
 export function useCharacter() {
   const ipc = getIPC()
 
-  const getAllCharacters = useCallback(async (projectPath: string): Promise<Character[]> => {
+  const getAllCharacters = useCallback(async (projectPath: string): Promise<CharacterV2[]> => {
     return ipc.character.getAll(projectPath)
   }, [ipc])
 
   const getCharacterById = useCallback(async (
     projectPath: string,
     characterId: string
-  ): Promise<Character | null> => {
+  ): Promise<CharacterV2 | null> => {
     return ipc.character.getById({ projectPath, characterId })
   }, [ipc])
 
   const createCharacter = useCallback(async (
     projectPath: string,
-    character: Partial<Character>
-  ): Promise<Character> => {
+    character: Partial<CharacterV2>
+  ): Promise<CharacterV2> => {
     return ipc.character.create({ projectPath, character })
   }, [ipc])
 
   const updateCharacter = useCallback(async (
     projectPath: string,
-    character: Character
-  ): Promise<Character> => {
+    character: CharacterV2
+  ): Promise<CharacterV2> => {
     return ipc.character.update({ projectPath, character })
   }, [ipc])
 

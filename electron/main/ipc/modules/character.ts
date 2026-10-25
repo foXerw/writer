@@ -1,118 +1,51 @@
+// character:* IPC 层（Task 6 重写）：5 个通道全部薄委托到 bookStore/characters v2 人物卡仓库，
+// 本文件零文件系统直操（v1 的 *.json 裸读写全删）、通道名与参数形状不变（对齐 chapter/volume 纪律）。
+// 错误语义由仓库定义并原样透传：REF_BROKEN（本补丁新引入的幻影引用）/ CHARACTER_MISSING /
+// CHARACTER_NAME_INVALID / CHARACTER_INVALID / BAD_CHARACTER_ID；delete 按幂等契约返回 false。
+// create：seed 三字段沿用 v1 手感默认（未命名角色/other/supporting），渲染层整张 Partial 经
+// 仓库 init 一次原子写落盘；update：整卡写入，updatedAt 仓库侧刷新、createdAt 以存量为准。
 import { ipcMain } from 'electron'
-import * as fs from 'fs'
-import * as path from 'path'
-import { randomUUID } from 'crypto'
-import { Character } from '../../../../src/common/ipc'
-
-// ==================== 角色相关处理 ====================
-
-// 获取角色目录路径
-function getCharactersDir(projectPath: string): string {
-  return path.join(projectPath, 'characters')
-}
+import type { CharacterV2 } from '../../../../src/common/schema'
+import {
+  createCharacter,
+  deleteCharacter,
+  getCharacter,
+  listCharacters,
+  updateCharacter
+} from '../../bookStore/characters'
 
 export function registerCharacterHandlers(): void {
-  // 获取所有角色
-  ipcMain.handle('character:getAll', async (_, projectPath: string) => {
-    const charactersDir = getCharactersDir(projectPath)
+  ipcMain.handle('character:getAll', (_e, projectPath: string): CharacterV2[] =>
+    listCharacters(projectPath)
+  )
 
-    if (!fs.existsSync(charactersDir)) {
-      return []
-    }
+  ipcMain.handle('character:getById', (_e, params: { projectPath: string; characterId: string }) =>
+    getCharacter(params.projectPath, params.characterId)
+  )
 
-    const files = fs.readdirSync(charactersDir)
-      .filter(f => f.endsWith('.json'))
+  ipcMain.handle(
+    'character:create',
+    (_e, params: { projectPath: string; character: Partial<CharacterV2> }): CharacterV2 =>
+      createCharacter(
+        params.projectPath,
+        {
+          name: params.character.name ?? '未命名角色',
+          gender: params.character.gender ?? 'other',
+          role: params.character.role ?? 'supporting'
+        },
+        params.character
+      )
+  )
 
-    return files.map(file => {
-      const filePath = path.join(charactersDir, file)
-      try {
-        const content = fs.readFileSync(filePath, 'utf-8')
-        return JSON.parse(content)
-      } catch {
-        return null
-      }
-    }).filter(Boolean)
-  })
+  ipcMain.handle(
+    'character:update',
+    (_e, params: { projectPath: string; character: CharacterV2 }): CharacterV2 =>
+      updateCharacter(params.projectPath, params.character)
+  )
 
-  // 获取单个角色
-  ipcMain.handle('character:getById', async (_, params: { projectPath: string; characterId: string }) => {
-    const { projectPath, characterId } = params
-    const charactersDir = getCharactersDir(projectPath)
-    const filePath = path.join(charactersDir, `${characterId}.json`)
-
-    if (!fs.existsSync(filePath)) {
-      return null
-    }
-
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8')
-      return JSON.parse(content)
-    } catch {
-      return null
-    }
-  })
-
-  // 创建角色
-  ipcMain.handle('character:create', async (_, params: { projectPath: string; character: Partial<Character> }) => {
-    const { projectPath, character } = params
-    const charactersDir = getCharactersDir(projectPath)
-
-    if (!fs.existsSync(charactersDir)) {
-      fs.mkdirSync(charactersDir, { recursive: true })
-    }
-
-    const id = randomUUID()
-    const newCharacter: Character = {
-      id,
-      name: character.name || '未命名角色',
-      gender: character.gender || 'other',
-      age: character.age || 0,
-      role: character.role || 'supporting',
-      avatar: character.avatar,
-      appearance: character.appearance || '',
-      personality: character.personality || '',
-      background: character.background || '',
-      goals: character.goals,
-      flaws: character.flaws,
-      relationships: character.relationships || [],
-      tags: character.tags || [],
-      notes: character.notes,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
-
-    const filePath = path.join(charactersDir, `${id}.json`)
-    fs.writeFileSync(filePath, JSON.stringify(newCharacter, null, 2))
-
-    return newCharacter
-  })
-
-  // 更新角色
-  ipcMain.handle('character:update', async (_, params: { projectPath: string; character: Character }) => {
-    const { projectPath, character } = params
-    const charactersDir = getCharactersDir(projectPath)
-
-    const updatedCharacter: Character = {
-      ...character,
-      updatedAt: new Date()
-    }
-
-    const filePath = path.join(charactersDir, `${character.id}.json`)
-    fs.writeFileSync(filePath, JSON.stringify(updatedCharacter, null, 2))
-
-    return updatedCharacter
-  })
-
-  // 删除角色
-  ipcMain.handle('character:delete', async (_, params: { projectPath: string; characterId: string }) => {
-    const { projectPath, characterId } = params
-    const charactersDir = getCharactersDir(projectPath)
-    const filePath = path.join(charactersDir, `${characterId}.json`)
-
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
-    }
-
-    return true
-  })
+  ipcMain.handle(
+    'character:delete',
+    (_e, params: { projectPath: string; characterId: string }): boolean =>
+      deleteCharacter(params.projectPath, params.characterId)
+  )
 }

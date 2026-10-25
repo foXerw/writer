@@ -1,5 +1,9 @@
 // IPC通信类型定义
 
+// 仅类型导入（双向 type-only 环：schema.ts 从这里取枚举类型，这里从 schema 取 CharacterV2——
+// tsc/vite 编译期即擦除，无运行时循环依赖）。
+import type { CharacterV2 } from './schema'
+
 // 主进程 -> 渲染进程 事件
 export type MainToRendererEvents = {
   'project:created': (project: ProjectData) => void
@@ -58,11 +62,12 @@ export type RendererToMainRequests = {
     toId: string
   }) => Promise<boolean>
 
-  // 角色相关
-  'character:getAll': (projectPath: string) => Promise<Character[]>
-  'character:getById': (params: { projectPath: string; characterId: string }) => Promise<Character | null>
-  'character:create': (params: { projectPath: string; character: Partial<Character> }) => Promise<Character>
-  'character:update': (params: { projectPath: string; character: Character }) => Promise<Character>
+  // 角色相关（Task 6：v2 人物卡 CharacterV2——关系边按 id、时间戳 ISO 字符串；
+  // 通道名不变，v1 Character 接口随仓库重写退役）
+  'character:getAll': (projectPath: string) => Promise<CharacterV2[]>
+  'character:getById': (params: { projectPath: string; characterId: string }) => Promise<CharacterV2 | null>
+  'character:create': (params: { projectPath: string; character: Partial<CharacterV2> }) => Promise<CharacterV2>
+  'character:update': (params: { projectPath: string; character: CharacterV2 }) => Promise<CharacterV2>
   'character:delete': (params: { projectPath: string; characterId: string }) => Promise<boolean>
 
   // 世界观设定相关
@@ -259,49 +264,15 @@ export type CharacterGender = 'male' | 'female' | 'other'
 // 角色定位
 export type CharacterRole = 'protagonist' | 'antagonist' | 'supporting' | 'minor'
 
-// 角色关系
-export interface CharacterRelationship {
-  id: string
-  characterId: string
-  characterName: string
-  relationship: string
-  description?: string
-}
-
-// 角色标签
+// 角色标签（v2 CharacterV2.tags 沿用 v1 结构——其 id 历史上非 UUID，schema.ts 校验器有意豁免）
 export interface CharacterTag {
   id: string
   name: string
   color?: string
 }
 
-// 角色
-export interface Character {
-  id: string
-  name: string
-  gender: CharacterGender
-  age: number
-  role: CharacterRole
-  avatar?: string
-  appearance: string
-  personality: string
-  background: string
-  goals?: string
-  flaws?: string
-  relationships: CharacterRelationship[]
-  tags: CharacterTag[]
-  notes?: string
-  createdAt: Date
-  updatedAt: Date
-}
-
-// 角色创建参数
-export interface CharacterCreateParams {
-  projectPath: string
-  name: string
-  gender: CharacterGender
-  role: CharacterRole
-}
+// v1 Character / CharacterRelationship / CharacterCreateParams 已随 Task 6 人物卡 v2 仓库重写退役：
+// 通道载荷类型统一为 schema.ts 的 CharacterV2（关系边 EntityLink 按 id 引用）。
 
 // 世界观设定分类
 export type SettingCategory = 'location' | 'history' | 'magic' | 'culture' | 'other'
