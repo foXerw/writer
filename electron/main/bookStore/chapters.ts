@@ -9,7 +9,8 @@
 // - 仓库边界守卫（评审整改）：id 必须匹配 UUID_PATTERN，否则 `BAD_CHAPTER_ID: <id>`
 //   （deleteChapter 按幂等契约返回 false）——封死 v1 遗留的 `../` join 路径重定向；
 //   title 空白或含 \n/\r → `CHAPTER_TITLE_INVALID`，先于任何写盘抛（create 回显 title，
-//   update/rename 带 id）；
+//   update/rename 带 id）；update 仅校验「相对存量改变」的 title——未变的回显放行
+//   （存量坏形状标题不拦普通自动保存，与 H1 同步同一条件）；
 // - 文件名（stem）即 id 的唯一权威：update/rename 写回读到的同一路径，绝不改名；
 // - moveChapter 重排后 order 重编为稠密 1..n（3.5 评审：碰撞场景靠稠密重编号扑灭）；
 // - title 变化（update patch 带 title 或 rename）：body 首非空行以 `# ` 开头 → 只替换该行
@@ -132,9 +133,6 @@ function isInvalidTitle(title: string): boolean {
 /** 读-改-写单一入口：title 变化触发 H1 同步；content 缺省时正文以磁盘为准。 */
 function applyPatch(p: string, id: string, patch: MetaPatch & { content?: string }): Chapter {
   assertChapterId(id)
-  if (patch.title !== undefined && isInvalidTitle(patch.title)) {
-    throw new Error(`CHAPTER_TITLE_INVALID: ${id}`)
-  }
   const abs = chapterFile(p, id)
   if (!existsSync(abs)) {
     throw new Error(`CHAPTER_MISSING: ${id}`)
@@ -143,7 +141,12 @@ function applyPatch(p: string, id: string, patch: MetaPatch & { content?: string
   const meta: ChapterMeta = { ...parsed.meta }
   let body = patch.content !== undefined ? patch.content : parsed.body
 
+  // 与 H1 同步同一 `!== 存量` 条件：只校验「新设定/改变」的 title——handler 回显的存量坏形状
+  // 标题原样放行（不静默改写教义），任何写盘之前抛错
   if (patch.title !== undefined && patch.title !== meta.title) {
+    if (isInvalidTitle(patch.title)) {
+      throw new Error(`CHAPTER_TITLE_INVALID: ${id}`)
+    }
     body = syncFirstHeading(body, patch.title)
     meta.title = patch.title
   }

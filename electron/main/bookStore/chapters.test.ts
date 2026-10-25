@@ -328,6 +328,27 @@ describe('标题守卫 CHAPTER_TITLE_INVALID', () => {
     expect(() => createChapter(p, '甲\r\n乙')).toThrow('CHAPTER_TITLE_INVALID: 甲\r\n乙')
     expect(existsSync(chaptersDir(p))).toBe(false)
   })
+
+  it('存量坏形状标题未变 → 照常 update 成功（守卫只拦「新设定/改变」的 title，不拦 handler 回显）', () => {
+    const p = mkTmpBook()
+    // 手造存量档：title 含换行（validateChapterMeta 只要求非空串 → front-matter 合法可解析）
+    const bad = 'aaaaaaaa-1111-4111-8111-111111111111'
+    mkdirSync(chaptersDir(p), { recursive: true })
+    writeFileSync(
+      join(chaptersDir(p), `${bad}.md`),
+      serializeChapterDoc(
+        { id: bad, title: '旧\n换行题', volumeId: null, order: 1, status: 'draft' },
+        '# 旧\n换行题\n\n正文。\n'
+      ),
+      'utf8'
+    )
+
+    // title 原样回显（updateChapter 走 handler 同款 patch）→ 不抛、内容落盘、仍被列出
+    const updated = updateChapter(p, bad, { title: '旧\n换行题', content: '新正文。\n' })
+    expect(updated.content).toBe('新正文。\n')
+    expect(updated.title).toBe('旧\n换行题')
+    expect(listChapters(p).map((c) => c.id)).toEqual([bad])
+  })
 })
 
 describe('id 形状守卫 BAD_CHAPTER_ID', () => {
