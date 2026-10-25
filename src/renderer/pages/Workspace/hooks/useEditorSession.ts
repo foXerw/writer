@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { App } from 'antd'
 import { useChapter } from '../../../hooks/useIPC'
+import { planChapterRefresh } from './chapterRefresh'
 import type { Chapter } from '@/common/ipc'
 
 export interface EditorSession {
@@ -14,6 +15,8 @@ export interface EditorSession {
   openChapter: (c: Chapter) => void
   closeChapter: (id: string) => void
   createChapter: () => Promise<void>
+  // Task 5 评审整改第 2 条：外部变更（移卷）成功后把回传的新鲜章同步进会话
+  mergeUpdatedChapters: (updates: Chapter[]) => void
   save: (opts?: { silent?: boolean }) => Promise<void>
   flushIfDirty: () => void
   handleEditorChange: (value: string) => void
@@ -44,24 +47,58 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
   // 避免从同一陈旧闭包列表计算导致只关掉最后一个。
   const openedChaptersRef = useRef(openedChapters)
   openedChaptersRef.current = openedChapters
+  // 首载自动打开只发生一次（换项目重置）——用户主动关光 tab 后的刷新不再强行开章
+  const autoOpenedRef = useRef(false)
 
-  // 加载章节列表
+  // projectPath 变化即加载（并重置首载标记：新项目允许首载自动打开第一章）
   useEffect(() => {
+    autoOpenedRef.current = false
     if (projectPath) {
-      loadChapters()
+      void loadChapters()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 projectPath 变化时加载
   }, [projectPath])
 
+  // 加载章节列表（Task 5 评审整改第 3 条：刷新保留 tab 布局与当前章，
+  // 不再「每次刷新都关掉所有 tab 跳到第 1 章」——卷操作使旧语义成为主流程炸弹）
   const loadChapters = async () => {
     if (!projectPath) return
     try {
       const data = await getAllChapters(projectPath)
+      const plan = planChapterRefresh({
+        opened: openedChaptersRef.current,
+        currentId: currentChapterIdRef.current,
+        fresh: data,
+        hasAutoOpened: autoOpenedRef.current
+      })
       setChapters(data)
-      if (data.length > 0) {
-        const firstChapter = data[0]
-        setOpenedChapters([firstChapter])
-        selectChapter(firstChapter)
+      openedChaptersRef.current = plan.tabs
+      setOpenedChapters(plan.tabs)
+      if (plan.current) {
+        // 当前章仍在：元数据以磁盘为准重同步（volumeId 等）；脏编辑器不回灌，
+        // 本地编辑以 chapterTitle/editorContent 为准（保存路径不变）
+        setCurrentChapter(plan.current)
+        if (!isDirtyRef.current) {
+          setEditorContent(plan.current.content)
+          setChapterTitle(plan.current.title)
+        }
+      } else if (currentChapterIdRef.current) {
+        // 当前章已被外部删除：有剩余 tab 则顺位（selectChapter 先 flush 离开的章——
+        // chapter:update 已不回写归属，flush 不可能复活旧 volumeId）；否则清空会话
+        if (plan.tabs.length > 0) {
+          selectChapter(plan.tabs[0])
+        } else {
+          setCurrentChapter(null)
+          currentChapterIdRef.current = null
+          isDirtyRef.current = false // 章已删，未保存编辑无处可归，丢弃（不写回已删文件）
+          setEditorContent('')
+          setChapterTitle('')
+        }
+      } else if (plan.autoOpenFirst && data.length > 0) {
+        autoOpenedRef.current = true
+        openedChaptersRef.current = [data[0]]
+        setOpenedChapters([data[0]])
+        selectChapter(data[0])
       }
     } catch (error) {
       console.error('加载章节失败:', error)
@@ -124,6 +161,18 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
     } catch (error) {
       message.error('章节创建失败')
     }
+  }
+
+  // Task 5 评审整改第 2 条（纵深防御）：外部变更（chapter:moveToVolume 回传/删卷疏散预置）
+  // 成功后立刻把新鲜章并入会话——陈旧 volumeId 对象的存活窗口从「整个列表重拉 IPC 往返」
+  // 缩到近零。只并列表/tab/当前章的元数据对象；编辑器缓冲（editorContent/chapterTitle）与
+  // dirty 态一概不动——用户未保存编辑永远以本地为准（fix 1 已保证保存通道不回写归属）。
+  const mergeUpdatedChapters = (updates: Chapter[]) => {
+    if (updates.length === 0) return
+    const byId = new Map(updates.map((u) => [u.id, u]))
+    setChapters((prev) => prev.map((c) => byId.get(c.id) ?? c))
+    setOpenedChapters((prev) => prev.map((c) => byId.get(c.id) ?? c))
+    setCurrentChapter((prev) => (prev && byId.get(prev.id)) || prev)
   }
 
   // 保存当前章节到磁盘。silent=true 用于切章/返回/关窗/自动保存的静默 flush。
@@ -191,6 +240,7 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
     openChapter,
     closeChapter,
     createChapter,
+    mergeUpdatedChapters,
     save: saveCurrentChapter,
     flushIfDirty: flushIfDirtyStable,
     handleEditorChange

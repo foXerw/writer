@@ -22,12 +22,15 @@ export function registerChapterHandlers(): void {
       createChapter(params.projectPath, params.title, params.volumeId ?? null)
   )
 
-  // 渲染层仍传整 Chapter 对象：取 id + 可改字段作 patch（volumeId 缺省 = 不改归属）
+  // 渲染层仍传整 Chapter 对象：只取正文编辑字段作 patch。
+  // Task 5 评审整改：volumeId 一律不进 patch——脏章 flush 竞态下（移卷成功→列表重拉 resolve 前，
+  // 切章/自动保存把携带陈旧 volumeId 的会话对象整章回写），本通道回写归属会静默撤销移卷、
+  // 甚至在删卷后重新持久化指向已删卷的悬挂引用。归属唯一写通道 = chapter:moveToVolume；
+  // applyPatch 对 undefined volumeId 本就不动，仓库零改动。
   ipcMain.handle('chapter:update', (_e, params: { projectPath: string; chapter: Chapter }) => {
     const { projectPath, chapter } = params
     return updateChapter(projectPath, chapter.id, {
       title: chapter.title,
-      volumeId: chapter.volumeId,
       status: chapter.status,
       content: chapter.content
     })

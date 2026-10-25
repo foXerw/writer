@@ -4,6 +4,8 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { mkTmpBook } from '../../../../tests/tmp'
 import type { Chapter } from '../../../../src/common/ipc'
+import { createChapter, getChapter } from '../../bookStore/chapters'
+import { createVolume, moveChapterToVolume } from '../../bookStore/volumes'
 
 const handlers = vi.hoisted(
   () => new Map<string, (event: unknown, ...args: unknown[]) => Promise<unknown>>()
@@ -89,6 +91,20 @@ describe('chapter:* handlers 委托', () => {
     expect(
       await getHandler('chapter:reorder')(null, { projectPath: p, fromId: a.id, toId: 'ghost' })
     ).toBe(false)
+  })
+
+  it('chapter:update 不回写 volumeId（Task 5 评审整改：归属唯一通道 = chapter:moveToVolume）', async () => {
+    const p = mkTmpBook()
+    const volume = createVolume(p, '真卷')
+    const ch = createChapter(p, '归属章')
+    moveChapterToVolume(p, ch.id, volume.id) // 磁盘现状：属于真卷
+
+    // 陈旧会话对象（脏 flush 竞态形态）带一个「别的」volumeId 走 update → 磁盘归属纹丝不动
+    const stale = { ...getChapter(p, ch.id)!, volumeId: '99999999-8888-4888-8888-777777777777', content: '# 归属章\n\n手改正文。\n' }
+    const updated = (await getHandler('chapter:update')(null, { projectPath: p, chapter: stale })) as Chapter
+    expect(updated.volumeId).toBe(volume.id)
+    expect(getChapter(p, ch.id)!.volumeId).toBe(volume.id)
+    expect(getChapter(p, ch.id)!.content).toBe(stale.content) // 正文/标题照常走本通道
   })
 
   it('update 缺失 id → CHAPTER_MISSING 前缀透传给渲染层', async () => {

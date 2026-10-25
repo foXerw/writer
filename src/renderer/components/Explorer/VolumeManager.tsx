@@ -27,7 +27,7 @@ interface VolumeManagerProps {
   nextId?: string
   /** 卷列表变化后回调（重拉 volumes） */
   onVolumesChanged: () => void
-  /** 章节归属变化后回调（删卷会疏散其下章 → 需重拉章节列表，防陈旧 volumeId 被自动保存回写） */
+  /** 章节归属变化后回调（删卷会疏散其下章 → 并入会话 + 重拉列表，见 ChapterTree 双保险注释） */
   onChaptersChanged: () => void
 }
 

@@ -65,7 +65,7 @@ function Workspace() {
   // 章节会话：save/flush 并发语义（dirty 门控 / LIVE id 镜像 / 函数式回写）全部在 hook 内
   const session = useEditorSession(projectPath)
   const { chapters, openedChapters, currentChapter, editorContent, chapterTitle, setChapterTitle,
-    loadChapters, openChapter, closeChapter, createChapter, save, flushIfDirty, handleEditorChange } = session
+    loadChapters, openChapter, closeChapter, createChapter, mergeUpdatedChapters, save, flushIfDirty, handleEditorChange } = session
 
   // 写作统计：countWords 增量（切章重置基线）/ 60s 活跃分钟 / 3s 防抖落盘
   const stats = useWritingStats({ projectPath, chapters, editorContent, currentChapterId: currentChapter?.id ?? null })
@@ -251,7 +251,7 @@ function Workspace() {
         tab={sidebarTab} collapsed={sidebarCollapsed} focusMode={focusMode}
         chapters={chapters} selectedChapterId={currentChapter?.id ?? null}
         statsView={stats} dailyGoal={config?.dailyGoal ?? 2000}
-        onOpenChapter={openChapter} onChaptersChanged={loadChapters}
+        onOpenChapter={openChapter} onChaptersChanged={loadChapters} onChaptersResync={mergeUpdatedChapters}
         onBack={handleBack} onOpenSettings={() => navigate('/settings')}
         onSetTab={setSidebarTab} onToggleCollapse={() => setSidebarCollapsed(v => !v)}
       />

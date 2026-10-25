@@ -31,6 +31,8 @@ interface SidebarPanelProps {
   dailyGoal: number
   onOpenChapter: (chapter: Chapter) => void
   onChaptersChanged: () => void
+  /** Task 5 评审整改：卷操作成功后立刻把新鲜章并入会话（纵深防御，先于列表重拉） */
+  onChaptersResync: (updates: Chapter[]) => void
   onBack: () => void
   onOpenSettings: () => void
   onSetTab: (tab: SidebarTab) => void
@@ -52,6 +54,7 @@ function SidebarPanel({
   dailyGoal,
   onOpenChapter,
   onChaptersChanged,
+  onChaptersResync,
   onBack,
   onOpenSettings,
   onSetTab,
@@ -154,6 +157,7 @@ function SidebarPanel({
                 selectedChapterId={selectedChapterId ?? undefined}
                 onSelectChapter={onOpenChapter}
                 onChapterChange={onChaptersChanged}
+                onChaptersResync={onChaptersResync}
               />
             )}
             {tab === 'characters' && (

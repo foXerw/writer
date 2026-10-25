@@ -24,6 +24,8 @@ interface ChapterTreeProps {
   selectedChapterId?: string
   onSelectChapter: (chapter: Chapter) => void
   onChapterChange: () => void // 章节列表变化时回调
+  /** Task 5 评审整改：外部归属变更后立刻并入新鲜章（不等列表重拉 IPC resolve） */
+  onChaptersResync: (updates: Chapter[]) => void
 }
 
 const ChapterTree: React.FC<ChapterTreeProps> = ({
@@ -31,7 +33,8 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
   chapters,
   selectedChapterId,
   onSelectChapter,
-  onChapterChange
+  onChapterChange,
+  onChaptersResync
 }) => {
   const { createChapter, deleteChapter, renameChapter } = useChapter()
   const { getAllVolumes, moveChapterToVolume } = useVolume()
@@ -39,8 +42,10 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
   const [modal, contextModalHolder] = Modal.useModal()
 
   // 卷列表自持（Task 5）：卷的增删改重排不进 Workspace 会话状态，树内闭环；
-  // 但删卷/移章会改章的 volumeId——必须经 onChapterChange 重拉章列表，
-  // 防会话里陈旧 volumeId 被下一次自动保存整 Chapter 回写复活。
+  // 删卷/移章会改章的 volumeId。评审整改后的双保险：
+  // ① chapter:update 通道不再回写 volumeId（归属唯一写通道 = chapter:moveToVolume），
+  //    列表重拉 resolve 前发生的脏 flush 不可能再撤销归属；
+  // ② 成功回调里先 onChaptersResync 把新鲜章并入会话，再 onChapterChange 重拉。
   const [volumes, setVolumes] = useState<Volume[]>([])
   const refreshVolumes = useCallback(async () => {
     try {
@@ -121,10 +126,12 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
     ]
   })
 
-  // 移卷（meta-only 写，正文不动——仓库侧 updateChapter 契约）
+  // 移卷（meta-only 写，正文不动——仓库侧 updateChapter 契约）。
+  // 评审整改第 2 条：回传章先并入会话（陈旧 volumeId 存活窗口 ≈ 0），再触发列表重拉。
   const moveToVolume = async (chapter: Chapter, volumeId: string | null) => {
     try {
-      await moveChapterToVolume(projectPath, chapter.id, volumeId)
+      const updated = await moveChapterToVolume(projectPath, chapter.id, volumeId)
+      onChaptersResync([updated])
       messageApi.success(volumeId === null ? '已移回未分卷' : '已移动到卷')
       onChapterChange()
     } catch (error) {
@@ -232,7 +239,16 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
             prevId={volumes[i - 1]?.id}
             nextId={volumes[i + 1]?.id}
             onVolumesChanged={() => void refreshVolumes()}
-            onChaptersChanged={onChapterChange}
+            // 删卷疏散（评审整改第 2 条）：仓库侧 deleteVolume 返回 boolean 不回传章，
+            // 会话里该卷下各章先同步预置 volumeId=null（磁盘此刻已被仓库置 null），再重拉确认
+            onChaptersChanged={() => {
+              onChaptersResync(
+                chapters
+                  .filter((c) => c.volumeId === v.id)
+                  .map((c) => ({ ...c, volumeId: null }))
+              )
+              onChapterChange()
+            }}
           />
         ),
         // 空卷不给 children=[]：undefined 即无可展开箭头，避免空壳展开态

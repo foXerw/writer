@@ -29,6 +29,8 @@ export type RendererToMainRequests = {
     // Task 5：新建章落在当前卷（未传/null = 未分卷）
     volumeId?: string | null
   }) => Promise<Chapter>
+  // Task 5 评审整改：本通道只写编辑字段（title/content/status）；整 Chapter 里的
+  // volumeId 会被 handler 忽略——归属唯一写通道 = chapter:moveToVolume
   'chapter:update': (params: { projectPath: string; chapter: Chapter }) => Promise<Chapter>
   'chapter:delete': (params: { projectPath: string; chapterId: string }) => Promise<boolean>
   'chapter:rename': (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
