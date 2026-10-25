@@ -24,14 +24,14 @@ import type { ExportOptions } from '../../components/Dialogs/ExportDialog'
 import OutlineView from '../../components/Editor/OutlineView'
 import type { MonacoEditorHandle } from '../../components/Editor/MonacoEditor'
 import { useMenu } from '../../hooks/useMenu'
-import { startAutoSave, stopAutoSave, saveFileDialog, writeFile, getStats, saveStats, exportDocument } from '../../services/ipcService'
+import { startAutoSave, stopAutoSave } from '../../services/autoSave'
 import { assembleMarkdown, sanitizeFilename } from '../../services/exportService'
 import {
   EMPTY_STATS, addWords, addMinutes, todayWords, todayMinutes,
   computeStreak, recentHistory, STATS_DURATION_TICK_MS, STATS_IDLE_THRESHOLD_MS
 } from '../../services/statsService'
 import { useEditorStore, useShortcutStore } from '../../stores'
-import { useChapter } from '../../hooks/useIPC'
+import { useChapter, useDialog, useExport, useFile, useStats } from '../../hooks/useIPC'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import type { Chapter, ProjectConfig } from '@/common/ipc'
 import type { StatsData } from '@/common/ipc'
@@ -59,6 +59,10 @@ function Workspace() {
   const editorRef = useRef<MonacoEditorHandle>(null)
 
   const { getAllChapters, createChapter, updateChapter } = useChapter()
+  const { getStats, saveStats } = useStats()
+  const { exportDocument } = useExport()
+  const { saveFile } = useDialog()
+  const { writeFile } = useFile()
 
   // 侧边栏状态
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('chapters')
@@ -273,7 +277,7 @@ function Workspace() {
     if (!projectPath || !statsLoadedRef.current) return
     const t = setTimeout(() => { void saveStats(projectPath, stats) }, 3000)
     return () => clearTimeout(t)
-  }, [stats, projectPath])
+  }, [stats, projectPath, saveStats])
 
   // 关窗/退出兜底：fire-and-forget 触发一次 flush（异步 IPC，尽力而为）。
   // 主要保障是切章/返回的显式 flush；此处为最后兜底。
@@ -284,7 +288,8 @@ function Workspace() {
     }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
-  }, [])
+    // saveStats 由 useCallback([门面]) 提供，身份跨渲染稳定，加入 deps 不会重复订阅
+  }, [saveStats])
 
   // 返回首页
   const handleBack = () => {
@@ -320,7 +325,7 @@ function Workspace() {
     const fmt = options.format
     const ext = fmt === 'word' ? 'docx' : fmt === 'pdf' ? 'pdf' : fmt === 'epub' ? 'epub' : 'md'
     const filterName = fmt === 'word' ? 'Word' : fmt === 'pdf' ? 'PDF' : fmt === 'epub' ? 'ePub' : 'Markdown'
-    const savePath = await saveFileDialog(`${sanitizeFilename(projectName)}.${ext}`, [
+    const savePath = await saveFile(`${sanitizeFilename(projectName)}.${ext}`, [
       { name: filterName, extensions: [ext] }
     ])
     if (!savePath) return { ok: false }

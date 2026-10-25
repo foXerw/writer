@@ -1,51 +1,22 @@
 import { useCallback } from 'react'
-import type { ProjectData, Chapter, Character, Setting, RecentProject, ProjectType } from '@/common/ipc'
+import type {
+  NovelWriterApi,
+  ProjectData,
+  Chapter,
+  Character,
+  Setting,
+  RecentProject,
+  ProjectType,
+  FileFilter,
+  StatsData,
+  ExportParams
+} from '@/common/ipc'
 
-// IPC API 类型
-interface IPCAPI {
-  project: {
-    create: (params: { name: string; path: string; type: ProjectType }) => Promise<ProjectData>
-    open: (path: string) => Promise<ProjectData>
-    getRecent: () => Promise<RecentProject[]>
-  }
-  file: {
-    read: (path: string) => Promise<string>
-    write: (params: { path: string; content: string }) => Promise<boolean>
-    delete: (path: string) => Promise<boolean>
-    exists: (path: string) => Promise<boolean>
-  }
-  chapter: {
-    getAll: (projectPath: string) => Promise<Chapter[]>
-    create: (params: { projectPath: string; title: string }) => Promise<Chapter>
-    update: (params: { projectPath: string; chapter: Chapter }) => Promise<Chapter>
-    delete: (params: { projectPath: string; chapterId: string }) => Promise<boolean>
-    rename: (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
-    reorder: (params: { projectPath: string; fromId: string; toId: string }) => Promise<boolean>
-    getById: (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
-  }
-  character: {
-    getAll: (projectPath: string) => Promise<Character[]>
-    getById: (params: { projectPath: string; characterId: string }) => Promise<Character | null>
-    create: (params: { projectPath: string; character: Partial<Character> }) => Promise<Character>
-    update: (params: { projectPath: string; character: Character }) => Promise<Character>
-    delete: (params: { projectPath: string; characterId: string }) => Promise<boolean>
-  }
-  setting: {
-    getAll: (projectPath: string) => Promise<Setting[]>
-    getById: (params: { projectPath: string; settingId: string }) => Promise<Setting | null>
-    create: (params: { projectPath: string; setting: Partial<Setting> }) => Promise<Setting>
-    update: (params: { projectPath: string; setting: Setting }) => Promise<Setting>
-    delete: (params: { projectPath: string; settingId: string }) => Promise<boolean>
-  }
-  dialog: {
-    openDirectory: () => Promise<string | null>
-    openFile: (filters: { name: string; extensions: string[] }[]) => Promise<string | null>
-    saveFile: (defaultPath: string) => Promise<string | null>
-  }
-}
+// 导出格式（原通用服务层的 ExportFormat，随门面迁移）
+export type ExportFormat = 'word' | 'pdf' | 'epub'
 
-// 获取IPC API
-function getIPC(): IPCAPI {
+// 获取统一 IPC 门面（window.novelWriter 是唯一通路，类型见 @/common/ipc）
+function getIPC(): NovelWriterApi {
   if (typeof window === 'undefined') {
     throw new Error('IPC只能在渲染进程中使用')
   }
@@ -54,7 +25,7 @@ function getIPC(): IPCAPI {
     throw new Error('novelWriter API未初始化，请确保在Electron环境中运行')
   }
 
-  return window.novelWriter as unknown as IPCAPI
+  return window.novelWriter
 }
 
 // 项目相关Hook
@@ -277,20 +248,72 @@ export function useDialog() {
   }, [ipc])
 
   const openFile = useCallback(async (
-    filters: { name: string; extensions: string[] }[]
+    filters: FileFilter[]
   ): Promise<string | null> => {
     return ipc.dialog.openFile(filters)
   }, [ipc])
 
+  // 两参形状保持不变（内部组装门面要求的对象参数，filters 现在真正透传）
   const saveFile = useCallback(async (
-    defaultPath: string
+    defaultPath: string,
+    filters?: FileFilter[]
   ): Promise<string | null> => {
-    return ipc.dialog.saveFile(defaultPath)
+    return ipc.dialog.saveFile({ defaultPath, filters })
   }, [ipc])
 
   return {
     openDirectory,
     openFile,
     saveFile
+  }
+}
+
+// 主题 Hook
+export function useTheme() {
+  const ipc = getIPC()
+
+  const setThemeMode = useCallback(async (mode: 'dark' | 'light'): Promise<boolean> => {
+    return ipc.theme.set(mode)
+  }, [ipc])
+
+  return {
+    setThemeMode
+  }
+}
+
+// 写作统计 Hook
+export function useStats() {
+  const ipc = getIPC()
+
+  const getStats = useCallback(async (projectPath: string): Promise<StatsData | null> => {
+    return ipc.stats.get(projectPath)
+  }, [ipc])
+
+  const saveStats = useCallback(async (
+    projectPath: string,
+    stats: StatsData
+  ): Promise<boolean> => {
+    return ipc.stats.save({ projectPath, stats })
+  }, [ipc])
+
+  return {
+    getStats,
+    saveStats
+  }
+}
+
+// 文档导出 Hook
+export function useExport() {
+  const ipc = getIPC()
+
+  const exportDocument = useCallback(async (
+    format: ExportFormat,
+    params: ExportParams
+  ): Promise<boolean> => {
+    return ipc.export[format](params)
+  }, [ipc])
+
+  return {
+    exportDocument
   }
 }

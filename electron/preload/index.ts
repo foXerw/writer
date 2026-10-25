@@ -1,16 +1,12 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { NovelWriterApi } from '../../src/common/ipc'
 import {
   RendererToMainRequests,
   ProjectData,
-  Chapter,
-  Character,
-  Setting,
-  RecentProject,
-  WritingStats,
-  ProjectType
+  WritingStats
 } from '../../src/common/ipc'
 
-// 渲染进程 -> 主进程 请求
+// 渲染进程 -> 主进程 请求（每条通道一个函数，与 handlers.ts 的参数形状一一对应）
 const projectAPI: RendererToMainRequests = {
   'project:create': (params) => ipcRenderer.invoke('project:create', params),
   'project:open': (path) => ipcRenderer.invoke('project:open', path),
@@ -43,7 +39,16 @@ const projectAPI: RendererToMainRequests = {
 
   'dialog:openDirectory': () => ipcRenderer.invoke('dialog:openDirectory'),
   'dialog:openFile': (filters) => ipcRenderer.invoke('dialog:openFile', filters),
-  'dialog:saveFile': (defaultPath) => ipcRenderer.invoke('dialog:saveFile', defaultPath)
+  'dialog:saveFile': (params) => ipcRenderer.invoke('dialog:saveFile', params),
+
+  'theme:set': (mode) => ipcRenderer.invoke('theme:set', mode),
+
+  'stats:get': (projectPath) => ipcRenderer.invoke('stats:get', projectPath),
+  'stats:save': (params) => ipcRenderer.invoke('stats:save', params),
+
+  'export:word': (params) => ipcRenderer.invoke('export:word', params),
+  'export:epub': (params) => ipcRenderer.invoke('export:epub', params),
+  'export:pdf': (params) => ipcRenderer.invoke('export:pdf', params)
 }
 
 // 主进程 -> 渲染进程 监听
@@ -59,7 +64,8 @@ const rendererListeners: {
   'stats:updated': (callback) => ipcRenderer.on('stats:updated', (_, stats) => callback(stats))
 }
 
-contextBridge.exposeInMainWorld('novelWriter', {
+// 唯一 IPC 门面：类型由 src/common/ipc.ts 的 NovelWriterApi 集中定义
+const novelWriter: NovelWriterApi = {
   // 项目相关
   project: {
     create: projectAPI['project:create'],
@@ -111,6 +117,24 @@ contextBridge.exposeInMainWorld('novelWriter', {
     saveFile: projectAPI['dialog:saveFile']
   },
 
+  // 主题
+  theme: {
+    set: projectAPI['theme:set']
+  },
+
+  // 写作统计
+  stats: {
+    get: projectAPI['stats:get'],
+    save: projectAPI['stats:save']
+  },
+
+  // 文档导出
+  export: {
+    word: projectAPI['export:word'],
+    epub: projectAPI['export:epub'],
+    pdf: projectAPI['export:pdf']
+  },
+
   // 监听器
   on: {
     projectCreated: rendererListeners['project:created'],
@@ -129,122 +153,12 @@ contextBridge.exposeInMainWorld('novelWriter', {
       }
     }
   }
-})
-
-// 新版 electronAPI 风格的 API
-contextBridge.exposeInMainWorld('electronAPI', {
-  // 通用 invoke/send/on/off
-  invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
-  send: (channel: string, ...args: unknown[]) => ipcRenderer.send(channel, ...args),
-  on: (channel: string, listener: (...args: unknown[]) => void) => {
-    ipcRenderer.on(channel, (_event, ...args) => listener(...args))
-  },
-  off: (channel: string) => ipcRenderer.removeAllListeners(channel)
-})
-
-// 类型导出
-export type NovelWriterAPI = {
-  project: {
-    create: (params: { name: string; path: string; type: ProjectType }) => Promise<ProjectData>
-    open: (path: string) => Promise<ProjectData>
-    getRecent: () => Promise<RecentProject[]>
-  }
-  file: {
-    read: (path: string) => Promise<string>
-    write: (params: { path: string; content: string }) => Promise<boolean>
-    delete: (path: string) => Promise<boolean>
-    exists: (path: string) => Promise<boolean>
-  }
-  chapter: {
-    getAll: (projectPath: string) => Promise<Chapter[]>
-    create: (params: { projectPath: string; title: string }) => Promise<Chapter>
-    update: (params: { projectPath: string; chapter: Chapter }) => Promise<Chapter>
-    delete: (params: { projectPath: string; chapterId: string }) => Promise<boolean>
-    rename: (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
-    reorder: (params: { projectPath: string; fromId: string; toId: string }) => Promise<boolean>
-    getById: (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
-  }
-  character: {
-    getAll: (projectPath: string) => Promise<Character[]>
-    getById: (params: { projectPath: string; characterId: string }) => Promise<Character | null>
-    create: (params: { projectPath: string; character: Partial<Character> }) => Promise<Character>
-    update: (params: { projectPath: string; character: Character }) => Promise<Character>
-    delete: (params: { projectPath: string; characterId: string }) => Promise<boolean>
-  }
-  setting: {
-    getAll: (projectPath: string) => Promise<Setting[]>
-    getById: (params: { projectPath: string; settingId: string }) => Promise<Setting | null>
-    create: (params: { projectPath: string; setting: Partial<Setting> }) => Promise<Setting>
-    update: (params: { projectPath: string; setting: Setting }) => Promise<Setting>
-    delete: (params: { projectPath: string; settingId: string }) => Promise<boolean>
-  }
-  dialog: {
-    openDirectory: () => Promise<string | null>
-    openFile: (filters: { name: string; extensions: string[] }[]) => Promise<string | null>
-    saveFile: (defaultPath: string) => Promise<string | null>
-  }
-  on: {
-    projectCreated: (callback: (project: ProjectData) => void) => void
-    projectOpened: (callback: (project: ProjectData) => void) => void
-    fileSaved: (callback: (filePath: string) => void) => void
-    statsUpdated: (callback: (stats: WritingStats) => void) => void
-  }
-  menu: {
-    onEvent: (handler: (event: string, ...args: unknown[]) => void) => () => void
-  }
 }
+
+contextBridge.exposeInMainWorld('novelWriter', novelWriter)
 
 declare global {
   interface Window {
-    novelWriter: {
-      project: {
-        create: (params: { name: string; path: string; type: ProjectType }) => Promise<ProjectData>
-        open: (path: string) => Promise<ProjectData>
-        getRecent: () => Promise<RecentProject[]>
-      }
-      file: {
-        read: (path: string) => Promise<string>
-        write: (params: { path: string; content: string }) => Promise<boolean>
-        delete: (path: string) => Promise<boolean>
-        exists: (path: string) => Promise<boolean>
-      }
-      chapter: {
-        getAll: (projectPath: string) => Promise<Chapter[]>
-        create: (params: { projectPath: string; title: string }) => Promise<Chapter>
-        update: (params: { projectPath: string; chapter: Chapter }) => Promise<Chapter>
-        delete: (params: { projectPath: string; chapterId: string }) => Promise<boolean>
-        rename: (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
-        reorder: (params: { projectPath: string; fromId: string; toId: string }) => Promise<boolean>
-        getById: (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
-      }
-      character: {
-        getAll: (projectPath: string) => Promise<Character[]>
-        getById: (params: { projectPath: string; characterId: string }) => Promise<Character | null>
-        create: (params: { projectPath: string; character: Partial<Character> }) => Promise<Character>
-        update: (params: { projectPath: string; character: Character }) => Promise<Character>
-        delete: (params: { projectPath: string; characterId: string }) => Promise<boolean>
-      }
-      setting: {
-        getAll: (projectPath: string) => Promise<Setting[]>
-        getById: (params: { projectPath: string; settingId: string }) => Promise<Setting | null>
-        create: (params: { projectPath: string; setting: Partial<Setting> }) => Promise<Setting>
-        update: (params: { projectPath: string; setting: Setting }) => Promise<Setting>
-        delete: (params: { projectPath: string; settingId: string }) => Promise<boolean>
-      }
-      dialog: {
-        openDirectory: () => Promise<string | null>
-        openFile: (filters: { name: string; extensions: string[] }[]) => Promise<string | null>
-        saveFile: (defaultPath: string) => Promise<string | null>
-      }
-      on: {
-        projectCreated: (callback: (project: ProjectData) => void) => void
-        projectOpened: (callback: (project: ProjectData) => void) => void
-        fileSaved: (callback: (filePath: string) => void) => void
-        statsUpdated: (callback: (stats: WritingStats) => void) => void
-      }
-      menu: {
-        onEvent: (handler: (event: string, ...args: unknown[]) => void) => () => void
-      }
-    }
+    novelWriter: NovelWriterApi
   }
 }

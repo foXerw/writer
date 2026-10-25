@@ -49,6 +49,83 @@ export type RendererToMainRequests = {
   'dialog:openDirectory': () => Promise<string | null>
   'dialog:openFile': (filters: FileFilter[]) => Promise<string | null>
   'dialog:saveFile': (params: { defaultPath: string; filters?: FileFilter[] }) => Promise<string | null>
+
+  // 主题相关
+  'theme:set': (mode: 'dark' | 'light') => Promise<boolean>
+
+  // 写作统计相关
+  'stats:get': (projectPath: string) => Promise<StatsData | null>
+  'stats:save': (params: { projectPath: string; stats: StatsData }) => Promise<boolean>
+
+  // 文档导出相关
+  'export:word': (params: ExportParams) => Promise<boolean>
+  'export:epub': (params: ExportParams) => Promise<boolean>
+  'export:pdf': (params: ExportParams) => Promise<boolean>
+}
+
+// preload 暴露给渲染进程的统一 IPC 门面（window.novelWriter 的唯一类型）。
+// 分组方法签名与上方 RendererToMainRequests 通道一一对应；旧的通用裸通道已移除。
+export interface NovelWriterApi {
+  project: {
+    create: RendererToMainRequests['project:create']
+    open: RendererToMainRequests['project:open']
+    getRecent: RendererToMainRequests['project:getRecent']
+  }
+  file: {
+    read: RendererToMainRequests['file:read']
+    write: RendererToMainRequests['file:write']
+    delete: RendererToMainRequests['file:delete']
+    exists: RendererToMainRequests['file:exists']
+  }
+  chapter: {
+    getAll: RendererToMainRequests['chapter:getAll']
+    create: RendererToMainRequests['chapter:create']
+    update: RendererToMainRequests['chapter:update']
+    delete: RendererToMainRequests['chapter:delete']
+    rename: RendererToMainRequests['chapter:rename']
+    reorder: RendererToMainRequests['chapter:reorder']
+    getById: RendererToMainRequests['chapter:getById']
+  }
+  character: {
+    getAll: RendererToMainRequests['character:getAll']
+    getById: RendererToMainRequests['character:getById']
+    create: RendererToMainRequests['character:create']
+    update: RendererToMainRequests['character:update']
+    delete: RendererToMainRequests['character:delete']
+  }
+  setting: {
+    getAll: RendererToMainRequests['setting:getAll']
+    getById: RendererToMainRequests['setting:getById']
+    create: RendererToMainRequests['setting:create']
+    update: RendererToMainRequests['setting:update']
+    delete: RendererToMainRequests['setting:delete']
+  }
+  dialog: {
+    openDirectory: RendererToMainRequests['dialog:openDirectory']
+    openFile: RendererToMainRequests['dialog:openFile']
+    saveFile: RendererToMainRequests['dialog:saveFile']
+  }
+  theme: {
+    set: RendererToMainRequests['theme:set']
+  }
+  stats: {
+    get: RendererToMainRequests['stats:get']
+    save: RendererToMainRequests['stats:save']
+  }
+  export: {
+    word: RendererToMainRequests['export:word']
+    epub: RendererToMainRequests['export:epub']
+    pdf: RendererToMainRequests['export:pdf']
+  }
+  on: {
+    projectCreated: (callback: (project: ProjectData) => void) => void
+    projectOpened: (callback: (project: ProjectData) => void) => void
+    fileSaved: (callback: (filePath: string) => void) => void
+    statsUpdated: (callback: (stats: WritingStats) => void) => void
+  }
+  menu: {
+    onEvent: (handler: (event: string, ...args: unknown[]) => void) => () => void
+  }
 }
 
 // 项目类型
