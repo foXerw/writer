@@ -54,7 +54,12 @@ export type RendererToMainRequests = {
   'chapter:delete': (params: { projectPath: string; chapterId: string }) => Promise<boolean>
   'chapter:rename': (params: { projectPath: string; chapterId: string; newTitle: string }) => Promise<Chapter>
   'chapter:reorder': (params: { projectPath: string; fromId: string; toId: string }) => Promise<boolean>
-  'chapter:getById': (params: { projectPath: string; chapterId: string }) => Promise<Chapter | null>
+  // bypassCache（Task 9 修订 ①）：true = 跳过仓库缓存直读磁盘真相——外部改动冲突判定的专用输入
+  'chapter:getById': (params: {
+    projectPath: string
+    chapterId: string
+    bypassCache?: boolean
+  }) => Promise<Chapter | null>
   // 改卷归属（Task 5）：volumeId = null 或未传 → 未分卷；缺省绝不视同「不改归属」
   'chapter:moveToVolume': (params: {
     projectPath: string

@@ -20,13 +20,18 @@ export interface EditorSession {
   save: (opts?: { silent?: boolean }) => Promise<void>
   flushIfDirty: () => void
   handleEditorChange: (value: string) => void
-  // Task 9 外部改动冲突（裁定 5）的三件接缝——冲突弹窗的开合/决议全部经由它们，不在 JSX 里塞标志位：
+  // Task 9 外部改动冲突（裁定 5 + 修订 ①）的四件接缝——冲突弹窗的开合/决议全部经由它们，不在 JSX 里塞标志位：
   /** 当前章此刻是否有未保存编辑（book:changed 到达时判定「冲突 vs 静默刷新」）。 */
   isDirtyNow: () => boolean
   /** 冲突弹窗期间暂停指定章的静默 flush（chapterId=null 恢复）；其他章不受影响。 */
   setFlushPaused: (chapterId: string | null) => void
   /** 「重新加载」决议：只清 dirty 标志——内容回灌由随后的 loadChapters 非脏路径完成（复用 Task 5 语义）。 */
   discardEdits: () => void
+  /**
+   * 当前章最近一次「成功保存/重载」后的磁盘内容（修订 ① 内容比对判定的基准）。
+   * 更新点：save 成功（仍同章时）/ selectChapter / loadChapters 非脏回灌 / 会话清空置 null。
+   */
+  lastSavedContent: () => string | null
 }
 
 // 章节编辑会话 —— Task 7 自原 Workspace/index.tsx 章节状态段逐行迁移，save/flush 并发语义不变：
@@ -50,6 +55,9 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
   // Task 9 冲突弹窗暂停门：弹窗未决议期间，该章的一切静默 flush（自动保存 tick / selectChapter
   // 离章 flush / 关窗兜底）短路；其他章不受影响；决议（保留我的/重新加载/X 关闭）总是 setFlushPaused(null)。
   const flushPausedChapterIdRef = useRef<string | null>(null)
+  // Task 9 修订 ①：当前章最近一次「成功保存/重载」后的磁盘内容——book:changed 冲突判定改为
+  // 内容比对（磁盘 bypass 点读 === lastSaved → 自写回声静默忽略；≠ → 真外部改动才弹窗）。
+  const lastSavedContentRef = useRef<string | null>(null)
   // 镜像 LIVE current chapter id，每次渲染更新，确保异步 resolve 时读到最新值。
   const currentChapterIdRef = useRef<string | null>(currentChapter?.id ?? null)
   currentChapterIdRef.current = currentChapter?.id ?? null
@@ -91,6 +99,10 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
         if (!isDirtyRef.current) {
           setEditorContent(plan.current.content)
           setChapterTitle(plan.current.title)
+          // Task 9 修订 ①：非脏回灌 = 缓冲与磁盘重新对齐 → 比对基准同步刷新。
+          // 脏时绝不动基准——lastSaved 必须停留在「我们最后一次写盘的内容」，
+          // 否则冲突判定会把真外部改动误判成回声
+          lastSavedContentRef.current = plan.current.content
         }
       } else if (currentChapterIdRef.current) {
         // 当前章已被外部删除：有剩余 tab 则顺位（selectChapter 先 flush 离开的章——
@@ -101,6 +113,7 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
           setCurrentChapter(null)
           currentChapterIdRef.current = null
           isDirtyRef.current = false // 章已删，未保存编辑无处可归，丢弃（不写回已删文件）
+          lastSavedContentRef.current = null
           setEditorContent('')
           setChapterTitle('')
         }
@@ -155,6 +168,8 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
     currentChapterIdRef.current = chapter.id
     setEditorContent(chapter.content)
     setChapterTitle(chapter.title)
+    // Task 9 修订 ①：换章即换比对基准（chapter 对象来自磁盘新鲜列表 = 此刻的 lastSaved）
+    lastSavedContentRef.current = chapter.content
     // 注：原 prevLenRef（切章不计字数增量）随统计逻辑迁至 useWritingStats（按 currentChapterId 变化重置基线）
   }
 
@@ -208,6 +223,8 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
       // 仅当仍是同一章时才清 dirty，防止「切章 + 编辑新章」期间被陈旧回写清掉新章脏标记。
       if (currentChapterIdRef.current === outgoing.id) {
         isDirtyRef.current = false
+        // Task 9 修订 ①：保存成功 = 磁盘现状已知——记下基准，供回声/外部改动内容比对
+        lastSavedContentRef.current = updated.content
       }
       if (!opts?.silent) {
         message.success('保存成功')
@@ -252,10 +269,13 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
   }, [])
 
   // 「重新加载」决议的丢编辑步：只清 dirty——loadChapters 的 `!isDirtyRef` 分支随即用磁盘内容
-  // 回灌 editorContent/chapterTitle（Task 5 保留语义原样复用，不另造回灌路径）
+  // 回灌 editorContent/chapterTitle 并同步刷新比对基准（Task 5 保留语义原样复用，不另造回灌路径）
   const discardEdits = useCallback(() => {
     isDirtyRef.current = false
   }, [])
+
+  // 修订 ① 比对基准读取（稳定引用）
+  const lastSavedContent = useCallback(() => lastSavedContentRef.current, [])
 
   return {
     chapters,
@@ -274,6 +294,7 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
     handleEditorChange,
     isDirtyNow,
     setFlushPaused,
-    discardEdits
+    discardEdits,
+    lastSavedContent
   }
 }

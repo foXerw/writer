@@ -55,7 +55,10 @@ export function registerChapterHandlers(): void {
     }
   )
 
-  ipcMain.handle('chapter:getById', (_e, params: { projectPath: string; chapterId: string }) =>
-    getChapter(params.projectPath, params.chapterId)
+  // bypassCache（Task 9 修订 ①）：冲突判定要的是此刻磁盘真相——透传给仓库跳过缓存正命中
+  ipcMain.handle(
+    'chapter:getById',
+    (_e, params: { projectPath: string; chapterId: string; bypassCache?: boolean }) =>
+      getChapter(params.projectPath, params.chapterId, { bypassCache: params.bypassCache })
   )
 }

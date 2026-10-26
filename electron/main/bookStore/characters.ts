@@ -19,7 +19,8 @@
 // Task 9 域缓存（裁定 1）：模块级 `Map<projectPath, CharacterV2[]>`，契约逐条镜像 chapters.ts
 // （代表实现+测试钉死在 chapters）：list/get 命中缓存零 IO（list 返回浅拷贝）、缓存只在 list 侧
 // 惰性填充、mutation 先写盘再就地更新缓存（RMW 的读一律直读磁盘）、`invalidateCache` 只清 characters 域；
-// getCharacter 命中缓存时坏档为 null 而非 CHARACTER_INVALID 抛穿（缓存里只有解析成功的档）。
+// getCharacter 缓存只短路「正命中」（修订 ②）：缓存缺 id ≠ 不存在——回落磁盘路径，
+// 点读契约（缺失 null / 坏档 CHARACTER_INVALID 抛穿）与无缓存时逐字一致。
 import { existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -166,12 +167,16 @@ export function deleteCharacter(p: string, id: string): boolean {
 
 /**
  * 点读单卡：坏形状 id → BAD_CHARACTER_ID 抛；缺失 → null；坏档 → CHARACTER_INVALID 抛穿。
- * Task 9：命中缓存直接返回（缓存里只有解析成功的档——坏档在此路径为 null，抛穿契约只在磁盘路径兑现）。
+ * Task 9：缓存只短路「正命中」；修订 ②：缓存缺席 ≠ 不存在（坏档被 list 侧跳过/外部直写漂移）——
+ * 回落磁盘路径，点读抛穿契约与无缓存时逐字一致。
  */
 export function getCharacter(p: string, id: string): CharacterV2 | null {
   assertCharacterId(id)
   const cached = listCache.get(p)
-  if (cached) return cached.find((c) => c.id === id) ?? null
+  if (cached) {
+    const hit = cached.find((c) => c.id === id)
+    if (hit) return hit // 正命中：零 IO
+  }
   const abs = characterFile(p, id)
   if (!existsSync(abs)) return null
   return parseDoc(readYamlFile<unknown>(abs), id, abs)

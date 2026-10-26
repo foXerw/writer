@@ -23,7 +23,8 @@
 // Task 9 域缓存（裁定 1）：模块级 `Map<projectPath, WorldEntryV2[]>`，契约逐条镜像 chapters.ts
 // （代表实现+测试钉死在 chapters）：list/get 命中缓存零 IO（list 返回浅拷贝）、缓存只在 list 侧
 // 惰性填充、mutation 先写盘再就地更新缓存（RMW 的读一律直读磁盘）、`invalidateCache` 只清 world 域；
-// getWorldEntry 命中缓存时坏档为 null 而非 WORLD_INVALID 抛穿（缓存里只有解析成功且去重后的档）；
+// getWorldEntry 缓存只短路「正命中」（修订 ②）：缓存缺 id ≠ 不存在——回落磁盘路径，
+// 点读契约（缺失 null / 坏档 WORLD_INVALID 抛穿）与无缓存时逐字一致；
 // listWorldEntryIds/refs 直扫永不走缓存（裁定 7：存在性检查必须见磁盘真相）。
 import { existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
@@ -190,13 +191,17 @@ export function deleteWorldEntry(p: string, id: string): boolean {
 
 /**
  * 点读单词条：坏形状 id → BAD_WORLD_ID 抛；缺失 → null；坏档 → WORLD_INVALID 抛穿。
- * Task 9：命中缓存直接返回（缓存条目已过 updatedAt 去重——与 pickNewest 同一规则；
- * 坏档在此路径为 null，抛穿契约只在磁盘路径兑现）。
+ * Task 9：缓存只短路「正命中」（缓存条目已过 updatedAt 去重——与 pickNewest 同一规则）；
+ * 修订 ②：缓存缺席 ≠ 不存在（坏档被 list 侧跳过/外部直写漂移/跨类残影）——回落磁盘路径，
+ * 点读抛穿契约与无缓存时逐字一致。
  */
 export function getWorldEntry(p: string, id: string): WorldEntryV2 | null {
   assertWorldId(id)
   const cached = listCache.get(p)
-  if (cached) return cached.find((e) => e.id === id) ?? null
+  if (cached) {
+    const hit = cached.find((e) => e.id === id)
+    if (hit) return hit // 正命中：零 IO
+  }
   const paths = locateFiles(p, id)
   if (paths.length === 0) return null
   return pickNewest(paths)

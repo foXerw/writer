@@ -18,6 +18,7 @@ import { useEditorStore, useShortcutStore } from '../../stores'
 import { useEditorSession } from './hooks/useEditorSession'
 import { useWritingStats } from './hooks/useWritingStats'
 import { useAutoSave } from './hooks/useAutoSave'
+import { bookChangeTouchesCurrentChapter, decideConflict } from './hooks/bookChangeConflict'
 import type { Chapter, ProjectConfig } from '@/common/ipc'
 import { countWords } from '@/common/wordCount'
 
@@ -40,7 +41,7 @@ function Workspace() {
   const setShortcutDialogOpen = useShortcutStore((s) => s.setDialogOpen)
   const editorRef = useRef<MonacoEditorHandle>(null)
 
-  const { getAllChapters } = useChapter()
+  const { getAllChapters, getChapterById } = useChapter()
   const { exportDocument } = useExport()
   const { saveFile } = useDialog()
   const { writeFile } = useFile()
@@ -67,7 +68,7 @@ function Workspace() {
   const session = useEditorSession(projectPath)
   const { chapters, openedChapters, currentChapter, editorContent, chapterTitle, setChapterTitle,
     loadChapters, openChapter, closeChapter, createChapter, mergeUpdatedChapters, save, flushIfDirty, handleEditorChange,
-    isDirtyNow, setFlushPaused, discardEdits } = session
+    isDirtyNow, setFlushPaused, discardEdits, lastSavedContent } = session
 
   // 写作统计：countWords 增量（切章重置基线）/ 60s 活跃分钟 / 3s 防抖落盘
   const stats = useWritingStats({ projectPath, chapters, editorContent, currentChapterId: currentChapter?.id ?? null })
@@ -134,25 +135,49 @@ function Workspace() {
     })
   }
 
-  const handleBookChanged = (paths: string[]) => {
+  // 修订 ①（控制器改判）：冲突必须「内容比对」判定，不能「事件触发」判定——本应用自己的写盘
+  // 会经 watcher 回声成 book:changed，连续打字期间按事件+dirty 开弹窗 = 每个自动保存周期误报一次。
+  // 判定：bypass 缓存点读磁盘真相 vs lastSaved（会话最近一次成功保存/重载的内容，useEditorSession 维护）：
+  // 相等 → 自写回声静默忽略（不弹窗、不刷新抖动）；不等（含章被外删/点读失败 → null）→ 真外部改动 → 弹窗。
+  const resolveBookChange = async (paths: string[]): Promise<void> => {
     if (!projectPath) return
     const cur = currentChapterRef.current
-    const currentFile = cur ? `chapters/${cur.id}.md` : null
     if (
       cur !== null &&
-      currentFile !== null &&
-      paths.includes(currentFile) &&
+      bookChangeTouchesCurrentChapter(paths, cur.id) &&
       isDirtyNow() &&
       !conflictOpenRef.current
     ) {
+      let diskContent: string | null = null
+      try {
+        // 冲突判定专用输入：bypassCache 直读此刻磁盘真相（不吃缓存权威）
+        const disk = await getChapterById(projectPath, cur.id, { bypassCache: true })
+        diskContent = disk?.content ?? null
+      } catch (err) {
+        // 点读失败（坏档/IPC 异常）→ diskContent=null ≠ lastSaved → 弹窗多问一次，绝不静默丢编辑
+        console.error('冲突判定读取磁盘失败，按真实外部改动处理:', err)
+      }
+      // 异步窗口守卫：await 期间切章/弹窗已被别的事件打开/已不脏 → 放弃本次判定，落静默刷新
+      if (conflictOpenRef.current || currentChapterRef.current?.id !== cur.id || !isDirtyNow()) {
+        void loadChapters()
+        return
+      }
+      if (decideConflict(diskContent, lastSavedContent()) === 'ignore-echo') {
+        // 自写回声：本批只有当前章文件 → 完全静默（零刷新抖动）；
+        // 批次混有其他路径（如外部同时改了别的章）→ 其余变更仍走静默刷新
+        if (paths.some((x) => x !== `chapters/${cur.id}.md`)) void loadChapters()
+        return
+      }
       openConflictModal(cur)
       return
     }
     // 非脏 / 其他章 / 其他域变更 → 静默刷新（Task 5 loadChapters：tab 布局与当前章保留，
-    // 脏编辑器不回灌）。自写回声也落这里（裁定 5 接受噪音）：重拉相同值 = 无害 no-op。
-    // 已知窗口：自动保存写盘后的 300ms debounce 内用户又打字 → 回声到达时变脏 → 误开弹窗；
-    // 「保留我的」把本地缓冲重写回盘即无损解决（接受，不做写指纹抑制——裁定 5）。
+    // 脏编辑器不回灌）。干净章的自写回声也落这里（裁定 5 接受）：重拉相同值 = 无害 no-op。
     void loadChapters()
+  }
+
+  const handleBookChanged = (paths: string[]) => {
+    void resolveBookChange(paths)
   }
   useBookEvents({ onBookChanged: handleBookChanged })
 

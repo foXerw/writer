@@ -23,8 +23,9 @@
 //   mutation 后缓存条目必须与刚写盘的字节一致（RMW 的「读」一律直读磁盘，缓存绝不进写路径）；
 // - `invalidateCache(projectPath)` 只清 chapters 域：watcher 外部变更事件按域调用、stopWatching 全清；
 // - 直写磁盘绕过仓库（测试/外部编辑器）不会被缓存感知——生产环境由 watcher 失效兜底，这是接受的陈旧窗口；
-// - getChapter 命中缓存时，坏档（list 侧已 warn+跳过）返回 null 而非抛 FRONTMATTER_*——
-//   「点读抛穿」契约只在无缓存的磁盘路径兑现（缓存里只有解析成功的档）。
+// - getChapter 缓存只短路「正命中」（修订 ②）：缓存缺 id ≠ 不存在——坏档被 list 侧跳过/外部直写漂移
+//   都造成缺席，一律回落磁盘路径，点读契约（缺失 null / 坏档 FRONTMATTER_* 抛穿）与无缓存时逐字一致；
+//   `bypassCache: true` 无条件直读磁盘（修订 ① 冲突判定专用：要此刻的磁盘真相，不要缓存权威）。
 import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -148,12 +149,25 @@ export function moveChapter(p: string, id: string, toOrder: number): boolean {
   return true
 }
 
-export function getChapter(p: string, id: string): Chapter | null {
+/**
+ * 点读单章。缓存只短路「正命中」（裁定 1 的省 IO 面）；修订 ②：缓存缺席 ≠ 不存在——
+ * 坏档被 list 侧 warn+跳过、外部直写漂移都会造成缓存缺 id，此时必须回落磁盘路径兑现点读契约：
+ * 缺失 → null、坏档 → FRONTMATTER_* 抛穿（与无缓存时逐字一致）。
+ * `bypassCache: true` = 无条件直读磁盘（修订 ① 冲突判定的输入：要的是此刻的磁盘真相，不是缓存权威）。
+ */
+export function getChapter(
+  p: string,
+  id: string,
+  opts?: { bypassCache?: boolean }
+): Chapter | null {
   assertChapterId(id)
-  // 命中缓存直接返回（裁定 1：getX 与 listX 同一缓存权威；缓存里只有解析成功的档，
-  // 故坏档在此路径为 null 而非 FRONTMATTER_* 抛穿——见文件头注释）
-  const cached = listCache.get(p)
-  if (cached) return cached.find((c) => c.id === id) ?? null
+  if (!opts?.bypassCache) {
+    const cached = listCache.get(p)
+    if (cached) {
+      const hit = cached.find((c) => c.id === id)
+      if (hit) return hit // 正命中：零 IO
+    }
+  }
   const abs = chapterFile(p, id)
   if (!existsSync(abs)) return null
   const doc = parseChapterDoc(readFileSync(abs, 'utf8'), abs)

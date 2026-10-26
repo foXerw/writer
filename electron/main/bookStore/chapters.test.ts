@@ -484,6 +484,43 @@ describe('缓存语义（list/get 命中缓存、mutation 就地同步、invalid
     expect(listChapters(p)[0].content).toBe('外部正文。\n')
   })
 
+  it('修订 ②：缓存缺席 ≠ 不存在——坏档点读在缓存已填充时仍抛 FRONTMATTER_*（点读教义不破）', () => {
+    const p = mkTmpBook()
+    const good = createChapter(p, '完好章')
+    const badId = 'cccccccc-3333-4333-8333-333333333333'
+    writeFileSync(join(chaptersDir(p), `${badId}.md`), '完全没有 front-matter 的旧内容\n', 'utf8')
+
+    // 填充缓存：坏档被 list 侧 warn+跳过 → 缓存里没有 badId（这正是「缺席回落磁盘」要治的形状）
+    expect(listChapters(p).map((c) => c.id)).toEqual([good.id])
+
+    // 缺席绝不就地判 null：回落磁盘路径 → 坏档 FRONTMATTER_* 抛穿（与无缓存时逐字同一契约）
+    expect(() => getChapter(p, badId)).toThrow(/FRONTMATTER_/)
+    // 真缺失（磁盘也没有）→ null（回落后 existsSync 判定）
+    expect(getChapter(p, '99999999-8888-4888-8888-777777777777')).toBeNull()
+    // 正命中仍走缓存零 IO（修订 ② 只收紧缺席分支）
+    expect(getChapter(p, good.id)?.title).toBe('完好章')
+  })
+
+  it('修订 ①：getChapter bypassCache 跳过缓存正命中直读磁盘真相（冲突判定专用输入）', () => {
+    const p = mkTmpBook()
+    const c = createChapter(p, '丁章')
+    expect(listChapters(p)[0].title).toBe('丁章') // 填充缓存
+
+    // 绕仓库直写磁盘不同内容：缓存正命中看不见（缓存权威），bypass 必须看见（磁盘真相）
+    writeFileSync(
+      join(chaptersDir(p), `${c.id}.md`),
+      serializeChapterDoc(
+        { id: c.id, title: '外部丁', volumeId: null, order: 1, status: 'draft' },
+        '外部正文。\n'
+      ),
+      'utf8'
+    )
+    expect(getChapter(p, c.id)?.content).toBe('# 丁章\n\n') // 缓存权威（陈旧窗口，watcher 兜底）
+    const disk = getChapter(p, c.id, { bypassCache: true })
+    expect(disk?.title).toBe('外部丁')
+    expect(disk?.content).toBe('外部正文。\n')
+  })
+
   it('create/delete/move 全部就地同步缓存：mutation 之后 list 即磁盘状态', () => {
     const p = mkTmpBook()
     expect(listChapters(p)).toEqual([]) // 空目录也填充（[] 也是缓存条目——空书同样单次 IO）

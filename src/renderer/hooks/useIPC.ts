@@ -134,11 +134,13 @@ export function useChapter() {
     return ipc.chapter.reorder({ projectPath, fromId, toId })
   }, [ipc])
 
+  // opts.bypassCache（Task 9 修订 ①）：true = 直读磁盘真相（外部改动冲突判定专用）
   const getChapterById = useCallback(async (
     projectPath: string,
-    chapterId: string
+    chapterId: string,
+    opts?: { bypassCache?: boolean }
   ): Promise<Chapter | null> => {
-    return ipc.chapter.getById({ projectPath, chapterId })
+    return ipc.chapter.getById({ projectPath, chapterId, bypassCache: opts?.bypassCache })
   }, [ipc])
 
   return {
