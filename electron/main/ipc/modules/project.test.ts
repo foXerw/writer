@@ -3,7 +3,7 @@
 // Task 9 追加：watcher 接线钉死（create 成功后 / open 的迁移+自检完成后 startWatching(path, win)，
 // open 失败绝不启动监听）——watcher 模块被 mock，本文件不起真实 fs.watch。
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mkTmpBook } from '../../../../tests/tmp'
 import { readYamlFile } from '../../bookStore/docStore'
@@ -141,6 +141,34 @@ describe('project:open handler', () => {
     expect(second.migration).toBeNull()
     expect(watcherMock.startWatching).toHaveBeenCalledTimes(1)
     expect(watcherMock.startWatching).toHaveBeenCalledWith(dir, fakeWin)
+  })
+
+  it('R1 续传接线（Task 10）：detectFormat=v2 但 .novelwriter.json 未改名（崩溃态）→ open 自动续传，报告并入 migration', async () => {
+    const dir = mkTmpBook()
+    makeV1(dir)
+    // 正常迁移一次得到干净 v2
+    const first = (await getHandler('project:open')(fakeEvent, dir)) as ProjectData
+    expect(first.migration).not.toBeNull()
+    const bookId = readYamlFile<BookMeta>(bookJsonPath(dir)).id
+    const backupsAfterFirst = readdirSync(join(dir, '.migration-backup')).length
+    watcherMock.startWatching.mockClear()
+
+    // 伪造崩溃态：把标记从 .migrated 改名回 .novelwriter.json（模拟 rename 前崩溃）
+    renameSync(join(dir, '.novelwriter.json.migrated'), join(dir, '.novelwriter.json'))
+
+    const resumed = (await getHandler('project:open')(fakeEvent, dir)) as ProjectData
+    // v2 判定不变（book.json 完好），但续传报告必须出现（Task 3.5 resume 语义此前仅直调可达）
+    expect(resumed.migration).not.toBeNull()
+    expect(resumed.id).toBe(bookId) // 稳定书 id：续迁绝不重写 book.json
+    // 续传收尾：标记补改名、不产生第二份备份、watcher 照常接线（在续迁完成之后）
+    expect(existsSync(join(dir, '.novelwriter.json'))).toBe(false)
+    expect(existsSync(join(dir, '.novelwriter.json.migrated'))).toBe(true)
+    expect(readdirSync(join(dir, '.migration-backup'))).toHaveLength(backupsAfterFirst)
+    expect(watcherMock.startWatching).toHaveBeenCalledTimes(1)
+
+    // 幂等：再次 open 干净 v2 → migration:null
+    const again = (await getHandler('project:open')(fakeEvent, dir)) as ProjectData
+    expect(again.migration).toBeNull()
   })
 
   it('无项目标记目录 → INVALID_PROJECT 前缀（渲染层既有文案链路），且不启动监听', async () => {

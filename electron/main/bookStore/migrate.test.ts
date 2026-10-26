@@ -474,6 +474,53 @@ describe('migrateBook — 中断续迁（book.json 在 + .novelwriter.json 未�
     expect(() => migrateBook(dir)).toThrow('ALREADY_MIGRATED')
     expect(readdirSync(backupRoot(dir))).toEqual(['2026-01-01T00-00-00.000Z'])
   })
+
+  it('R2（Task 10）：同 id json 与已存在 yaml 并存 → 跳过不覆盖 + `跳过已存在: <id>` warning + 残留删除；无 yaml 的同批 json 照常转换', () => {
+    const dir = mkTmpBook()
+    writeJson(join(dir, '.novelwriter.json'), V1_CONFIG)
+
+    // 崩溃态：李四已有 v2 yaml（模拟崩溃 run 转完后应用又编辑过——较新权威），
+    // 但其 v1 json 残留在盘（用户从备份恢复/外部工具写回）
+    const newerLiSi: CharacterV2 = {
+      id: UUID_LISI,
+      name: '李四',
+      gender: 'male',
+      age: 31,
+      role: 'antagonist',
+      appearance: '较新的外貌',
+      personality: '',
+      background: '',
+      relationships: [],
+      arc: [],
+      tags: [],
+      links: [],
+      createdAt: '2025-03-01T00:00:00.000Z',
+      updatedAt: '2025-06-01T00:00:00.000Z'
+    }
+    writeYamlFileAtomic(characterFile(dir, UUID_LISI), newerLiSi)
+    writeJson(characterFile(dir, UUID_LISI).replace('.yaml', '.json'), v1Character(UUID_LISI, '李四', []))
+    // 对照组：阿明只有 json、无同 id yaml → 必须照常转换（R2 只挡同 id 并存）
+    writeJson(
+      join(dir, 'characters', `${UUID_AMING_A}.json`),
+      v1Character(UUID_AMING_A, '阿明', [])
+    )
+
+    const yamlBefore = readFileSync(characterFile(dir, UUID_LISI), 'utf8')
+    const report = migrateBook(dir)
+
+    // 方向一：较新 yaml 逐字节不被陈旧 json 覆盖（last-writer wins 被禁）
+    expect(readFileSync(characterFile(dir, UUID_LISI), 'utf8')).toBe(yamlBefore)
+    expect(readYamlFile<CharacterV2>(characterFile(dir, UUID_LISI)).updatedAt).toBe(
+      '2025-06-01T00:00:00.000Z'
+    )
+    expect(report.warnings).toContain(`跳过已存在: ${UUID_LISI}`)
+    // 被跳过的 json 作为 v1 残留删除（原件在备份中；validateMigration 要求残留清零）
+    expect(existsSync(join(charactersDir(dir), `${UUID_LISI}.json`))).toBe(false)
+    // 方向二：无同 id yaml 的 json 正常迁移为 v2
+    expect(readYamlFile<CharacterV2>(characterFile(dir, UUID_AMING_A)).name).toBe('阿明')
+    expect(readdirSync(charactersDir(dir)).filter((f) => f.endsWith('.json'))).toEqual([])
+    expect(validateMigration(dir)).toEqual([])
+  })
 })
 
 // ---------------------------------------------------------------------------

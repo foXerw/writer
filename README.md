@@ -9,7 +9,7 @@
 - **TypeScript** - 类型安全
 - **Vite 5** - 快速构建工具
 - **Monaco Editor** - VSCode同款编辑器内核
-- **本地文件存储** - 项目数据以 JSON 配置 + Markdown 文件保存，通过 IPC 读写（无数据库依赖）
+- **本地文件存储** - 一本书 = 一个 v2 书籍目录（book.json + YAML 实体 + front-matter Markdown 章节），通过 IPC 读写（无数据库依赖）；格式规范见 [docs/BOOK_FORMAT.md](docs/BOOK_FORMAT.md)
 - **Zustand** - 轻量状态管理
 - **Ant Design 5** - UI组件库
 
@@ -51,8 +51,10 @@ perfect-novel/
 │   │   ├── window.ts             # 窗口管理（BrowserWindow）
 │   │   ├── menu.ts               # 应用菜单
 │   │   ├── tray.ts               # 系统托盘
+│   │   ├── bookStore/            # v2 书籍数据仓库：迁移/原子写/域缓存/fs 监听（格式见 docs/BOOK_FORMAT.md）
 │   │   └── ipc/
-│   │       └── handlers.ts       # IPC 处理（项目/文件/章节/角色/设定）
+│   │       ├── helpers.ts        # IPC 公共辅助
+│   │       └── modules/          # IPC 处理（project/chapter/volume/character/setting/narrative/…）
 │   └── preload/
 │       └── index.ts              # 预加载脚本（contextBridge 暴露 IPC）
 ├── src/
@@ -154,7 +156,9 @@ ls node_modules/electron/dist/electron.exe
 ### 重装依赖时的注意事项
 
 - `package.json` 中已配置 `allowScripts`（放行 `electron` 与 `esbuild` 的 postinstall）。换机器或重装依赖时，确认这两个原生依赖的二进制已正确下载，否则需按上文步骤排查。
-- 本项目数据存储基于**本地文件**（项目目录 `.novelwriter/` 下的 json + 各目录的 `.md`），不依赖数据库服务，无需额外启动 SQLite 等服务。
+- 本项目数据存储基于**本地文件**（每本书一个 v2 目录：`book.json` + 各实体 `<uuid>.yaml` + 章节
+  `<uuid>.md`，格式见 [docs/BOOK_FORMAT.md](docs/BOOK_FORMAT.md)），不依赖数据库服务，无需额外启动
+  SQLite 等服务。
 
 ## 开发路线图
 
@@ -197,55 +201,26 @@ ls node_modules/electron/dist/electron.exe
 - 🔄 开发中
 - ⏳ 待开发
 
-## 项目配置格式
+## 书籍数据目录格式（v2）
 
-### 项目结构
+> **完整规范见 [docs/BOOK_FORMAT.md](docs/BOOK_FORMAT.md)**：目录树全量、每类文件字段表（对照
+> `src/common/schema.ts`）、章节 front-matter 示例、`.migration-backup/` 与
+> `.novelwriter.json.migrated` 只读约定、`.ai/`（M4）预留说明，以及「第三方 / AI 工具如何安全读写
+> 一本书」操作守则。旧版（v1，`.novelwriter.json` + `settings/` + `NNN-标题.md`）在打开时会被自动
+> 就地迁移为 v2（先整本备份），无需手工转换。
+
+一本书 = 一个普通文件夹，v2 骨架：
 
 ```
-project/
-├── .novelwriter/
-│   ├── config.json           # 项目配置
-│   ├── workspace.json        # 工作区状态
-│   └── database.db           # SQLite数据库
-├── chapters/                  # 章节目录
-│   ├── 01-楔子.md
-│   ├── 02-第一章.md
-│   └── 03-第二章.md
-├── characters/                # 角色文档
-├── settings/                  # 世界观设定
-├── notes/                     # 灵感笔记
-├── backup/                    # 自动备份
-└── .gitignore
-```
-
-### 数据模型
-
-```typescript
-// 章节
-interface Chapter {
-  id: string;
-  title: string;
-  content: string;
-  order: number;
-  status: 'draft' | 'revising' | 'completed';
-  wordCount: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// 角色
-interface Character {
-  id: string;
-  name: string;
-  gender: 'male' | 'female' | 'other';
-  age: number;
-  role: 'protagonist' | 'antagonist' | 'supporting' | 'minor';
-  appearance: string;
-  personality: string;
-  background: string;
-  relationships: Relationship[];
-  tags: string[];
-}
+<书目录>/
+├── book.json            # 书元信息 + 项目配置（formatVersion: 2）
+├── chapters/<uuid>.md   # 章节 = front-matter + 正文
+├── volumes/<uuid>.yaml  # 卷
+├── characters/<uuid>.yaml  # 人物卡（关系边按 id）
+├── world/<类别>/<uuid>.yaml # 世界观词条（location/history/magic/culture/other）
+├── plotlines/ choices/  # 剧情线 / 关键选项（纯数据层，录入 UI 随 M4）
+├── foreshadow.yaml      # 伏笔台账
+└── .migration-backup/   # 迁移备份（只读，详见 BOOK_FORMAT.md）
 ```
 
 ## 快捷键参考

@@ -33,6 +33,16 @@ export function detectFormat(projectPath: string): BookFormat {
   return 'invalid'
 }
 
+/**
+ * R1（Task 10）崩溃中断态判定：`book.json` 已落成（detectFormat 判 v2）但旧根配置 `.novelwriter.json`
+ * 仍未改名——标记 rename 是 migrateBook 的最后一步，该并存 = 唯一无歧义的「迁移中途崩溃」残留，
+ * 调用方（project:open）应续传补完（migrateBook 幂等门对此放行）。detectFormat 本身对 v2 短路
+ * 不再看标记，故盲区补在此处；把判定收进本文件，project.ts 维持零直接 fs。
+ */
+export function hasInterruptedMigration(projectPath: string): boolean {
+  return existsSync(join(projectPath, V1_MARKER_FILE))
+}
+
 function corruptBook(bookPath: string, cause?: unknown): Error {
   const detail = cause instanceof Error ? ` (${cause.message})` : ''
   return new Error(`CORRUPT_BOOK: ${bookPath}${detail}`)

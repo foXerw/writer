@@ -1,6 +1,7 @@
 // 项目 create/open：一切书目录读写经 bookStore（M2 Global Constraint——本文件零直接 fs 手术）。
 // - project:create → v2 骨架（book.json + chapters/volumes/characters/world + 空台账），不再写 .novelwriter.json；
-// - project:open → detectFormat 三态：v1 先就地迁移（带时间戳备份）再按 v2 读；v2 直读；invalid 抛 INVALID_PROJECT；
+// - project:open → detectFormat 三态：v1 先就地迁移（带时间戳备份）再按 v2 读；v2 直读（但旧标记未改名
+//   = 崩溃中断态 → 自动续传补完，R1 接线见 Task 10）；invalid 抛 INVALID_PROJECT；
 //   CORRUPT_BOOK 一律捕获后以用户可读文案重抛（前缀契约：渲染层按 `CORRUPT_BOOK:` 展示，toast 接线在 Task 10）。
 // - ProjectData.id 自此为 book.json 的稳定书 id（不再每次打开 randomUUID）。
 // - Task 9 接线（裁定 4/8）：create 成功后、open 的迁移+自检全部完成后 → startWatching(projectPath, win)。
@@ -11,7 +12,7 @@ import { join } from 'node:path'
 import type { MigrationReport, ProjectData, ProjectType } from '../../../../src/common/ipc'
 import type { BookMeta } from '../../../../src/common/schema'
 import { readYamlFile } from '../../bookStore/docStore'
-import { detectFormat } from '../../bookStore/format'
+import { detectFormat, hasInterruptedMigration } from '../../bookStore/format'
 import { createBookSkeleton, migrateBook, validateMigration } from '../../bookStore/migrate'
 import { bookJsonPath } from '../../bookStore/paths'
 import { startWatching } from '../../bookStore/watcher'
@@ -62,8 +63,13 @@ export function registerProjectHandlers(): void {
         )
       }
 
+      // R1（Task 10 裁定，T3.5 复审 Out-of-Scope #1 整改）：v2 书但 .novelwriter.json 仍未改名 =
+      // migrateBook 最后一步（标记 rename）前崩溃的唯一无歧义中断态（book.json + marker 并存，
+      // migrateBook 幂等门允许重入补完）→ 自动续传，报告并入 ProjectData.migration——
+      // 否则 Task 3.5 的 resume 语义（复用原始备份、已转文件不重做、id 稳定）永不可从应用到达。
+      const interruptedResume = format === 'v2' && hasInterruptedMigration(projectPath)
       let migration: MigrationReport | null = null
-      if (format === 'v1') {
+      if (format === 'v1' || interruptedResume) {
         migration = migrateBook(projectPath)
         console.warn(
           `[migrate] v1→v2 完成：备份在 ${migration.backupPath}，warnings ${migration.warnings.length} 条`

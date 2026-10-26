@@ -12,14 +12,16 @@ import ExportDialog, { type ExportOptions } from '../../components/Dialogs/Expor
 import { useMenu } from '../../hooks/useMenu'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import { useBookEvents } from '../../hooks/useBookEvents'
-import { useChapter, useDialog, useExport, useFile } from '../../hooks/useIPC'
+import { useChapter, useDialog, useExport, useFile, useProject } from '../../hooks/useIPC'
 import { assembleMarkdown, sanitizeFilename } from '../../services/exportService'
+import { reportMigration } from '../../services/migrationReport'
+import { describeBookError } from '../../services/bookErrors'
 import { useEditorStore, useShortcutStore } from '../../stores'
 import { useEditorSession } from './hooks/useEditorSession'
 import { useWritingStats } from './hooks/useWritingStats'
 import { useAutoSave } from './hooks/useAutoSave'
 import { bookChangeTouchesCurrentChapter, decideConflict } from './hooks/bookChangeConflict'
-import type { Chapter, ProjectConfig } from '@/common/ipc'
+import type { Chapter, ProjectConfig, ProjectData } from '@/common/ipc'
 import { countWords } from '@/common/wordCount'
 
 const { Header, Content, Sider } = Layout
@@ -45,11 +47,46 @@ function Workspace() {
   const { exportDocument } = useExport()
   const { saveFile } = useDialog()
   const { writeFile } = useFile()
+  const { openProject } = useProject()
+
+  // -------------------------------------------------------------------------
+  // A-seam（Task 10 收口）：两条 open 路径、同一个入口。
+  // Home「最近列表点击」（handleOpenProject → navigate 只带 projectPath）不经 project:open——
+  // 而 project:open 是 migrateBook + startWatching + config 加载的唯一调用点（project.ts）。
+  // 路径直达挂载必须先补开一次再做任何读盘：open 幂等（v2 直读 / 崩溃态 R1 续传 / startWatching
+  // 内部先停前一个监听），否则 v1 书显示为「空」（listChapters 跳过无 front-matter 文件——文件在
+  // 盘上但全部隐身）、Task 9 watcher 永不启动、dailyGoal/autoSave 配置全丢。
+  // 对话框路径（state.project 已在、config 随附）已由弹窗 open/create 完成 → 本效果是 no-op，
+  // 行为零改动（统一双入口的代价 = 弹窗流程重复 open，被裁定否决；以 state.project 为分流判据）。
+  // -------------------------------------------------------------------------
+  const pathOnlyMount = !state?.project && !!state?.projectPath
+  const [opened, setOpened] = useState<ProjectData | null>(null)
+  const openingRef = useRef(false)
+  useEffect(() => {
+    if (!pathOnlyMount || openingRef.current) return
+    openingRef.current = true
+    openProject(state?.projectPath as string)
+      .then((p) => {
+        setOpened(p)
+        reportMigration(p, { message, modal })
+      })
+      .catch((err) => {
+        console.error('最近项目补开失败:', err)
+        // 补开失败 = 书目录不可打开（CORRUPT_BOOK/INVALID_PROJECT 等）：给出可读文案并退回首页，
+        // 绝不停留在「正在打开…」假死态（stale recent 记录指向已删/已损坏目录是真实场景）
+        const { title, content } = describeBookError(err instanceof Error ? err.message : String(err))
+        message.error(`${title}：${content}`, 8)
+        navigate('/', { replace: true })
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 每次挂载至多补开一次（StrictMode 双执行由 openingRef 合并；project:open 幂等，重复调用只是冗余而非损坏）
+  }, [])
 
   // 路由参数与项目配置
-  const projectPath = state?.project?.path || state?.projectPath
-  const projectName = state?.project?.name || '未命名项目'
-  const config = state?.config
+  const rawProjectPath = state?.project?.path || state?.projectPath
+  // 路径直达挂载：project:open 完成前禁止任何读盘（迁移/自检/watcher 接线都是列表加载的前置）
+  const projectPath = pathOnlyMount && opened === null ? undefined : rawProjectPath
+  const projectName = state?.project?.name || opened?.name || '未命名项目'
+  const config = state?.config ?? opened?.config
   const autoSaveEnabled = config?.autoSave ?? true
   const autoSaveInterval = config?.autoSaveInterval ?? 30000
 
@@ -68,7 +105,7 @@ function Workspace() {
   const session = useEditorSession(projectPath)
   const { chapters, openedChapters, currentChapter, editorContent, chapterTitle, setChapterTitle,
     loadChapters, openChapter, closeChapter, createChapter, mergeUpdatedChapters, save, flushIfDirty, handleEditorChange,
-    isDirtyNow, setFlushPaused, discardEdits, lastSavedContent } = session
+    isDirtyNow, setFlushPaused, discardEdits, lastSavedContent, markSavedContent } = session
 
   // 写作统计：countWords 增量（切章重置基线）/ 60s 活跃分钟 / 3s 防抖落盘
   const stats = useWritingStats({ projectPath, chapters, editorContent, currentChapterId: currentChapter?.id ?? null })
@@ -134,7 +171,15 @@ function Workspace() {
       rebuildChapter(projectPath, chapter.id, title, content)
         .then((rebuilt) => {
           mergeUpdatedChapters([rebuilt]) // 重建后的新鲜章并入会话（meta 已重置默认）
-          discardEdits() // 缓冲已整体落盘 → 清 dirty（语义同常规 save 成功）
+          // Task 10（G-M2，T9 遗留整改）：清 dirty / 刷基准都必须镜像 saveCurrentChapter 的
+          // 「仍是同一章」守卫——IPC 往返期间用户切章并打字时，无条件 discardEdits() 会抹掉
+          // 【新章】的脏标记（丢保存隐患）；markSavedContent 同理绝不能把基准写成旧章内容。
+          // 切走了就都不动：本次落盘的是旧章自己的缓冲，与新章的未保存编辑无关。
+          //（静态走查钉死，无 jsdom——同 Task 9 惯例；见 task-10-report 走查表）
+          if (currentChapterRef.current?.id === chapter.id) {
+            discardEdits() // 缓冲已整体落盘 → 清 dirty（语义同常规 save 成功）
+            markSavedContent(rebuilt.content) // G-M3：基准刷新为刚落盘内容，关闭陈旧基准空窗
+          }
           message.success('已在磁盘重建该文件并保存本地内容（卷归属/状态已重置为默认）')
         })
         .catch((err) => {
@@ -229,6 +274,9 @@ function Workspace() {
 
   // 返回首页：先 fire-and-forget flush + 统计落盘，再路由
   const handleBack = () => { flushIfDirty(); persistNow(); navigate('/') }
+
+  // 迁移补开（A-seam）尚未完成时给出可读的加载态，而非「暂无章节」的空书假象
+  const awaitingOpen = pathOnlyMount && opened === null
 
   // 手动保存（Ctrl+S / 菜单保存 / 工具栏）：带成功提示，不门控 dirty。
   const handleSave = () => { void save({ silent: false }) }
@@ -359,6 +407,12 @@ function Workspace() {
               focusMode={focusMode} typewriterMode={typewriterMode}
               fontSize={fontSize} wordWrap={wordWrap} showLineNumbers={showLineNumbers}
             />
+          ) : awaitingOpen ? (
+            // A-seam：路径直达挂载正在补开（迁移/自检/watcher 接线尚未返回）——
+            // 显示加载态而非「暂无章节」，避免 v1 书在迁移期间被误报成空书（数据其实都在盘上）
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-tertiary)' }}>
+              <Text style={{ color: 'var(--color-text-secondary)' }}>正在打开书籍…</Text>
+            </div>
           ) : (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-tertiary)' }}>
               <BookOutlined style={{ fontSize: 48, marginBottom: 16 }} />

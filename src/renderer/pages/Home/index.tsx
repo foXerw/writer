@@ -1,18 +1,21 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Layout, Button, Card, Empty, List, Typography, Space } from 'antd'
+import { App, Layout, Button, Card, Empty, List, Typography, Space } from 'antd'
 import { PlusOutlined, FolderOpenOutlined, FileOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import type { ProjectData } from '@/common/ipc'
 import { appRegionStyle } from '../../styles/css'
 import { useProjectStore } from '../../stores'
 import ProjectDialog from '../../components/Dialogs/ProjectDialog'
 import ThemeToggle from '../../components/ThemeToggle'
+import { reportMigration } from '../../services/migrationReport'
 
 const { Header, Content } = Layout
 const { Title, Text } = Typography
 
 function Home() {
   const navigate = useNavigate()
+  // 对话框 open 路径的迁移报告呈现（Task 10-E）：弹窗 open 成功拿到完整 ProjectData（含 migration）
+  const { message, modal } = App.useApp()
 
   // 最近项目唯一真源：zustand persist（localStorage），重启不丢；
   // 写入统一发生在 ProjectDialog 的 create/open 成功回调
@@ -21,7 +24,9 @@ function Home() {
   const [createDialogVisible, setCreateDialogVisible] = useState(false)
   const [openDialogVisible, setOpenDialogVisible] = useState(false)
 
-  // 打开最近项目
+  // 打开最近项目：只带 projectPath（无 project/config）——Workspace 的「路径直达挂载」会据此
+  // 补调一次 project:open（A-seam 统一，Task 10）：迁移/watcher/config 全部在该通道内完成，
+  // 与对话框 open 收敛到同一条主进程路径。此处不做重复 open。
   const handleOpenProject = (projectPath: string) => {
     navigate('/workspace', { state: { projectPath } })
   }
@@ -33,6 +38,7 @@ function Home() {
 
   // 项目打开成功后跳转
   const handleProjectOpened = (project: ProjectData) => {
+    reportMigration(project, { message, modal })
     navigate('/workspace', { state: { project: { name: project.name, path: project.path }, config: project.config } })
   }
 

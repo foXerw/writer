@@ -9,6 +9,7 @@ import {
 import type { ProjectType, ProjectData } from '@/common/ipc'
 import { useProject, useDialog } from '../../hooks/useIPC'
 import { useProjectStore } from '../../stores'
+import { describeBookError } from '../../services/bookErrors'
 
 const { Text } = Typography
 
@@ -67,6 +68,7 @@ function ProjectDialog({
   const [loading, setLoading] = useState(false)
   const [errorModalOpen, setErrorModalOpen] = useState(false)
   const [errorModalContent, setErrorModalContent] = useState('')
+  const [errorModalTitle, setErrorModalTitle] = useState('无效的项目文件夹')
 
   useEffect(() => {
     if (open && mode === 'create') {
@@ -108,6 +110,11 @@ function ProjectDialog({
       onClose()
     } catch (error) {
       console.error('创建项目失败:', error)
+      // Task 10-E：BOOK_EXISTS（create 进已有书的目录）走统一 v2 文案（此前仅 console.error，静默失败）
+      const { title, content } = describeBookError(error instanceof Error ? error.message : String(error))
+      setErrorModalTitle(title)
+      setErrorModalContent(content)
+      setErrorModalOpen(true)
     } finally {
       setLoading(false)
     }
@@ -127,12 +134,10 @@ function ProjectDialog({
       onClose()
     } catch (error) {
       console.error('打开项目失败:', error)
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      if (errorMessage.includes('INVALID_PROJECT')) {
-        setErrorModalContent('该文件夹不是有效的完美小说项目。请选择包含 .novelwriter.json 配置文件的文件夹。')
-      } else {
-        setErrorModalContent(errorMessage)
-      }
+      // Task 10-E：INVALID_PROJECT/CORRUPT_BOOK/BOOK_EXISTS 统一前缀→可读文案（v2 目录语义）
+      const { title, content } = describeBookError(error instanceof Error ? error.message : String(error))
+      setErrorModalTitle(title)
+      setErrorModalContent(content)
       setErrorModalOpen(true)
     } finally {
       setLoading(false)
@@ -312,9 +317,9 @@ function ProjectDialog({
 
   return (
     <>
-      {/* 错误提示弹窗 */}
+      {/* 错误提示弹窗（标题随错误类别变化：无效项目/已存在一本书/数据损坏） */}
       <Modal
-        title={<span style={{ color: 'var(--color-text)' }}>无效的项目文件夹</span>}
+        title={<span style={{ color: 'var(--color-text)' }}>{errorModalTitle}</span>}
         open={errorModalOpen}
         onOk={() => setErrorModalOpen(false)}
         onCancel={() => setErrorModalOpen(false)}

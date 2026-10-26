@@ -465,6 +465,15 @@ function migrateCharacters(projectPath: string, warnings: string[]): void {
 
   const now = new Date().toISOString()
   for (const { file, id, raw } of parsed) {
+    // R2（Task 10，T3.5 复审整改）：续传/半迁移救援时同 id 的 v1 json 与已存在 yaml 并存
+    // → yaml 是权威（崩溃 run 转完后应用可能又编辑过该卡；v1 json 是较旧快照）。
+    // 绝不覆盖（「last-writer wins」不可接受）——与 chapters「已转好的不动」、settings「映射合并」
+    // 同一 id-dedup 语义。json 原件已随首步备份保存 → 作为 v1 残留删除（validateMigration 要求残留清零）。
+    if (existsSync(characterFile(projectPath, id))) {
+      warnings.push(`跳过已存在: ${id}`)
+      rmSync(join(dir, file), { force: true })
+      continue
+    }
     const selfName = typeof raw.name === 'string' ? raw.name : ''
     const relationships: EntityLink[] = []
     if (Array.isArray(raw.relationships)) {

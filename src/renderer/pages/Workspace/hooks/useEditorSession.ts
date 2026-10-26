@@ -32,6 +32,11 @@ export interface EditorSession {
    * 更新点：save 成功（仍同章时）/ selectChapter / loadChapters 非脏回灌 / 会话清空置 null。
    */
   lastSavedContent: () => string | null
+  /**
+   * Task 10（G-M3）：外部整体落盘（冲突 rebuild 等）成功后刷新比对基准为刚落盘内容。
+   * 调用方负责「仍在同一章」守卫（同 saveCurrentChapter 清 dirty 的条件）——切走时基准属于新章，绝不可写。
+   */
+  markSavedContent: (content: string) => void
 }
 
 // 章节编辑会话 —— Task 7 自原 Workspace/index.tsx 章节状态段逐行迁移，save/flush 并发语义不变：
@@ -277,6 +282,11 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
   // 修订 ① 比对基准读取（稳定引用）
   const lastSavedContent = useCallback(() => lastSavedContentRef.current, [])
 
+  // Task 10（G-M3）基准刷新（稳定引用；守卫在调用方——见接口注释）
+  const markSavedContent = useCallback((content: string) => {
+    lastSavedContentRef.current = content
+  }, [])
+
   return {
     chapters,
     openedChapters,
@@ -295,6 +305,7 @@ export function useEditorSession(projectPath: string | undefined): EditorSession
     isDirtyNow,
     setFlushPaused,
     discardEdits,
-    lastSavedContent
+    lastSavedContent,
+    markSavedContent
   }
 }
