@@ -313,7 +313,11 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
       <div
         ref={containerRef}
         className="editor-print-column"
-        style={{ height: '100%', minHeight: 0, flex: 1, maxWidth: maxWidthPx, margin: '0 auto' }}
+        // width:100% 必须显式给出：flex column 子项上的 margin:'0 auto'（交叉轴 auto 边距）
+        // 会禁用默认 align-items:stretch，宽度退化为 fit-content——而 Monaco 内部 DOM 全部
+        // 绝对定位，in-flow 内容为零 → 容器塌缩成几 px（真机 bug：编辑器隐身、无法聚焦输入）。
+        // 显式 100% → 按 shell 宽度解析，maxWidth 截断到排印列宽，auto 边距再将其居中。
+        style={{ height: '100%', width: '100%', minHeight: 0, flex: 1, maxWidth: maxWidthPx, margin: '0 auto' }}
       />
       {isLoading && (
         <div style={{
