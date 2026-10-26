@@ -99,8 +99,9 @@ ProjectConfig（嵌套对象，无独立文件）：
 front-matter 编解码契约（`src/common/chapterDoc.ts`）：
 
 - 序列化恒定产出 `---\n<yaml>\n---\n\n<body>`；正文原样拼接、零转义。
-- 解析只认文件**第一行恰为 `---`**、其后第一个恰为 `---` 的行为闭合定界；
-  闭合行后 `\n\n` / `\n` / EOF 三种收尾同义（只归一化掉一个换行）。
+- 解析只认文件**第一行为 `---`**（去掉行尾 `\r` 后比对）、其后第一个 `---` 行为闭合定界；容忍一个前导
+  BOM；闭合行后 `\n\n` / `\n` / `\r\n\r\n` / `\r\n` / EOF 收尾同义（只归一化掉紧随的一个换行序列，
+  body 其余字节含内部 `\r\n` 一律原样保留）。写出（serialize）恒为 LF、无 BOM。
 - 无 front-matter 抛 `FRONTMATTER_MISSING`；块坏/meta 不合法抛 `FRONTMATTER_INVALID`。
   列表侧（`listChapters`）对坏文件 warn+跳过（该章隐身但不瘫痪全书）；点读侧抛穿（坏章绝不被静默改写）。
 
@@ -355,6 +356,9 @@ yaml（跳过 + warning，R2 守卫）、报告照常并入迁移 UI。
     以及不属于 §2 树内布局的散落路径（应用忽略但会进 `validateMigration` 视野）。
 12. **写完自检**：`validateMigration(bookPath)` 是迁移/改写后的体检入口——逐文件校验 + front-matter
     可读性 + order 重复 + v1 残留扫描，永不抛穿（问题以字符串数组返回，空数组 = 健康）。
+13. **换行与 BOM**：应用**容忍 CRLF/BOM 读取**（剥一个前导 BOM、定界行去行尾 `\r` 再识别，外部工具整本
+    改写 CRLF 不会让章节隐身），但**写出一律 LF**（无 BOM）——第三方文件请以 `serializeChapterDoc` 的
+    字节为准；正文内部换行（含 `\r\n`）应用读侧逐字节保留，请勿依赖应用帮你归一化。
 
 ## 9. v1 → v2 迁移语义速览（`electron/main/bookStore/migrate.ts`）
 

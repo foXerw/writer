@@ -705,4 +705,23 @@ describe('createBookSkeleton — project:create v2 骨架', () => {
     expect(readFileSync(bookJsonPath(dir), 'utf8')).toBe(bookBefore) // 未被覆盖
     expect(readYamlFile<BookMeta>(bookJsonPath(dir)).id).toBe(first.id)
   })
+
+  it('目标只有 v1 标记 .novelwriter.json（无 book.json）→ BOOK_EXISTS 拒绝，零写盘（FI-2：防 R1 续迁静默并书）', () => {
+    const dir = mkTmpBook()
+    writeJson(join(dir, '.novelwriter.json'), V1_CONFIG)
+
+    expect(() => createBookSkeleton(dir, '新书', 'novel')).toThrow(`BOOK_EXISTS: ${dir}`)
+    expect(existsSync(bookJsonPath(dir))).toBe(false)
+    expect(existsSync(chaptersDir(dir))).toBe(false) // 守卫在 mkdir 之前：目录也未建
+    expect(existsSync(join(dir, '.novelwriter.json'))).toBe(true) // v1 原件未动
+  })
+
+  it('目标只有改名后的 .novelwriter.json.migrated → 同样 BOOK_EXISTS 拒绝，零写盘', () => {
+    const dir = mkTmpBook()
+    writeFileSync(join(dir, '.novelwriter.json.migrated'), JSON.stringify(V1_CONFIG), 'utf8')
+
+    expect(() => createBookSkeleton(dir, '新书', 'novel')).toThrow(`BOOK_EXISTS: ${dir}`)
+    expect(existsSync(bookJsonPath(dir))).toBe(false)
+    expect(existsSync(chaptersDir(dir))).toBe(false)
+  })
 })

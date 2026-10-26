@@ -118,6 +118,58 @@ describe('parseChapterDoc 闭合定界后的换行宽容度（\\n\\n / \\n / EOF
   })
 })
 
+describe('parseChapterDoc 读侧 CRLF/BOM 宽容（FI-1：外部工具整本改写不得让章节隐身）', () => {
+  const crlfize = (s: string): string => s.replace(/\n/g, '\r\n')
+  const BOM = String.fromCharCode(0xfeff)
+
+  it('CRLF 整本章节解析成功：meta 正确，body 逐字节保留（含内部 \\r\\n）', () => {
+    const body = '第一行\r\n\r\n第二行带尾随空格 \r\n末行'
+    const raw = crlfize(serializeChapterDoc(META, body))
+
+    const doc = parseChapterDoc(raw, 'crlf.md')
+
+    expect(doc.meta).toEqual(META)
+    // 唯一被归一化掉的是闭合定界后紧随的一个换行序列；其余字节（含 body 内部 \r\n）原样保留
+    expect(doc.body).toBe(crlfize(body))
+  })
+
+  it('手写 CRLF front-matter 解析成功（定界行去掉行尾 \\r 后识别）', () => {
+    const crlf = [
+      '---\r',
+      'id: 2b7c4f1e-9a3d-4e5f-8b6c-1a2b3c4d5e6f\r',
+      'title: 第一章\r',
+      'volumeId: null\r',
+      'order: 1\r',
+      'status: draft\r',
+      '---\r',
+      '\r',
+      '正文'
+    ].join('\n')
+
+    const doc = parseChapterDoc(crlf, 'crlf.md')
+
+    expect(doc.meta).toEqual({
+      id: '2b7c4f1e-9a3d-4e5f-8b6c-1a2b3c4d5e6f',
+      title: '第一章',
+      volumeId: null,
+      order: 1,
+      status: 'draft'
+    })
+    expect(doc.body).toBe('正文')
+  })
+
+  it('BOM + LF 整本解析成功（剥一个前导 BOM，meta/body 不受扰）', () => {
+    const doc = parseChapterDoc(`${BOM}${serializeChapterDoc(META, '正文')}`, 'bom.md')
+
+    expect(doc.meta).toEqual(META)
+    expect(doc.body).toBe('正文')
+  })
+
+  it('CRLF 闭合定界后紧跟正文（单个 \\r\\n）：只剥一个换行序列', () => {
+    expect(parseChapterDoc(crlfize(`${MINIMAL_RAW}\n正文`), 'crlf.md').body).toBe('正文')
+  })
+})
+
 describe('parseChapterDoc 错误契约', () => {
   it('无 front-matter 抛 FRONTMATTER_MISSING: <source>', () => {
     expect(() => parseChapterDoc('# 只有正文\n\n没有 front-matter', 'ch1')).toThrow(
@@ -151,19 +203,9 @@ describe('parseChapterDoc 错误契约', () => {
     expect(() => parseChapterDoc('纯正文')).toThrow(/FRONTMATTER_MISSING: .+/)
   })
 
-  it('CRLF front-matter fail-closed：定界行带 \\r 不识别，抛 FRONTMATTER_MISSING（不静默错析）', () => {
-    const crlf = [
-      '---\r',
-      'id: 2b7c4f1e-9a3d-4e5f-8b6c-1a2b3c4d5e6f\r',
-      'title: 第一章\r',
-      'volumeId: null\r',
-      'order: 1\r',
-      'status: draft\r',
-      '---\r',
-      '\r',
-      '正文'
-    ].join('\n')
-
-    expect(() => parseChapterDoc(crlf, 'crlf.md')).toThrow('FRONTMATTER_MISSING: crlf.md')
+  it('仅有前导 BOM 的空文件也带 source 标注抛 FRONTMATTER_MISSING（BOM 剥离先于空判定）', () => {
+    expect(() => parseChapterDoc(String.fromCharCode(0xfeff), 'bom-only.md')).toThrow(
+      'FRONTMATTER_MISSING: bom-only.md'
+    )
   })
 })

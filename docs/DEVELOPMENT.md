@@ -8,15 +8,20 @@
 |--------|------|------|----------|
 | M1 | 审计整改与体验收口 | ✅ 完成 | 2026-08 |
 | M2 | 数据底座（v2 书目录：schema/迁移/仓库/监听/冲突） | ✅ 完成 | 2026-10-26 |
-| M3 | 多书管理与工作台扩展 | ⏳ 规划中 | - |
-| M4 | AI 共著（图谱/录入 UI/`.ai/` 目录） | ⏳ 规划中 | - |
+| M3 | 图谱视图（首批两种：人物/任务关系图 + 世界观图） | ⏳ 规划中 | - |
+| M4 | AI 维护闭环（整理→提案→差异确认；AI 服务层与 token 账本；剧情线/选项/伏笔录入 UI 补齐） | ⏳ 规划中 | - |
+| M5 | 实时补全（ghost text，Tab 采纳） | ⏳ 规划中 | - |
+| M6 | 章节审阅（AI 读者视角结构化意见） | ⏳ 规划中 | - |
 
 > M2 交付：`src/common/schema.ts` v2 模型+校验器；`electron/main/bookStore/`（paths/docStore 原子写/
 > format 探测/migrate 迁移+续传+自检/refs/chapters/volumes/characters/world/narrative/watcher 五域缓存）；
 > `project:open` 单一打开入口（对话框与最近列表点击两路合一，v1→v2 自动迁移+迁移报告 UI）；外部改动
 > 冲突弹窗（内容比对判定/保留我的/重新加载/rebuild 救援）；公开格式规范 [docs/BOOK_FORMAT.md](./BOOK_FORMAT.md)。
-> 验证：typecheck 0 错、lint 0 错、`npm run test` 287 用例全绿、build 通过。图谱视图与剧情线/选项/伏笔
-> 录入 UI 明确不在 M2（随 M4）。
+> 验证：typecheck 0 错、lint 0 错、`npm run test` 294 用例全绿、build 通过。图谱视图不在 M2（随 M3），
+> 剧情线/选项/伏笔录入 UI 亦不在 M2（随 M4，待 AI 数据形态定型后补齐）。里程碑范围以
+> [SPEC §8](./superpowers/specs/2026-10-25-perfect-novel-repositioning-design.md) 为权威。
+>
+> 非 SPEC 里程碑的可选储备（backlog，不进上表）：多书管理与工作台扩展、存量老书批量回填（M6 后另设计）。
 
 ## 项目概述
 
@@ -578,4 +583,4 @@
 | 2026-01-16 | 1.15 | Bug修复与UI优化：API暴露、深色主题适配、项目创建流程 |
 | 2026-08-04 | 1.17 | 新增浅色主题：深色/浅色双主题切换（CSS 变量 + antd 浅色 token + Monaco novel-light + 主进程持久化） |
 | 2026-01-16 | 1.16 | 功能修复与深色主题优化：项目名称传递、错误弹窗样式、受控Modal组件 |
-| 2026-10-26 | 2.0 (M2) | **里程碑 M2 数据底座完成**：v2 书目录格式（`schema.ts`+校验器）、`bookStore/`（原子写/五域缓存/迁移续传/自检/fs 监听）、`project:open` 单一入口+迁移报告 UI、外部改动冲突弹窗、`docs/BOOK_FORMAT.md`。typecheck 0 错/lint 0 错/287 测试全绿/build 通过 |
+| 2026-10-26 | 2.0 (M2) | **里程碑 M2 数据底座完成**：v2 书目录格式（`schema.ts`+校验器）、`bookStore/`（原子写/五域缓存/迁移续传/自检/fs 监听）、`project:open` 单一入口+迁移报告 UI、外部改动冲突弹窗、`docs/BOOK_FORMAT.md`。typecheck 0 错/lint 0 错/294 测试全绿/build 通过 |

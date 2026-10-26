@@ -257,8 +257,15 @@ function collectValidationIssues(projectPath: string): string[] {
 
 /** project:create 的 v2 骨架：book.json + 四个实体目录 + 空台账；不写任何 v1 标记。 */
 export function createBookSkeleton(projectDir: string, name: string, type: ProjectType): BookMeta {
-  // 拒绝覆盖既有书：BOOK_EXISTS 必须在任何写盘之前抛出（v1 时代的静默覆盖不可接受；渲染层文案归 Task 10）
-  if (existsSync(bookJsonPath(projectDir))) {
+  // 拒绝覆盖既有书：BOOK_EXISTS 必须在任何写盘之前抛出（v1 时代的静默覆盖不可接受；渲染层文案归 Task 10）。
+  // FI-2：v1 标记（含改名后的 .migrated）同样强制拒绝——create 落进 v1 书目录后，下一次 open 会看到
+  // book.json + .novelwriter.json 并存 = R1「迁移中断」态并自动续迁，把整本旧书灌进新骨架（新书名/配置尽失）。
+  // 前缀仍用 BOOK_EXISTS（渲染层 bookErrors 单一文案源，不引入新前缀）。
+  if (
+    existsSync(bookJsonPath(projectDir)) ||
+    existsSync(join(projectDir, V1_MARKER_FILE)) ||
+    existsSync(join(projectDir, V1_MIGRATED_FILE))
+  ) {
     throw new Error(`BOOK_EXISTS: ${projectDir}`)
   }
   const meta: BookMeta = {
