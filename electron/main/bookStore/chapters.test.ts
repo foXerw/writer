@@ -15,7 +15,8 @@ import {
   listChapters,
   moveChapter,
   renameChapter,
-  updateChapter
+  updateChapter,
+  writeFullChapter
 } from './chapters'
 import { chaptersDir } from './paths'
 import { migrateBook } from './migrate'
@@ -441,7 +442,12 @@ describe('瞬态窗口关闭：migrateBook → listChapters', () => {
     expect(moveChapter(p, list[2].id, 1)).toBe(true)
     expect(deleteChapter(p, list[1].id)).toBe(true)
     expect(listChapters(p).map((c) => c.title)).toEqual(['丙', '甲改'])
-    expect(readdirSync(chaptersDir(p)).filter((f) => /^\d+-/.test(f))).toEqual([])
+    // v1 残留钉死「具体文件名消失」而非 /^\d+-/ 正则类——UUID 首段全数字（如 11111111-…）
+    // 会被该正则误伤（每章 ~0.39% 概率的假失败；评审 minor fold）
+    const names = readdirSync(chaptersDir(p))
+    expect(names).not.toContain('001-甲.md')
+    expect(names).not.toContain('002-乙.md')
+    expect(names).not.toContain('003-丙.md')
   })
 })
 
@@ -536,5 +542,59 @@ describe('缓存语义（list/get 命中缓存、mutation 就地同步、invalid
     expect(deleteChapter(p, a.id)).toBe(true)
     expect(listChapters(p).map((c) => c.id)).toEqual([b.id]) // delete 就地摘除
     expect(getChapter(p, a.id)).toBeNull() // getX 同源：缓存里已无 a
+  })
+})
+
+// ---------------------------------------------------------------------------
+// writeFullChapter（修订轮2 I2：「保留我的」对外删/坏档章的整章重建救援）
+// ---------------------------------------------------------------------------
+
+describe('writeFullChapter（I2 整章重建）', () => {
+  it('目标缺失 → 整体重建：落盘可解析、meta 重置默认（order=max+1）、缓存就地补入', () => {
+    const p = mkTmpBook()
+    const other = createChapter(p, '邻章')
+    expect(listChapters(p).map((c) => c.id)).toEqual([other.id]) // 填充缓存——重建必须就地同步
+
+    const id = 'dddddddd-4444-4444-8444-444444444444'
+    const rebuilt = writeFullChapter(p, id, '重建章', '# 重建章\n\n本地缓冲内容。\n')
+    expect(rebuilt.id).toBe(id)
+    expect(rebuilt.title).toBe('重建章')
+    expect(rebuilt.content).toBe('# 重建章\n\n本地缓冲内容。\n') // content 逐字节写入（无 H1 手术）
+    expect(rebuilt.order).toBe(2) // max+1 追加
+    expect(rebuilt.volumeId).toBeNull() // meta 重置默认（接口裁定四参，不承袭旧 meta）
+    expect(rebuilt.status).toBe('draft')
+
+    const { meta, body } = parseChapterDoc(rawOf(p, id), id)
+    expect(meta.title).toBe('重建章')
+    expect(body).toBe('# 重建章\n\n本地缓冲内容。\n')
+    // 缓存就地：list 立即见到重建章（无需 invalidate）
+    expect(listChapters(p).map((c) => c.title)).toEqual(['邻章', '重建章'])
+  })
+
+  it('目标坏档 → 覆盖重建：文件从不可解析变可解析（RMW 做不到的救援路径）', () => {
+    const p = mkTmpBook()
+    const badId = 'eeeeeeee-5555-4555-8555-555555555555'
+    mkdirSync(chaptersDir(p), { recursive: true })
+    writeFileSync(join(chaptersDir(p), `${badId}.md`), '完全没有 front-matter 的损坏内容', 'utf8')
+
+    expect(listChapters(p)).toEqual([]) // 坏档被 list 侧 warn+跳过
+    expect(() => getChapter(p, badId)).toThrow(/FRONTMATTER_/) // 点读抛穿（修订 ② 缺席回落）
+    // I2 病根：RMW 保存对坏档必抛 → 「保留我的」常规路径无法落盘
+    expect(() => updateChapter(p, badId, { content: 'x' })).toThrow(/FRONTMATTER_/)
+
+    const rebuilt = writeFullChapter(p, badId, '抢救章', '缓冲。\n') // 不读既有文件 → 不受坏档影响
+    expect(rebuilt.content).toBe('缓冲。\n')
+    expect(parseChapterDoc(rawOf(p, badId), badId).meta.title).toBe('抢救章')
+    expect(getChapter(p, badId)?.content).toBe('缓冲。\n') // 重建后点读恢复正常
+  })
+
+  it('坏形状 id / 坏 title → 门拒绝且零落盘（与写侧同款守卫，无条件校验无回显豁免）', () => {
+    const p = mkTmpBook()
+    const id = 'ffffffff-6666-4666-8666-666666666666'
+    expect(() => writeFullChapter(p, '../evil', '题', 'x')).toThrow('BAD_CHAPTER_ID: ../evil')
+    expect(() => writeFullChapter(p, id, '   ', 'x')).toThrow(`CHAPTER_TITLE_INVALID: ${id}`)
+    expect(() => writeFullChapter(p, id, 'a\nb', 'x')).toThrow(`CHAPTER_TITLE_INVALID: ${id}`)
+    expect(existsSync(chaptersDir(p))).toBe(false) // 零落盘
+    expect(existsSync(join(p, '..', 'evil.md'))).toBe(false) // 路径重定向封死
   })
 })

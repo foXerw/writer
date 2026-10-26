@@ -10,7 +10,8 @@ import {
   listChapters,
   moveChapter,
   renameChapter,
-  updateChapter
+  updateChapter,
+  writeFullChapter
 } from '../../bookStore/chapters'
 
 export function registerChapterHandlers(): void {
@@ -60,5 +61,13 @@ export function registerChapterHandlers(): void {
     'chapter:getById',
     (_e, params: { projectPath: string; chapterId: string; bypassCache?: boolean }) =>
       getChapter(params.projectPath, params.chapterId, { bypassCache: params.bypassCache })
+  )
+
+  // Task 9 修订轮2（I2）：整章重建——冲突弹窗「保留我的」对已被外删/损坏的章的救援通道
+  // （不读既有文件的整体替换；门与写侧同款：BAD_CHAPTER_ID / CHAPTER_TITLE_INVALID 零落盘拒绝）
+  ipcMain.handle(
+    'chapter:rebuild',
+    (_e, params: { projectPath: string; id: string; title: string; content: string }) =>
+      writeFullChapter(params.projectPath, params.id, params.title, params.content)
   )
 }

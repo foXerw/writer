@@ -33,7 +33,7 @@ import type { SettingCategory } from '../../../src/common/ipc'
 import type { WorldEntryV2 } from '../../../src/common/schema'
 import { SETTING_CATEGORIES, UUID_PATTERN, validateWorldEntryV2 } from '../../../src/common/schema'
 import { worldDir, worldEntryFile } from './paths'
-import { listYamlFiles, readYamlFile, writeYamlFileAtomic } from './docStore'
+import { listYamlFiles, noteSelfWrite, readYamlFile, writeYamlFileAtomic } from './docStore'
 // Task 8 环拆重构：角色/卷 id 直扫改从 refs 单一定源导入（曾直接从 characters.ts/volumes.ts 取
 // listCharacters/listVolumes，与 characters.ts → world.ts 构成函数级循环；refs.ts 零仓库导入不成环）。
 import { characterIds, volumeIds, worldIds } from './refs'
@@ -141,6 +141,7 @@ export function updateWorldEntry(p: string, full: WorldEntryV2): WorldEntryV2 {
     if (stale === canonical) continue
     try {
       unlinkSync(stale)
+      noteSelfWrite(stale) // I1：搬迁清扫的自删同样登记
     } catch (err) {
       console.warn(
         `分类搬迁后旧世界观文件删除失败（列表按 updatedAt 去重兜底）: ${stale}: ${err instanceof Error ? err.message : String(err)}`
@@ -176,6 +177,7 @@ export function deleteWorldEntry(p: string, id: string): boolean {
   for (const abs of paths) {
     try {
       unlinkSync(abs)
+      noteSelfWrite(abs) // I1：自删同样登记（跨类残影逐一记）
     } catch (err) {
       firstError ??= err
     }

@@ -24,7 +24,7 @@ import type { Chapter } from '../../../src/common/ipc'
 import type { VolumeDoc } from '../../../src/common/schema'
 import { UUID_PATTERN, validateVolumeDoc } from '../../../src/common/schema'
 import { volumeFile, volumesDir } from './paths'
-import { listYamlFiles, readYamlFile, writeYamlFileAtomic } from './docStore'
+import { listYamlFiles, noteSelfWrite, readYamlFile, writeYamlFileAtomic } from './docStore'
 import { listChapters, updateChapter } from './chapters'
 
 const YAML_EXT = '.yaml'
@@ -98,6 +98,7 @@ export function deleteVolume(p: string, id: string): boolean {
     }
   }
   unlinkSync(abs)
+  noteSelfWrite(abs) // I1：自删同样登记（watcher 广播过滤；失效照常）
   const cached = listCache.get(p)
   if (cached) {
     const idx = cached.findIndex((v) => v.id === id)

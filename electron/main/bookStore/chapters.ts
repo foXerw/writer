@@ -35,7 +35,7 @@ import { UUID_PATTERN } from '../../../src/common/schema'
 import { parseChapterDoc, serializeChapterDoc } from '../../../src/common/chapterDoc'
 import { countWords } from '../../../src/common/wordCount'
 import { chapterFile, chaptersDir } from './paths'
-import { writeTextFileAtomic } from './docStore'
+import { noteSelfWrite, writeTextFileAtomic } from './docStore'
 
 /** patch 中的 meta 可改字段；undefined = 不动该字段（update IPC 透传整 Chapter，缺 volumeId 视同不改）。 */
 type MetaPatch = Partial<Pick<ChapterMeta, 'title' | 'volumeId' | 'status'>>
@@ -111,6 +111,7 @@ export function deleteChapter(p: string, id: string): boolean {
   const abs = chapterFile(p, id)
   if (!existsSync(abs)) return false // 幂等：缺失返回 false，不抛
   unlinkSync(abs)
+  noteSelfWrite(abs) // I1：自删同样登记（watcher 广播过滤；失效照常）
   const cached = listCache.get(p)
   if (cached) {
     const idx = cached.findIndex((c) => c.id === id)
@@ -174,9 +175,46 @@ export function getChapter(
   return toChapter({ stem: id, abs, meta: doc.meta, body: doc.body })
 }
 
+/**
+ * Task 9 修订轮2（I2）：整章重建——不读既有文件，整体替换目标（缺失即创建 / 坏档或好档一律覆盖）。
+ * 唯一用途 = 冲突弹窗「保留我的」在磁盘章已被外删/损坏时的救援：applyPatch 的 RMW 对这类目标必抛
+ * CHAPTER_MISSING / FRONTMATTER_*，本地缓冲将无法落盘（反复 toast 失败）。
+ * 门与写侧完全同款：BAD_CHAPTER_ID、title 合法性（重建无「存量 title」可回显——无条件校验，
+ * 拒绝时零落盘）；serializeChapterDoc + writeTextFileAtomic + 缓存就地同步。
+ * meta 语义：volumeId=null、status='draft'、order=max+1（坏档/缺失不参与 max；重建不承袭旧 meta——
+ * 接口裁定 {projectPath,id,title,content} 四参，归属/状态重置为默认，弹窗文案如实告知）。
+ * 正文 = 调用方缓冲逐字节写入（无 H1 手术——content 即权威）。
+ */
+export function writeFullChapter(p: string, id: string, title: string, content: string): Chapter {
+  assertChapterId(id)
+  if (isInvalidTitle(title)) {
+    throw new Error(`CHAPTER_TITLE_INVALID: ${id}`) // 带 id（目标已确定），口径同 applyPatch
+  }
+  const order = loadAll(p).reduce((max, d) => Math.max(max, d.meta.order), 0) + 1
+  const meta: ChapterMeta = { id, title, volumeId: null, order, status: 'draft' }
+  const abs = chapterFile(p, id)
+  writeDoc(abs, meta, content)
+  const chapter = toChapter({ stem: id, abs, meta, body: content })
+  cacheUpsert(p, chapter)
+  return chapter
+}
+
 // ---------------------------------------------------------------------------
 // 内部
 // ---------------------------------------------------------------------------
+
+/** 缓存就地 upsert（applyPatch/writeFullChapter 共用）：有则整元素替换，缺则补入+重排（外部直写漂移兜底）。 */
+function cacheUpsert(p: string, chapter: Chapter): void {
+  const cached = listCache.get(p)
+  if (!cached) return // 惰性纪律：未填充不动，下次 list 全量读盘
+  const idx = cached.findIndex((c) => c.id === chapter.id)
+  if (idx !== -1) {
+    cached[idx] = chapter
+  } else {
+    cached.push(chapter)
+    cached.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+  }
+}
 
 /** id 形状门：文件名 = `<id>.md`，非 UUID（如 `../../evil`）会经 join 路径重定向越出章节目录——v1 遗留，边界封死。 */
 function assertChapterId(id: string): void {
@@ -215,18 +253,9 @@ function applyPatch(p: string, id: string, patch: MetaPatch & { content?: string
 
   writeDoc(abs, meta, body)
   const updated = toChapter({ stem: id, abs, meta, body })
-  // 先写盘、后就地更新缓存（裁定 1）：整元素替换（不共享对象突变——旧持有者保留自己的快照）。
+  // 先写盘、后就地更新缓存（裁定 1）：整元素替换（不共享对象突变——旧持有者保留自己的快照）；
   // 缓存有条目却缺本章 = 外部直写漂移（生产由 watcher 失效兜底）——补入并重排，维持「缓存==磁盘」不变量
-  const cached = listCache.get(p)
-  if (cached) {
-    const idx = cached.findIndex((c) => c.id === id)
-    if (idx !== -1) {
-      cached[idx] = updated
-    } else {
-      cached.push(updated)
-      cached.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
-    }
-  }
+  cacheUpsert(p, updated)
   return updated
 }
 

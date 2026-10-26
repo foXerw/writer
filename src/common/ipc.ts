@@ -60,6 +60,14 @@ export type RendererToMainRequests = {
     chapterId: string
     bypassCache?: boolean
   }) => Promise<Chapter | null>
+  // 整章重建（Task 9 修订轮2 I2）：不读既有文件的整体替换——「保留我的」对已被外删/损坏章的救援；
+  // meta 重置默认（volumeId=null/status=draft/order=max+1），content 逐字节写入
+  'chapter:rebuild': (params: {
+    projectPath: string
+    id: string
+    title: string
+    content: string
+  }) => Promise<Chapter>
   // 改卷归属（Task 5）：volumeId = null 或未传 → 未分卷；缺省绝不视同「不改归属」
   'chapter:moveToVolume': (params: {
     projectPath: string
@@ -163,6 +171,7 @@ export interface NovelWriterApi {
     reorder: RendererToMainRequests['chapter:reorder']
     getById: RendererToMainRequests['chapter:getById']
     moveToVolume: RendererToMainRequests['chapter:moveToVolume']
+    rebuild: RendererToMainRequests['chapter:rebuild']
   }
   volume: {
     getAll: RendererToMainRequests['volume:getAll']

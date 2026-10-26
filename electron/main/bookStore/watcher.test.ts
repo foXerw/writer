@@ -25,7 +25,7 @@ import {
   worldEntryFile
 } from './paths'
 import { writeYamlFileAtomic } from './docStore'
-import { createChapter, listChapters } from './chapters'
+import { createChapter, deleteChapter, listChapters, updateChapter } from './chapters'
 import { createVolume, listVolumes } from './volumes'
 import { createCharacter, listCharacters } from './characters'
 import { createWorldEntry, listWorldEntries } from './world'
@@ -200,6 +200,67 @@ describe('debounce 合并 + 分域缓存失效（真实 fs.watch，真实时间�
       writeFileSync(join(p, 'notes.txt'), '随手记', 'utf8')
 
       await sleep(1200) // 远超 300ms debounce：任何漏过滤的路径都已成事件
+      expect(send).not.toHaveBeenCalled()
+    },
+    20_000
+  )
+})
+
+// ---------------------------------------------------------------------------
+// 自写抑制（修订轮2 I1）：仓库自写/自删 ~1s 窗口内不进广播；失效仍按全集执行
+// ---------------------------------------------------------------------------
+
+describe('自写抑制（I1：确定性自回声从源头静音）', () => {
+  it(
+    'rename-while-dirty 序列：仓库自写不进 book:changed，并发外部写照常进；缓存失效仍按全集执行',
+    async () => {
+      const p = mkTmpBook()
+      mkdirSync(chaptersDir(p), { recursive: true })
+      const mine = randomUUID()
+      const foreign = randomUUID()
+      // 自章 body 带 H1 首行：rename 的 H1 同步会改 body——I1 病理（disk≠lastSaved 假冲突）的精确复现
+      writeFileSync(join(chaptersDir(p), `${mine}.md`), chapterDoc(mine, '自章', 1, '# 自章\n\n我的。\n'), 'utf8')
+      writeFileSync(join(chaptersDir(p), `${foreign}.md`), chapterDoc(foreign, '他章', 2, '他的。\n'), 'utf8')
+      // 预热缓存（旧值）——flush 后两者都必须见新值：失效不因「广播剔除自写路径」而豁免
+      expect(listChapters(p).map((c) => c.title)).toEqual(['自章', '他章'])
+
+      const { win, send } = fakeWin()
+      startWatching(p, win)
+      await sleep(200)
+
+      // 模拟「脏章 rename」：仓库写（title 变化 → H1 同步改 body → 旧实现里 disk≠lastSaved 的假冲突源）
+      updateChapter(p, mine, { title: '自章改名' })
+      // 同一 debounce 窗口内的真外部写
+      writeFileSync(
+        join(chaptersDir(p), `${foreign}.md`),
+        chapterDoc(foreign, '他章外部', 2, '外部他的。\n'),
+        'utf8'
+      )
+
+      await waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+      const payload = send.mock.calls[0][1] as BookChangedEvent
+      // 自写路径被剔除（渲染层不会再对它做冲突判定），外部路径保留
+      expect(payload.paths).toEqual([`chapters/${foreign}.md`])
+      // 失效按全集执行（cache==磁盘真相）：两者新值都立即可见
+      expect(listChapters(p).map((c) => c.title)).toEqual(['自章改名', '他章外部'])
+      expect(listChapters(p).map((c) => c.content)).toEqual(['# 自章改名\n\n我的。\n', '外部他的。\n'])
+    },
+    20_000
+  )
+
+  it(
+    '纯自写/自删批次 → 不发任何 book:changed（零渲染层抖动）',
+    async () => {
+      const p = mkTmpBook()
+      const c = createChapter(p, '静默章')
+      const { win, send } = fakeWin()
+      startWatching(p, win)
+      await sleep(200)
+
+      updateChapter(p, c.id, { content: '自动保存写盘的新内容。\n' }) // 模拟自动保存（写）
+      deleteChapter(p, c.id) // 模拟树上删章（删——unlink 同样登记）
+
+      await sleep(1200) // 远超 debounce：任何漏抑制的自回声都已成事件
       expect(send).not.toHaveBeenCalled()
     },
     20_000

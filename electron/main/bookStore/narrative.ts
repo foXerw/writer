@@ -48,7 +48,7 @@ import {
   validatePlotlineV2
 } from '../../../src/common/schema'
 import { choiceFile, choicesDir, foreshadowFile, plotlineFile, plotlinesDir } from './paths'
-import { listYamlFiles, readYamlFile, writeYamlFileAtomic } from './docStore'
+import { listYamlFiles, noteSelfWrite, readYamlFile, writeYamlFileAtomic } from './docStore'
 import { allEntityIds, chapterIds } from './refs'
 
 const YAML_EXT = '.yaml'
@@ -176,6 +176,7 @@ export function deletePlotline(p: string, id: string): boolean {
   const abs = plotlineFile(p, id)
   if (!existsSync(abs)) return false
   unlinkSync(abs)
+  noteSelfWrite(abs) // I1：自删同样登记（watcher 广播过滤；失效照常）
   const cached = cache.get(p)?.plotlines
   if (cached) {
     const idx = cached.findIndex((x) => x.id === id)
@@ -261,6 +262,7 @@ export function deleteChoice(p: string, id: string): boolean {
   const abs = choiceFile(p, id)
   if (!existsSync(abs)) return false
   unlinkSync(abs)
+  noteSelfWrite(abs) // I1：自删同样登记（watcher 广播过滤；失效照常）
   const cached = cache.get(p)?.choices
   if (cached) {
     const idx = cached.findIndex((x) => x.id === id)

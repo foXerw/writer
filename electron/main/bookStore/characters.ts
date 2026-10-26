@@ -28,7 +28,7 @@ import type { CharacterGender, CharacterRole } from '../../../src/common/ipc'
 import type { CharacterV2 } from '../../../src/common/schema'
 import { UUID_PATTERN, validateCharacterV2 } from '../../../src/common/schema'
 import { characterFile, charactersDir } from './paths'
-import { listYamlFiles, readYamlFile, writeYamlFileAtomic } from './docStore'
+import { listYamlFiles, noteSelfWrite, readYamlFile, writeYamlFileAtomic } from './docStore'
 import { listChapters } from './chapters'
 // Task 8 环拆重构：卷/词条 id 直扫改从 refs 单一定源导入（曾直接从 world.ts/volumes.ts 取函数，
 // 与 world.ts → characters.ts 构成函数级循环；refs.ts 零仓库导入，任何仓库引它都不成环）。
@@ -157,6 +157,7 @@ export function deleteCharacter(p: string, id: string): boolean {
   const abs = characterFile(p, id)
   if (!existsSync(abs)) return false // 幂等：缺失返回 false，不抛
   unlinkSync(abs)
+  noteSelfWrite(abs) // I1：自删同样登记（watcher 广播过滤；失效照常）
   const cached = listCache.get(p)
   if (cached) {
     const idx = cached.findIndex((c) => c.id === id)

@@ -25,6 +25,40 @@ export function readYamlFile<T>(absPath: string): T {
   return yaml.load(readFileSync(absPath, 'utf8')) as T
 }
 
+// ---------------------------------------------------------------------------
+// Task 9 修订轮2（I1）：自写抑制登记簿
+// ---------------------------------------------------------------------------
+// 本应用自己的写盘/删档在此登记 path→time；watcher 在 ~1s 窗口内把这些路径从 book:changed
+// 广播集中剔除（缓存失效照常执行，保持 cache==磁盘真相）——确定性自回声（rename 的 H1 同步、
+// deleteVolume 的疏散章写循环等）从源头静音，不再依赖渲染层内容比对兜底；内容比对保留，
+// 继续兜真正的并发外部编辑。窗口内的真外部改动会被一并抑制（接受的代价，控制器选定机制）。
+const SELF_WRITE_CAP = 200
+const SELF_WRITE_WINDOW_MS = 1000
+/** 正斜杠归一的绝对路径 → Date.now()（插入序即时序，容量满淘汰最旧）。 */
+const selfWrites = new Map<string, number>()
+
+function selfWriteKey(absPath: string): string {
+  return absPath.replace(/\\/g, '/')
+}
+
+/** 登记一次自写/自删（仓库 mutation 与两个原子写入口调用；watcher 广播过滤消费）。 */
+export function noteSelfWrite(absPath: string): void {
+  const key = selfWriteKey(absPath)
+  selfWrites.delete(key) // 重插到尾部，维持插入序 = 时间序
+  selfWrites.set(key, Date.now())
+  while (selfWrites.size > SELF_WRITE_CAP) {
+    const oldest = selfWrites.keys().next()
+    if (oldest.done === true) break
+    selfWrites.delete(oldest.value)
+  }
+}
+
+/** 该绝对路径在抑制窗口内是否有过自写/自删（watcher flush 时逐路径查询）。 */
+export function isRecentSelfWrite(absPath: string): boolean {
+  const ts = selfWrites.get(selfWriteKey(absPath))
+  return ts !== undefined && Date.now() - ts <= SELF_WRITE_WINDOW_MS
+}
+
 /**
  * 原子写：mkdir -p 父目录 → 写同级 `<basename>.tmp-<uuid>` → renameSync 覆盖目标。
  * 任何失败（序列化/写盘/rename）都会移除残留 tmp 并原样抛出；成功后目录里不留 `.tmp-` 文件。
@@ -36,6 +70,7 @@ export function writeYamlFileAtomic(absPath: string, obj: unknown): void {
   try {
     writeFileSync(tmpPath, yaml.dump(obj, { noRefs: true, lineWidth: 120 }), 'utf8')
     renameSync(tmpPath, absPath)
+    noteSelfWrite(absPath) // I1：全部仓库写盘的唯一咽喉，登记即全覆盖
   } finally {
     rmSync(tmpPath, { force: true })
   }
@@ -53,6 +88,7 @@ export function writeTextFileAtomic(absPath: string, text: string): void {
   try {
     writeFileSync(tmpPath, text, 'utf8')
     renameSync(tmpPath, absPath)
+    noteSelfWrite(absPath) // I1：章节 .md 写盘的咽喉，登记即全覆盖
   } finally {
     rmSync(tmpPath, { force: true })
   }

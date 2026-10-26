@@ -41,7 +41,7 @@ function Workspace() {
   const setShortcutDialogOpen = useShortcutStore((s) => s.setDialogOpen)
   const editorRef = useRef<MonacoEditorHandle>(null)
 
-  const { getAllChapters, getChapterById } = useChapter()
+  const { getAllChapters, getChapterById, rebuildChapter } = useChapter()
   const { exportDocument } = useExport()
   const { saveFile } = useDialog()
   const { writeFile } = useFile()
@@ -77,20 +77,35 @@ function Workspace() {
   // 自动保存：按项目配置间隔静默 flush（取代原 services/autoSave.ts）
   useAutoSave({ enabled: autoSaveEnabled, intervalMs: autoSaveInterval, chapterId: currentChapter?.id ?? null, flush: flushIfDirty })
 
+  // save/createChapter 每次渲染刷新镜像 ref（同 useEditorSession 的 flushIfDirtyStable 惯用法）：
+  // 供被 memo 的事件回调（命令面板）与异步决议回调（Task 9 冲突弹窗）调用最新闭包，
+  // 防止陈旧 editorContent/chapters 造成丢保存或旧编号建章。
+  const saveRef = useRef(save)
+  saveRef.current = save
+  const createChapterRef = useRef(createChapter)
+  createChapterRef.current = createChapter
+  // Task 9 修订轮2（I3）：冲突弹窗决议在「点击时」读缓冲——弹窗开着期间编辑器仍可键入
+  // （mask 只挡指针，不保证挡键盘），决议回调若吃事件渲染的陈旧闭包会把新键入静默回滚。
+  const editorContentRef = useRef(editorContent)
+  editorContentRef.current = editorContent
+  const chapterTitleRef = useRef(chapterTitle)
+  chapterTitleRef.current = chapterTitle
+
   // -------------------------------------------------------------------------
   // Task 9 外部变更订阅（裁定 5）：book:changed → 静默刷新会话；当前脏章被外部改 → 冲突弹窗
   // -------------------------------------------------------------------------
-  // book:changed 回调需读最新 currentChapter——镜像 ref（惯用法同下方 saveRef）
+  // book:changed 回调需读最新 currentChapter——镜像 ref（惯用法同上 saveRef）
   const currentChapterRef = useRef(currentChapter)
   currentChapterRef.current = currentChapter
   // 冲突弹窗单例门：弹窗期间到达的后续事件不再叠开（走静默刷新分支）
   const conflictOpenRef = useRef(false)
 
-  // 冲突弹窗状态机（裁定 5）：
+  // 冲突弹窗状态机（裁定 5 + 修订轮2）：
   // 打开 = conflictOpenRef 置位 + setFlushPaused(当前章) → 该章的一切静默 flush（自动保存 tick /
   //   selectChapter 离章 flush / 关窗兜底）在 session.saveCurrentChapter 单点短路，其他章不受影响；
   // 决议（保留我的 / 重新加载 / X 关闭）→ 总是先 setFlushPaused(null) 恢复，再执行决议动作。
-  const openConflictModal = (chapter: Chapter) => {
+  // diskMissing = 判定时磁盘点读为 null（章被外删/坏档/点读失败）——「保留我的」此时走 rebuild 救援。
+  const openConflictModal = (chapter: Chapter, diskMissing: boolean) => {
     conflictOpenRef.current = true
     setFlushPaused(chapter.id)
     let resolved = false
@@ -100,15 +115,36 @@ function Workspace() {
       setFlushPaused(null) // 决议 → 永远解除暂停（裁定 5：无论走哪条决议，含 X 关闭）
       instance.destroy()
     }
-    // 「保留我的」= 本地缓冲强制覆盖磁盘：暂停门解除后走 save({silent:true})——chapter:update
-    // 仓库写 → 缓存就地同步（不会陈旧）；save 成功清 dirty，后续回声落干净路径静默刷新。
+    // 「保留我的」= 本地缓冲强制落盘，两条路径（修订轮2 I2/I3）：
+    // - 磁盘章仍在 → saveRef.current({silent:true})：走 chapter:update 仓库写（RMW）→ 缓存就地同步。
+    //   I3：saveRef 每渲染刷新——决议在「点击时」取最新闭包（最新 editorContent/chapterTitle），
+    //   弹窗开着期间继续键入的内容绝不丢失（旧实现吃事件渲染的陈旧 save 闭包 = 静默回滚新键入）；
+    // - 磁盘章已被外删/损坏（diskMissing）→ chapter:rebuild 整体重建（applyPatch 的 RMW 对这类目标
+    //   必抛 CHAPTER_MISSING/FRONTMATTER_*，常规保存无法落盘）；缓冲经 ref 镜像在点击时读取。
     const keepMine = () => {
       if (resolved) return
       finish()
-      void save({ silent: true })
+      if (!diskMissing) {
+        void saveRef.current({ silent: true })
+        return
+      }
+      if (!projectPath) return
+      const title = chapterTitleRef.current
+      const content = editorContentRef.current
+      rebuildChapter(projectPath, chapter.id, title, content)
+        .then((rebuilt) => {
+          mergeUpdatedChapters([rebuilt]) // 重建后的新鲜章并入会话（meta 已重置默认）
+          discardEdits() // 缓冲已整体落盘 → 清 dirty（语义同常规 save 成功）
+          message.success('已在磁盘重建该文件并保存本地内容（卷归属/状态已重置为默认）')
+        })
+        .catch((err) => {
+          console.error('冲突重建失败:', err)
+          message.error('重建失败——本地内容仍在编辑器中，未丢失')
+        })
     }
     // 「重新加载」= 弃本地编辑：清 dirty → loadChapters 的非脏路径用磁盘内容回灌
     // editorContent/chapterTitle（复用 Task 5 的会话保留语义，不另造回灌路径）。
+    // 章已被外删时 loadChapters 走 Task 5 的「当前章被删」分支（顺位下一 tab 或清空会话）。
     const reload = () => {
       if (resolved) return
       finish()
@@ -117,7 +153,10 @@ function Workspace() {
     }
     const instance = modal.warning({
       title: '文件被外部修改',
-      content: `「${chapter.title}」在磁盘上被其他程序修改，而你本地有未保存的编辑。请选择冲突解决方式。`,
+      // 文案如实覆盖两种「保留我的」语义（I2）：常规覆盖写 vs 磁盘档已不可读时的整体重建
+      content: diskMissing
+        ? `「${chapter.title}」在磁盘上已被其他程序删除或损坏，而你本地有未保存的编辑。「保留我的」将以本地内容在磁盘重建该文件（卷归属/状态重置为默认，正文与标题完整保留）；「重新加载」将放弃本地编辑。`
+        : `「${chapter.title}」在磁盘上被其他程序修改，而你本地有未保存的编辑。「保留我的」将以本地内容覆盖磁盘版本；「重新加载」将放弃本地编辑、采用磁盘版本。`,
       closable: true,     // 显示 X：X 关闭按默认「保留我的」处理（见 onCancel 注释）
       maskClosable: false,
       keyboard: false,    // Esc 不触发误决议——隐式关闭只剩 X 一条路，同样归入「保留我的」默认
@@ -168,7 +207,7 @@ function Workspace() {
         if (paths.some((x) => x !== `chapters/${cur.id}.md`)) void loadChapters()
         return
       }
-      openConflictModal(cur)
+      openConflictModal(cur, diskContent === null) // diskMissing → 「保留我的」走 rebuild 救援（I2）
       return
     }
     // 非脏 / 其他章 / 其他域变更 → 静默刷新（Task 5 loadChapters：tab 布局与当前章保留，
@@ -180,13 +219,6 @@ function Workspace() {
     void resolveBookChange(paths)
   }
   useBookEvents({ onBookChanged: handleBookChanged })
-
-  // save/createChapter 每次渲染刷新镜像 ref（同 useEditorSession 的 flushIfDirtyStable 惯用法）：
-  // 供被 memo 的事件回调（命令面板）调用最新闭包，防止陈旧 editorContent/chapters 造成丢保存或旧编号建章。
-  const saveRef = useRef(save)
-  saveRef.current = save
-  const createChapterRef = useRef(createChapter)
-  createChapterRef.current = createChapter
 
   // 关窗/退出兜底：fire-and-forget flush + 统计落盘（稳定引用，内部读最新镜像）；主要保障仍是切章/返回的显式 flush
   useEffect(() => {

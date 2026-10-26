@@ -24,6 +24,7 @@ const projectAPI: RendererToMainRequests = {
   'chapter:reorder': (params) => ipcRenderer.invoke('chapter:reorder', params),
   'chapter:getById': (params) => ipcRenderer.invoke('chapter:getById', params),
   'chapter:moveToVolume': (params) => ipcRenderer.invoke('chapter:moveToVolume', params),
+  'chapter:rebuild': (params) => ipcRenderer.invoke('chapter:rebuild', params),
 
   'volume:getAll': (projectPath) => ipcRenderer.invoke('volume:getAll', projectPath),
   'volume:create': (params) => ipcRenderer.invoke('volume:create', params),
@@ -111,7 +112,8 @@ const novelWriter: NovelWriterApi = {
     rename: projectAPI['chapter:rename'],
     reorder: projectAPI['chapter:reorder'],
     getById: projectAPI['chapter:getById'],
-    moveToVolume: projectAPI['chapter:moveToVolume']
+    moveToVolume: projectAPI['chapter:moveToVolume'],
+    rebuild: projectAPI['chapter:rebuild']
   },
 
   // 卷相关

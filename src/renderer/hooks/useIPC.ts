@@ -143,6 +143,16 @@ export function useChapter() {
     return ipc.chapter.getById({ projectPath, chapterId, bypassCache: opts?.bypassCache })
   }, [ipc])
 
+  // 整章重建（Task 9 修订轮2 I2）：冲突「保留我的」对已被外删/损坏章的救援——不读既有文件整体替换
+  const rebuildChapter = useCallback(async (
+    projectPath: string,
+    id: string,
+    title: string,
+    content: string
+  ): Promise<Chapter> => {
+    return ipc.chapter.rebuild({ projectPath, id, title, content })
+  }, [ipc])
+
   return {
     getAllChapters,
     createChapter,
@@ -150,7 +160,8 @@ export function useChapter() {
     deleteChapter,
     renameChapter,
     reorderChapters,
-    getChapterById
+    getChapterById,
+    rebuildChapter
   }
 }
 
