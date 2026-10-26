@@ -308,7 +308,7 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   }, [themeMode])
 
   return (
-    <div className="editor-shell" style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--color-paper)' }}>
+    <div className="editor-shell" style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--color-paper)' }}>
       {/* 排印容器：可编辑列居中、两侧留纸面空白，正文像一页纸 */}
       <div
         ref={containerRef}
