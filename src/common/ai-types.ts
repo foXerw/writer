@@ -9,6 +9,11 @@
 
 export type AiProtocol = 'openai' | 'anthropic'
 export type AiFeature = 'organize' | 'completion' | 'review'
+/**
+ * 功能全集（单源白名单，M4b Task 0）：受理校验/账本聚合/用量面板一律引它，不再各抄一份。
+ * `as const` 保字面量元组：AiFeature 枚举与列表漂移时，includes/Record 消费点在 tsc 即报错。
+ */
+export const AI_FEATURES = ['organize', 'completion', 'review'] as const
 export interface AiModels {
   organize?: string
   completion?: string
@@ -57,6 +62,12 @@ export interface AiChatRequest {
   messages: AiMessage[]
   temperature?: number
   maxTokens?: number
+  /**
+   * provider 调用空闲上限（毫秒）——计「距上一次流活动的静默时长」，非总时长
+   * （语义见 providers/types.ProviderChatOptions.timeoutMs）。缺省/非法 → 主进程默认
+   * 45_000；M4b organize 等长生成特性可按需显式放宽。
+   */
+  timeoutMs?: number
 }
 export interface AiMessage {
   role: 'system' | 'user' | 'assistant'

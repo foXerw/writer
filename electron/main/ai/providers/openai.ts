@@ -85,12 +85,15 @@ async function chat(
     )
     await ensureOk(resp, settings.apiKey)
     if (!resp.body) throw new AiCallError('provider', '流式响应缺少正文数据')
+    // 连接建立完成：交棒给流阶段空闲窗口（此后每帧/每次读取重置，长生成不被误杀）
+    linked.noteActivity()
 
     let text = ''
     let promptTokens = 0
     let completionTokens = 0
     let cachedTokens: number | undefined
-    for await (const ev of sseEvents(resp.body)) {
+    for await (const ev of sseEvents(resp.body, linked.noteActivity)) {
+      linked.noteActivity() // 每处理一条 SSE 帧即一次活动
       if (ev.data === '[DONE]') break
       let payload: OpenaiChunkPayload
       try {
@@ -132,6 +135,8 @@ async function testConnection(
   settings: AiSettings,
   _model?: string
 ): Promise<{ ok: true; sample: string }> {
+  // 默认 30s：无 chunk 流可报活动 → linkSignal 空闲语义在此自然退化为总时长上限
+  // （连通性测试就该快速结束，无需区分两套计时——M4b Task 0 裁定保持不变）。
   const linked = linkSignal()
   try {
     const resp = await guardedFetch(

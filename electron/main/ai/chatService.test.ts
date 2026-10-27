@@ -127,11 +127,27 @@ describe('startChat happy path', () => {
     expect({ feature: rec.feature, model: rec.model, promptTokens: rec.promptTokens, completionTokens: rec.completionTokens, cachedTokens: rec.cachedTokens })
       .toEqual({ feature: 'completion', model: 'D', promptTokens: 11, completionTokens: 7, cachedTokens: 3 })
     expect(String(rec.ts)).toMatch(/^\d{4}-\d{2}-\d{2}T/)
-    // provider 收到合并后的对话输入与取消/超时接缝
+    // provider 收到合并后的对话输入与取消/空闲超时接缝（M4b Task 0：默认 45_000 空闲语义）
     expect(seenModel).toBe('D')
     expect(seenOpts?.signal).toBeInstanceOf(AbortSignal)
-    expect(seenOpts?.timeoutMs).toBe(30_000)
+    expect(seenOpts?.timeoutMs).toBe(45_000)
     expect(inflightCount()).toBe(0)
+  })
+
+  it('timeoutMs 透传：合法 req.timeoutMs 覆盖默认空闲窗口；非法值回退默认', async () => {
+    const seen: (ProviderChatOptions | undefined)[] = []
+    setProviderOverride(
+      providerStub(async (_s, _m, _r, _oc, opts) => {
+        seen.push(opts)
+        return okResult()
+      })
+    )
+    const { sender } = fakeSender()
+    startChat(sender, baseReq({ timeoutMs: 120_000 }))
+    startChat(sender, baseReq({ requestId: 'r2', timeoutMs: -1 }))
+    startChat(sender, baseReq({ requestId: 'r3', timeoutMs: 'oops' as never }))
+    await settle()
+    expect(seen.map((o) => o?.timeoutMs)).toEqual([120_000, 45_000, 45_000])
   })
 
   it('无 projectPath：done 照常回，账本零落盘', async () => {

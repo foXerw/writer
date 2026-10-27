@@ -14,6 +14,7 @@
 // - 受理后失败 = ai:error 事件。已 reject 的 id 会被同步从登记表删除，不会二次触发。
 import { useCallback, useEffect, useRef } from 'react'
 import type { AiChatRequest, AiErrorEvent } from '@/common/ai-types'
+import { notifyUsageChanged } from '../services/entityEvents'
 
 export interface AIChatHandlers {
   /** provider 增量文本（0..n 次） */
@@ -79,7 +80,12 @@ export function useAI(): {
 
     const unsubs = [
       on.aiChunk((event) => consume(event.requestId, false, (h) => h.onChunk?.(event.text))),
-      on.aiDone((event) => consume(event.requestId, true, (h) => h.onDone?.(event.usage))),
+      on.aiDone((event) => {
+        consume(event.requestId, true, (h) => h.onDone?.(event.usage))
+        // done 意味着主进程已写完账本（appendUsage 先于 emit）——无条件 fire-and-forget
+        // 通知用量面板刷新；无主事件（其他窗口/已终态）账本同样变了，照通知。
+        notifyUsageChanged()
+      }),
       on.aiError((event) => consume(event.requestId, true, (h) => h.onError?.(event.kind, event.message)))
     ]
     return () => {

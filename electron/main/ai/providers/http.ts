@@ -17,7 +17,12 @@ export const http = {
   fetch: (...args: Parameters<typeof fetch>): Promise<Response> => fetch(...args)
 }
 
-/** chat/testConnection 统一默认超时 */
+/**
+ * 默认超时（毫秒）。M4b Task 0 起语义为「空闲上限」而非总时长（见 linkSignal）：
+ * 流式对话的合法长生成（organize 动辄数分钟）只要持续有增量就永不触发。
+ * testConnection 无 chunk 流、noteActivity 无从被调 → 语义自然退化为 30s 总时长——连通性
+ * 测试本就该快速结束，无需专门为其区分一套计时（这正是保留此默认值的理由）。
+ */
 export const DEFAULT_TIMEOUT_MS = 30_000
 
 /** baseUrl + '/path' 归一：剥尾斜杠、补缺失的 '/'（配置里手输尾斜杠是常态）。 */
@@ -28,21 +33,32 @@ export function joinUrl(baseUrl: string, suffix: string): string {
 
 export interface LinkedSignal {
   signal: AbortSignal
+  /**
+   * 报告一次流活动：清掉空闲计时器并重新起计 timeoutMs。
+   * 连接建立前不得调用（调用方在 fetch+ensureOk 完成后才开始报）——连接阶段保持
+   * 「一次性 timeoutMs 上限」，永不因慢连接无限续命。abort/cleanup 后调用为无效空转。
+   */
+  noteActivity(): void
   /** abort 归因：'timeout' | 'cancelled' | null（未 abort）。后到的原因忽略。 */
   cause(): 'timeout' | 'cancelled' | null
-  /** 解除外部监听 + 清计时器。调用方在请求（含流读取）结束后 finally 调用。 */
+  /** 解除外部监听 + 清计时器；此后 noteActivity 永久失效。调用方在请求（含流读取）结束后 finally 调用。 */
   cleanup(): void
 }
 
 /**
  * 手动组合外部取消信号与超时（不用 AbortSignal.any：Electron28/Node18 运行时可用
  * 但 TS lib 形状不稳，且我们需要自己记录 abort 归因来区分 timeout/cancelled）。
+ *
+ * timeoutMs 是空闲上限（M4b Task 0 语义变更）：每次 noteActivity 重置计时器；
+ * 无流可报活动的调用方（testConnection）自然退化为总时长上限。
  */
 export function linkSignal(opts?: ProviderChatOptions): LinkedSignal {
   const controller = new AbortController()
   let cause: 'timeout' | 'cancelled' | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
   const external = opts?.signal
+  const idleMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  let closed = false
 
   const abortWith = (reason: 'timeout' | 'cancelled') => {
     if (controller.signal.aborted) return
@@ -55,15 +71,21 @@ export function linkSignal(opts?: ProviderChatOptions): LinkedSignal {
     if (external.aborted) abortWith('cancelled')
     else external.addEventListener('abort', onExternalAbort)
   }
-  if (!controller.signal.aborted) {
-    const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS
-    if (timeoutMs > 0) timer = setTimeout(() => abortWith('timeout'), timeoutMs)
+
+  const arm = (): void => {
+    if (timer !== undefined) clearTimeout(timer)
+    timer = undefined
+    if (closed || controller.signal.aborted || idleMs <= 0) return
+    timer = setTimeout(() => abortWith('timeout'), idleMs)
   }
+  arm()
 
   return {
     signal: controller.signal,
+    noteActivity: arm,
     cause: () => cause,
     cleanup: () => {
+      closed = true
       if (timer !== undefined) clearTimeout(timer)
       if (external) external.removeEventListener('abort', onExternalAbort)
     }
@@ -156,8 +178,13 @@ export interface SseEvent {
  * 解析 SSE 流为事件序列。覆盖（测试钉死）：跨 chunk 断行缓冲、CRLF、空行分发、
  * `:` 注释行忽略、`id:`/`retry:` 等未知字段忽略、流结束时残行 + 未闭合事件的收尾分发。
  * 用 getReader() 循环而非 body 的异步迭代——后者的类型声明在 DOM lib 不稳，行为一致。
+ * onActivity（可选）：每次 body read 拿到数据即回调——注释行/ping 这类「不成帧的字节」
+ * 也证明连接活着，空闲计时器必须认它们（M4b Task 0 空闲重置语义的读取侧挂钩）。
  */
-export async function* sseEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<SseEvent> {
+export async function* sseEvents(
+  body: ReadableStream<Uint8Array>,
+  onActivity?: () => void
+): AsyncGenerator<SseEvent> {
   const reader = body.getReader()
   const decoder = new TextDecoder('utf-8')
   let pending = ''
@@ -191,6 +218,7 @@ export async function* sseEvents(body: ReadableStream<Uint8Array>): AsyncGenerat
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
+      onActivity?.()
       pending += decoder.decode(value, { stream: true })
       let nl: number
       while ((nl = pending.indexOf('\n')) >= 0) {

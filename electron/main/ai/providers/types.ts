@@ -22,7 +22,11 @@ export interface ProviderChatResult {
 
 export interface ProviderChatOptions {
   signal?: AbortSignal
-  /** 默认 30_000ms */
+  /**
+   * 空闲上限毫秒（默认 30_000）：计「距上一次流活动的静默时长」，非总时长——
+   * 流阶段每次 SSE body read / chunk 行经 linkSignal.noteActivity 重置计时器；
+   * 连接阶段不重置（一次性上限）。无流的调用方（testConnection）自然退化为总时长。
+   */
   timeoutMs?: number
 }
 

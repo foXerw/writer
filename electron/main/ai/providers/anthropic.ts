@@ -76,12 +76,15 @@ async function chat(
     )
     await ensureOk(resp, settings.apiKey)
     if (!resp.body) throw new AiCallError('provider', '流式响应缺少正文数据')
+    // 连接建立完成：交棒给流阶段空闲窗口（此后每帧/每次读取重置，长生成不被误杀）
+    linked.noteActivity()
 
     let text = ''
     let promptTokens = 0
     let completionTokens = 0
     let cachedTokens: number | undefined
-    for await (const ev of sseEvents(resp.body)) {
+    for await (const ev of sseEvents(resp.body, linked.noteActivity)) {
+      linked.noteActivity() // 每处理一条 SSE 事件即一次活动
       let payload: AnthropicEvent
       try {
         payload = JSON.parse(ev.data) as AnthropicEvent
@@ -147,6 +150,7 @@ async function testConnection(
   // openai 的 /models 探测不需要模型名；Anthropic 没有等价廉价端点，只能发 1-token 最小调用。
   const target = (model ?? '').trim() || settings.defaultModel.trim()
   if (!target) throw new AiCallError('not-configured', '连接测试需要指定模型（或先设置默认模型）')
+  // 默认 30s：非流式 1-token 探测、无活动可报 → 空闲语义自然退化为总时长上限（保持不变）
   const linked = linkSignal()
   try {
     const resp = await guardedFetch(

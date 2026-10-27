@@ -11,11 +11,10 @@
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AiFeature, AiUsageRecord, AiUsageSummary } from '../../../src/common/ai-types'
+import { AI_FEATURES } from '../../../src/common/ai-types'
 
 const USAGE_DIR = '.ai'
 const USAGE_FILE = 'usage.jsonl'
-
-const FEATURES: readonly AiFeature[] = ['organize', 'completion', 'review']
 
 function usageFilePath(projectPath: string): string {
   return join(projectPath, USAGE_DIR, USAGE_FILE)
@@ -28,7 +27,7 @@ function zeroCounter(): { calls: number; prompt: number; completion: number; cac
 /** 空摘要（缺文件/坏文件的回退值）；byFeature 三个 feature 恒有键（渲染层免判空）。 */
 export function emptyUsageSummary(): AiUsageSummary {
   const byFeature = {} as Record<AiFeature, AiUsageSummary['total']>
-  for (const f of FEATURES) byFeature[f] = zeroCounter()
+  for (const f of AI_FEATURES) byFeature[f] = zeroCounter()
   return { byFeature, total: zeroCounter(), byModel: {} }
 }
 
@@ -68,7 +67,7 @@ export function readUsageSummary(projectPath: string): AiUsageSummary {
     }
     const rec = parsed as Partial<AiUsageRecord> | null
     if (rec === null || typeof rec !== 'object' || Array.isArray(rec)) continue
-    if (typeof rec.feature !== 'string' || !FEATURES.includes(rec.feature as AiFeature)) continue
+    if (typeof rec.feature !== 'string' || !AI_FEATURES.includes(rec.feature as AiFeature)) continue
     if (typeof rec.model !== 'string' || rec.model === '') continue
     const prompt = nonNegativeNumber(rec.promptTokens)
     const completion = nonNegativeNumber(rec.completionTokens)

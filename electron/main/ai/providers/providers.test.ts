@@ -5,7 +5,7 @@
 // 注入模式：两个 provider 都调用共享 `http.fetch`（providers/http.ts），测试只 spy 这一个接缝。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AiChatRequest, AiSettings } from '../../../../src/common/ai-types'
-import { ensureOk, http, redactKey } from './http'
+import { ensureOk, http, linkSignal, redactKey } from './http'
 import { getProvider } from './index'
 import { AiCallError, extractJsonLoose } from './types'
 
@@ -452,6 +452,129 @@ describe('redactKey：网关回显请求头密钥的防线', () => {
     expect(err.kind).toBe('auth') // 内嵌 401 → auth；无 status 时归 provider
     expect(err.message).toContain('[已脱敏]')
     expect(err.message).not.toContain(SENTINEL_KEY)
+  })
+})
+
+// ==================== 空闲重置超时语义（M4a 终审结转，M4b Task 0） ====================
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * 节奏化假流：每帧间隔 gapMs 真实等待；帧尽后可选「静默」（read 停摆直到 abort）。
+ * abort → c.error(AbortError)，与真实 undici body 被 signal 掐死同形（pending read 拒绝上抛）。
+ */
+function pacedStreamFetch(frames: string[], gapMs: number, silentAfter: boolean) {
+  return async (...args: Parameters<typeof fetch>): Promise<Response> => {
+    const init = (args[1] ?? {}) as RequestInit
+    const signal = init.signal as AbortSignal
+    if (!signal) throw new Error('测试假 fetch 必须收到 signal')
+    const encoder = new TextEncoder()
+    let i = 0
+    let releaseSilence: () => void = () => {}
+    const silenceGate = new Promise<void>((r) => {
+      releaseSilence = r
+    })
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        signal.addEventListener(
+          'abort',
+          () => {
+            releaseSilence()
+            c.error(abortError())
+          },
+          { once: true }
+        )
+      },
+      pull(c) {
+        if (i < frames.length) {
+          return sleep(gapMs).then(() => c.enqueue(encoder.encode(frames[i++])))
+        }
+        if (silentAfter) return silenceGate // 流静默：读侧停摆，等空闲计时器掐死
+        c.close()
+        return Promise.resolve()
+      }
+    })
+    return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  }
+}
+
+describe('linkSignal 空闲语义（timeoutMs = 活动上限，非总时长）', () => {
+  it('分段活动各自 < idleMs 但总时长超出 → 不误杀；随后静默 > idleMs → timeout；abort 后活动无效', async () => {
+    const linked = linkSignal({ timeoutMs: 80 })
+    try {
+      await sleep(50)
+      linked.noteActivity()
+      await sleep(50)
+      // 总时长 100ms > 80ms 空闲上限——旧「总时长」语义此刻早已杀；新语义距上次活动仅 50ms < 80，未死
+      expect(linked.signal.aborted).toBe(false)
+      await sleep(100)
+      // 距上次活动 ~150ms > 80ms → 空闲窗口耗尽
+      expect(linked.signal.aborted).toBe(true)
+      expect(linked.cause()).toBe('timeout')
+      linked.noteActivity() // abort 后的活动必须无效（不得复活计时器）
+      expect(linked.cause()).toBe('timeout')
+    } finally {
+      linked.cleanup()
+    }
+  })
+
+  it('外部取消归因不受 noteActivity 影响 → cause cancelled', () => {
+    const ctrl = new AbortController()
+    const linked = linkSignal({ signal: ctrl.signal, timeoutMs: 5000 })
+    linked.noteActivity()
+    ctrl.abort()
+    expect(linked.cause()).toBe('cancelled')
+    linked.cleanup()
+  })
+})
+
+describe('流阶段空闲重置（provider 端到端判别）', () => {
+  it('openai：20 帧 × 10ms（总 ~200ms）在 idleMs=100 下 → 正常完成（旧总时长语义会在 ~100ms 杀）', async () => {
+    const frames = Array.from(
+      { length: 20 },
+      (_, i) => `data: {"choices":[{"delta":{"content":"x${i}"}}]}\n\n`
+    )
+    mockFetch(pacedStreamFetch(frames, 10, false))
+    const result = await getProvider(validSettings()).chat(
+      validSettings(),
+      'm',
+      req(),
+      () => {},
+      { timeoutMs: 100 }
+    )
+    expect(result.text).toBe(Array.from({ length: 20 }, (_, i) => `x${i}`).join(''))
+  })
+
+  it('openai：一帧后流静默超过 idleMs=100 → AiCallError kind timeout', async () => {
+    mockFetch(pacedStreamFetch(['data: {"choices":[{"delta":{"content":"x"}}]}\n\n'], 5, true))
+    const err = await captureError(() =>
+      getProvider(validSettings()).chat(validSettings(), 'm', req(), () => {}, { timeoutMs: 100 })
+    )
+    expect(err.kind).toBe('timeout')
+  })
+
+  it('anthropic：节奏化事件流（ping/delta 共 11 帧）在 idleMs=60 下 → 正常完成', async () => {
+    const frames = [
+      'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":3}}}\n\n',
+      'event: ping\ndata: {"type":"ping"}\n\n',
+      ...Array.from(
+        { length: 8 },
+        (_, i) =>
+          `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"x${i}"}}\n\n`
+      ),
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+    ]
+    mockFetch(pacedStreamFetch(frames, 10, false))
+    const onChunk = vi.fn()
+    const result = await getProvider(validSettings({ protocol: 'anthropic' })).chat(
+      validSettings({ protocol: 'anthropic' }),
+      'm',
+      req(),
+      onChunk,
+      { timeoutMs: 60 }
+    )
+    expect(result.text).toBe('x0x1x2x3x4x5x6x7')
+    expect(onChunk).toHaveBeenCalledTimes(8)
   })
 })
 

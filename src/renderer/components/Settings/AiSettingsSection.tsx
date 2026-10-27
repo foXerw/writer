@@ -39,6 +39,12 @@ const PROTOCOL_OPTIONS: { value: AiProtocol; label: string }[] = [
   { value: 'anthropic', label: 'Anthropic' }
 ]
 
+/** Base URL 占位符随协议切换（M4b Task 0）：两协议的合法形状本就不同 */
+const BASE_URL_PLACEHOLDER: Record<AiProtocol, string> = {
+  openai: '例如 https://api.openai.com/v1',
+  anthropic: '例如 https://api.anthropic.com'
+}
+
 const AiSettingsSection: React.FC = () => {
   const [form] = Form.useForm<AiFormValues>()
   const { getAISettings, setAISettings, testAIConnection } = useAISettings()
@@ -46,6 +52,9 @@ const AiSettingsSection: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [clearing, setClearing] = useState(false)
+  // 占位符跟随协议下拉的实时值（未落定前按初始值 openai 展示）
+  const watchedProtocol = Form.useWatch('protocol', form)
+  const baseUrlPlaceholder = BASE_URL_PLACEHOLDER[watchedProtocol ?? 'openai']
 
   useEffect(() => {
     let cancelled = false
@@ -150,8 +159,13 @@ const AiSettingsSection: React.FC = () => {
           <Form.Item
             label={<Text style={{ color: 'var(--color-text-secondary)' }}>Base URL</Text>}
             name="baseUrl"
+            extra={
+              <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
+                anthropic 填主机根，不要带 /v1
+              </Text>
+            }
           >
-            <Input placeholder="例如 https://api.openai.com/v1" />
+            <Input placeholder={baseUrlPlaceholder} />
           </Form.Item>
 
           <Form.Item

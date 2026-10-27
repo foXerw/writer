@@ -20,13 +20,12 @@
 //
 // 测试接缝：setProviderOverride —— 仅测试注入假 AiProvider；生产恒置 null，
 // getProvider(settings) 按协议分发。除此之外本模块不 mock（sender 用结构化替身）。
-import type { AiChatRequest, AiFeature, AiUsageRecord } from '../../../src/common/ai-types'
-import { isConfigured } from '../../../src/common/ai-types'
+import type { AiChatRequest, AiUsageRecord } from '../../../src/common/ai-types'
+import { AI_FEATURES, isConfigured } from '../../../src/common/ai-types'
 import { loadSettings } from './settings'
 import { getProvider } from './providers'
 import { AiCallError } from './providers/types'
 import type { AiProvider } from './providers/types'
-import { DEFAULT_TIMEOUT_MS } from './providers/http'
 import { appendUsage } from './usage'
 
 /** event.sender 的最小形状（真实 WebContents 结构满足；测试传替身，同 watcher.ts 先例）。 */
@@ -38,8 +37,17 @@ export interface ChatEventSender {
 const inflight = new Map<string, AbortController>()
 let providerOverride: AiProvider | null = null
 
-/** 受理侧 feature 白名单（Task 6）：与账本/设置同词表，白名单外绝不进在途/记账路径。 */
-const VALID_FEATURES: readonly AiFeature[] = ['organize', 'completion', 'review']
+/**
+ * chat 默认空闲上限（ms，M4b Task 0）：只有「连续 45s 无任何流增量」才判死——
+ * 不是总时长。旧 30s 总时长语义会误杀 organize 这类合法长生成（终审结转）。
+ * 连接阶段不重置（一次性 45s），流阶段每次 body read/chunk 由 linkSignal.noteActivity 续窗。
+ */
+const DEFAULT_IDLE_MS = 45_000
+
+/** 渲染层可经 preload 门面送任意 JSON：只认正的有限数，其余（NaN/负/字符串）回退默认。 */
+function sanitizeIdleMs(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : DEFAULT_IDLE_MS
+}
 
 /** 仅测试使用：注入假 provider；传 null 恢复真实分发。 */
 export function setProviderOverride(provider: AiProvider | null): void {
@@ -61,7 +69,8 @@ export function startChat(sender: ChatEventSender, request: AiChatRequest): { ac
     rejectWithKind('provider', '对话请求形状不合法（requestId/messages）')
   }
   // 渲染层可经 preload 门面送任意 JSON：feature 必须落在白名单，否则同步拒（先于在途表/账本）
-  if (!VALID_FEATURES.includes(req.feature)) {
+  // 白名单单源 AI_FEATURES（src/common/ai-types）：与账本/面板同一真相。
+  if (!AI_FEATURES.includes(req.feature)) {
     rejectWithKind('provider', `未知的 AI 功能：${String(req.feature ?? '(空)')}`)
   }
   const settings = loadSettings()
@@ -114,7 +123,7 @@ export function startChat(sender: ChatEventSender, request: AiChatRequest): { ac
         (text: string) => {
           if (!settled) emit('ai:chunk', { requestId, text })
         },
-        { signal: controller.signal, timeoutMs: DEFAULT_TIMEOUT_MS }
+        { signal: controller.signal, timeoutMs: sanitizeIdleMs(req.timeoutMs) }
       )
       if (typeof req.projectPath === 'string' && req.projectPath !== '') {
         const rec: AiUsageRecord = {

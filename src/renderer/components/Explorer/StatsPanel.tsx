@@ -10,8 +10,9 @@ import {
   RobotOutlined
 } from '@ant-design/icons'
 import type { AiFeature, AiUsageSummary } from '@/common/ai-types'
+import { AI_FEATURES } from '@/common/ai-types'
 import { useAIUsage } from '../../hooks/useIPC'
-import { subscribeEntitiesChanged } from '../../services/entityEvents'
+import { subscribeEntitiesChanged, subscribeUsageChanged } from '../../services/entityEvents'
 
 const { Text } = Typography
 
@@ -27,7 +28,8 @@ const AI_FEATURE_LABELS: Record<AiFeature, string> = {
   completion: '补全',
   review: '审阅'
 }
-const AI_FEATURE_ORDER: readonly AiFeature[] = ['organize', 'completion', 'review']
+// 展示顺序单源引 AI_FEATURES（M4b Task 0）；标签 Record<AiFeature,…> 由 tsc 钉穷举
+const AI_FEATURE_ORDER: readonly AiFeature[] = AI_FEATURES
 
 interface StatsPanelProps {
   todayWordCount?: number
@@ -55,7 +57,8 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
   history = [],
   projectPath
 }) => {
-  // AI 用量账本（M4a Task 4 + Task 6 错误态）：mount/换书即拉 + entityEvents 刷新；
+  // AI 用量账本（M4a Task 4 + Task 6 错误态）：mount/换书即拉 + 实体/用量变更刷新
+  // （useAI 收到 ai:done 后 notifyUsageChanged，账本写入在主进程 done 前已完成）；
   // 读失败不再静默停在「读取中」——null（尚未落定）与 error（读取失败）两态分离展示。
   const { getAIUsage } = useAIUsage()
   const [aiUsage, setAiUsage] = useState<AiUsageSummary | null>(null)
@@ -80,10 +83,10 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
         })
     }
     refresh()
-    const unsubscribe = subscribeEntitiesChanged(refresh)
+    const unsubscribes = [subscribeEntitiesChanged(refresh), subscribeUsageChanged(refresh)]
     return () => {
       alive = false
-      unsubscribe()
+      for (const unsubscribe of unsubscribes) unsubscribe()
     }
   }, [projectPath, getAIUsage])
   const progress = useMemo(

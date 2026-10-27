@@ -33,3 +33,30 @@ export function subscribeEntitiesChanged(cb: Listener): () => void {
     listeners.delete(cb)
   }
 }
+
+// ==================== 用量变更广播（M4b Task 0） ====================
+// 对话成功收尾（ai:done）时主进程已把该次用量写进 <book>/.ai/usage.jsonl，
+// useAI 经本通道 fire-and-forget 通知 StatsPanel 重拉——不经 IPC、不新增通道，
+// 与实体监听同一模块同一纪律（快照迭代、逐个 try/catch 隔离，监听器抛错绝不影响
+// done 事件的渲染层 handler）。
+
+const usageListeners = new Set<Listener>()
+
+/** 通知所有订阅方「AI 用量账本已更新」。幂等广播，无载荷（消费方自行重拉）。 */
+export function notifyUsageChanged(): void {
+  for (const listener of [...usageListeners]) {
+    try {
+      listener()
+    } catch (error) {
+      console.error('[entityEvents] 用量监听器抛错（已隔离，不影响其他订阅方与调用方）：', error)
+    }
+  }
+}
+
+/** 订阅用量变更。返回反订阅函数（幂等），组件应在卸载时调用。 */
+export function subscribeUsageChanged(cb: Listener): () => void {
+  usageListeners.add(cb)
+  return () => {
+    usageListeners.delete(cb)
+  }
+}
