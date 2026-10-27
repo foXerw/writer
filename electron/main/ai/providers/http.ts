@@ -5,7 +5,9 @@
 //   测试用 `vi.spyOn(http, 'fetch').mockImplementation(...)` 替换——全目录唯一出口，
 //   保证 100% 离线可测（vitest node 环境下真实 fetch 存在但绝不会被调到）。
 //
-// 安全不变量：本文件所有错误文本只拼 status/错误名/截断响应体，绝不读取或回显请求头。
+// 安全不变量：本文件所有错误文本只拼 status/错误名/截断响应体，绝不读取或回显请求头；
+// 远端提供的字符串（响应体、error 事件消息）拼入 message 前必须过 redactKey——
+// 网关可能把 Authorization/x-api-key 原样回显在 401/403 正文里。
 
 import { AiCallError, capMessage } from './types'
 import type { ProviderChatOptions } from './types'
@@ -100,8 +102,19 @@ export async function guardedFetch(
   }
 }
 
-/** 非 2xx → AiCallError：401/403 → auth，其余 → provider；响应体摘要 ≤300（不读请求头）。 */
-export async function ensureOk(resp: Response): Promise<void> {
+/**
+ * 远端文本进入 err.message 前的强制脱敏：部分兼容网关会把请求头（含 Bearer 密钥）
+ * 回显进 401/403 响应体，而 message 经 Task 4 的 ai:error 跨 IPC 进渲染进程——
+ * 明文 apiKey 永不出主进程不变量在此兜底。≥8 字符才替换（更短的串无泄露价值，
+ * 且会误伤正文里的常用词）；空/缺省直通。
+ */
+export function redactKey(text: string, apiKey?: string): string {
+  if (!apiKey || apiKey.length < 8) return text
+  return text.split(apiKey).join('[已脱敏]')
+}
+
+/** 非 2xx → AiCallError：401/403 → auth，其余 → provider；响应体摘要 ≤300 且经 redactKey。 */
+export async function ensureOk(resp: Response, apiKey?: string): Promise<void> {
   if (resp.ok) return
   let bodyText = ''
   try {
@@ -111,7 +124,7 @@ export async function ensureOk(resp: Response): Promise<void> {
   }
   if (bodyText.length > 300) bodyText = `${bodyText.slice(0, 300)}…[已截断]`
   const kind = resp.status === 401 || resp.status === 403 ? 'auth' : 'provider'
-  throw new AiCallError(kind, `HTTP ${resp.status}${bodyText ? `: ${bodyText}` : ''}`)
+  throw new AiCallError(kind, `HTTP ${resp.status}${bodyText ? `: ${redactKey(bodyText, apiKey)}` : ''}`)
 }
 
 /**

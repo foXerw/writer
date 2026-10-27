@@ -5,7 +5,7 @@
 // 注入模式：两个 provider 都调用共享 `http.fetch`（providers/http.ts），测试只 spy 这一个接缝。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AiChatRequest, AiSettings } from '../../../../src/common/ai-types'
-import { http } from './http'
+import { http, redactKey } from './http'
 import { getProvider } from './index'
 import { AiCallError, extractJsonLoose } from './types'
 
@@ -401,6 +401,60 @@ describe('extractJsonLoose 四路', () => {
   })
 })
 
+// ==================== 密钥回显脱敏（远端文本进 err.message 前必经 redactKey） ====================
+
+describe('redactKey：网关回显请求头密钥的防线', () => {
+  it('单元：多处出现全替换；<8 短密钥不脱敏（太短无泄露价值，且会误伤常用词）；空/缺省直通', () => {
+    expect(redactKey(`a ${SENTINEL_KEY} b ${SENTINEL_KEY}`, SENTINEL_KEY)).toBe('a [已脱敏] b [已脱敏]')
+    expect(redactKey('abc abc abc', 'abc')).toBe('abc abc abc')
+    expect(redactKey('keep me', '')).toBe('keep me')
+    expect(redactKey('keep me', undefined)).toBe('keep me')
+  })
+
+  it('openai 401 响应体回显 Bearer 密钥 → message 只见 [已脱敏]，不见明文', async () => {
+    mockFetch(async () =>
+      new Response(`Unauthorized: bad token in Authorization: Bearer ${SENTINEL_KEY}`, { status: 401 })
+    )
+    const err = await captureError(() =>
+      getProvider(validSettings()).chat(validSettings(), 'm', req(), () => {})
+    )
+    expect(err.kind).toBe('auth')
+    expect(err.message).toContain('401')
+    expect(err.message).toContain('[已脱敏]')
+    expect(err.message).not.toContain(SENTINEL_KEY)
+  })
+
+  it('anthropic error 事件消息回显 x-api-key → 脱敏', async () => {
+    const sse = `event: error\ndata: {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key: ${SENTINEL_KEY}"}}\n\n`
+    mockFetch(async () => sseResponse(sse, 9))
+    const err = await captureError(() =>
+      getProvider(validSettings({ protocol: 'anthropic' })).chat(
+        validSettings({ protocol: 'anthropic' }),
+        'm',
+        req(),
+        () => {}
+      )
+    )
+    expect(err.kind).toBe('provider')
+    expect(err.message).toContain('[已脱敏]')
+    expect(err.message).not.toContain(SENTINEL_KEY)
+  })
+
+  it('openai 流中 200 夹带 data {"error":{...}}（网关怪癖）→ 按内嵌 status 分类且脱敏', async () => {
+    const sse =
+      'data: {"choices":[{"delta":{"content":"半"}}]}\n\n' +
+      `data: {"error":{"message":"key revoked: ${SENTINEL_KEY}","status":401}}\n\n` +
+      'data: [DONE]\n\n'
+    mockFetch(async () => sseResponse(sse, 8))
+    const err = await captureError(() =>
+      getProvider(validSettings()).chat(validSettings(), 'm', req(), () => {})
+    )
+    expect(err.kind).toBe('auth') // 内嵌 401 → auth；无 status 时归 provider
+    expect(err.message).toContain('[已脱敏]')
+    expect(err.message).not.toContain(SENTINEL_KEY)
+  })
+})
+
 // ==================== getProvider 路由 ====================
 
 describe('getProvider', () => {
@@ -435,10 +489,10 @@ describe('getProvider', () => {
 // ==================== testConnection ====================
 
 describe('testConnection', () => {
-  it('openai：GET /models → "models: N"，带 Bearer', async () => {
+  it('openai：GET /models → 首条模型 id（简报「取 1 条」），带 Bearer', async () => {
     const calls = mockFetch(async () => jsonResponse({ data: [{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }] }))
     const result = await getProvider(validSettings()).testConnection(validSettings())
-    expect(result).toEqual({ ok: true, sample: 'models: 3' })
+    expect(result).toEqual({ ok: true, sample: 'models: m1' })
     expect(calls[0].url).toBe('https://api.example.com/v1/models')
     expect(calls[0].init.method).toBe('GET')
     expect((calls[0].init.headers as Record<string, string>).authorization).toBe(`Bearer ${SENTINEL_KEY}`)

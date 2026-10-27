@@ -12,6 +12,7 @@ import {
   joinUrl,
   linkSignal,
   mapStreamError,
+  redactKey,
   sseEvents
 } from './http'
 
@@ -21,9 +22,27 @@ interface OpenaiUsagePayload {
   prompt_tokens_details?: { cached_tokens?: unknown }
 }
 
+interface OpenaiErrorPayload {
+  message?: unknown
+  type?: unknown
+  code?: unknown
+  status?: unknown
+}
+
 interface OpenaiChunkPayload {
   choices?: { delta?: { content?: unknown } }[]
   usage?: OpenaiUsagePayload
+  // 部分网关在 200 流里夹带 {"error":{…}}——与 anthropic error 事件对称处理
+  error?: OpenaiErrorPayload
+}
+
+/** 从 error 对象里能抠出 HTTP 语义（status/code 为三位数）就用它分类，否则归 provider。 */
+function embeddedHttpStatus(err: OpenaiErrorPayload): number | undefined {
+  for (const v of [err.status, err.code]) {
+    if (typeof v === 'number' && v >= 100 && v <= 599) return v
+    if (typeof v === 'string' && /^\d{3}$/.test(v)) return Number(v)
+  }
+  return undefined
 }
 
 function num(v: unknown): number {
@@ -64,7 +83,7 @@ async function chat(
       },
       linked
     )
-    await ensureOk(resp)
+    await ensureOk(resp, settings.apiKey)
     if (!resp.body) throw new AiCallError('provider', '流式响应缺少正文数据')
 
     let text = ''
@@ -78,6 +97,12 @@ async function chat(
         payload = JSON.parse(ev.data) as OpenaiChunkPayload
       } catch {
         continue // 坏 JSON 行：跳过不中断（宁缺毋烂）
+      }
+      if (payload.error) {
+        const status = embeddedHttpStatus(payload.error)
+        const kind = status === 401 || status === 403 ? 'auth' : 'provider'
+        const detail = String(payload.error.message ?? payload.error.type ?? payload.error.code ?? '未知错误')
+        throw new AiCallError(kind, `流式响应携带错误：${redactKey(detail, settings.apiKey)}`)
       }
       const piece = payload.choices?.[0]?.delta?.content
       if (typeof piece === 'string' && piece.length > 0) {
@@ -118,10 +143,12 @@ async function testConnection(
       },
       linked
     )
-    await ensureOk(resp)
+    await ensureOk(resp, settings.apiKey)
     const json = (await resp.json()) as { data?: unknown }
-    const count = Array.isArray(json?.data) ? json.data.length : 0
-    return { ok: true, sample: `models: ${count}` }
+    // 简报「取 1 条」：报首条模型 id 作为连通性证据，而非计数
+    const first = Array.isArray(json?.data) ? (json.data as { id?: unknown }[])[0] : undefined
+    const firstId = first && typeof first.id === 'string' && first.id !== '' ? first.id : '(无模型条目)'
+    return { ok: true, sample: `models: ${firstId}` }
   } catch (err) {
     mapStreamError(err, linked)
   } finally {

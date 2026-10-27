@@ -5,7 +5,7 @@
 import type { AiMessage, AiSettings } from '../../../../src/common/ai-types'
 import type { AiProvider, ChatRequestInput, ProviderChatOptions, ProviderChatResult, ProviderUsage } from './types'
 import { AiCallError, capMessage } from './types'
-import { ensureOk, guardedFetch, joinUrl, linkSignal, mapStreamError, sseEvents } from './http'
+import { ensureOk, guardedFetch, joinUrl, linkSignal, mapStreamError, redactKey, sseEvents } from './http'
 
 const ANTHROPIC_VERSION = '2023-06-01'
 const DEFAULT_MAX_TOKENS = 4096
@@ -74,7 +74,7 @@ async function chat(
       },
       linked
     )
-    await ensureOk(resp)
+    await ensureOk(resp, settings.apiKey)
     if (!resp.body) throw new AiCallError('provider', '流式响应缺少正文数据')
 
     let text = ''
@@ -114,9 +114,15 @@ async function chat(
         case 'message_stop':
           break
         case 'error':
+          // error 事件正文由远端拼写，可能回显 x-api-key——入 message 前脱敏
           throw new AiCallError(
             'provider',
-            capMessage(`AI 服务错误：${String(payload.error?.message ?? payload.error?.type ?? '未知错误')}`)
+            capMessage(
+              `AI 服务错误：${redactKey(
+                String(payload.error?.message ?? payload.error?.type ?? '未知错误'),
+                settings.apiKey
+              )}`
+            )
           )
         default:
           break // ping / content_block_start / content_block_stop …
@@ -157,7 +163,7 @@ async function testConnection(
       },
       linked
     )
-    await ensureOk(resp)
+    await ensureOk(resp, settings.apiKey)
     return { ok: true, sample: 'ok' }
   } catch (err) {
     mapStreamError(err, linked)

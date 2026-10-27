@@ -27,4 +27,4 @@ export type {
   ProviderChatResult,
   ProviderUsage
 } from './types'
-export { http } from './http'
+export { http, redactKey } from './http'
