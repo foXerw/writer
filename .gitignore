@@ -43,3 +43,6 @@ coverage/
 
 # 类型缓存
 *.tsbuildinfo
+
+# SDD 工作区（调试/账本/探针，不入库）
+.superpowers/
