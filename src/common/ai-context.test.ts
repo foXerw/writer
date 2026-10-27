@@ -99,10 +99,17 @@ function baseInputs(over: Partial<ContextInputs> = {}): ContextInputs {
     currentChapterId: CURRENT,
     chapterBody: CURRENT_BODY,
     chapterSummaries: {
-      'ch-11': `CH11-摘要-超出前三章窗口-${pad(40)}`,
-      'ch-12': `CH12-摘要-${pad(40)}`,
-      'ch-13': `CH13-摘要-${pad(40)}`,
-      'ch-14': `CH14-摘要-${pad(40)}`,
+      // 越窗哨兵：ch-01..ch-11 全部在“最近 3 章”窗口之外，任何一条出现在输出即回归
+      ...Object.fromEntries(
+        Array.from({ length: 11 }, (_, i) => {
+          const id = `ch-${String(i + 1).padStart(2, '0')}`
+          return [id, `SENTINEL-FAR-${id}-越窗哨兵-${pad(40)}`]
+        })
+      ),
+      // 窗内哨兵：ch-12/13/14 必须出现——保证“FAR 缺席”断言不是空洞永真
+      'ch-12': `CH12-摘要-SENTINEL-NEAR-ch-12-${pad(40)}`,
+      'ch-13': `CH13-摘要-SENTINEL-NEAR-ch-13-${pad(40)}`,
+      'ch-14': `CH14-摘要-SENTINEL-NEAR-ch-14-${pad(40)}`,
       'ch-15': `CH15-摘要-当前章自身不应出现-${pad(40)}`
     },
     volumeSummaries: {
@@ -139,8 +146,13 @@ describe('estimateTokens', () => {
 
   it('CJK（含扩展 A / 兼容表意区）每字 1 token', () => {
     expect(estimateTokens('你好')).toBe(2)
-    expect(estimateTokens('㐀')).toBe(1) // U+3400 扩展 A 起点
-    expect(estimateTokens('豈')).toBe(1) // U+F900 兼容表意起点
+    expect(estimateTokens('\u3400')).toBe(1) // 扩展 A 起点（U+3400）
+    expect(estimateTokens('\u4DBF')).toBe(1) // 扩展 A 终点（U+4DBF）
+    expect(estimateTokens('\u4E00')).toBe(1) // 基本区起点（U+4E00）
+    expect(estimateTokens('\u9FFF')).toBe(1) // 基本区终点（U+9FFF）
+    expect(estimateTokens('\uF900')).toBe(1) // 兼容表意起点（U+F900——绝非 U+8C48）
+    expect(estimateTokens('\uFAFF')).toBe(1) // 兼容表意终点（U+FAFF）
+    expect(estimateTokens('\uAC1C\uAC1C\uAC1C\uAC1C')).toBe(1) // 谚文非 CJK：4 码元 ceil(4/4)
   })
 
   it('非 CJK 每 4 字符 1 token（向上取整），空格计入余数', () => {
@@ -203,7 +215,7 @@ describe('assembleAiContext 满预算', () => {
     expect(system).toContain('CH14-摘要')
     expect(system.indexOf('CH12-摘要')).toBeLessThan(system.indexOf('CH13-摘要'))
     expect(system.indexOf('CH13-摘要')).toBeLessThan(system.indexOf('CH14-摘要'))
-    expect(system).not.toContain('CH11-摘要')
+    expect(system).not.toContain('SENTINEL-FAR-ch-11')
     expect(system).not.toContain('CH15-摘要')
   })
 
@@ -223,19 +235,16 @@ describe('assembleAiContext 满预算', () => {
 // 预算阶梯：droppedFor 精确序列（低优先级先丢）
 // ---------------------------------------------------------------------------
 
+// 预算 = 只保留 header 之前的层时的估算值（截到首个被丢层标题处，含尾随分隔，
+// 高估 ≤1 token → 保留层必然放得下；被丢层体量 ≥40 token → 必然放不下）。
+const FULL = assembleAiContext(baseInputs())
+const budgetDropping = (firstDroppedHeader: string): number => {
+  const idx = FULL.messages[0].content.indexOf(firstDroppedHeader)
+  expect(idx).toBeGreaterThan(-1)
+  return estimateTokens(FULL.messages[0].content.slice(0, idx) + FULL.messages[1].content)
+}
+
 describe('assembleAiContext 预算阶梯', () => {
-  const full = assembleAiContext(baseInputs())
-  const sys = full.messages[0].content
-  const usr = full.messages[1].content
-
-  // 预算 = 只保留 header 之前的层时的估算值（截到首个被丢层标题处，含尾随分隔，
-  // 高估 ≤1 token → 保留层必然放得下；被丢层体量 ≥40 token → 必然放不下）。
-  const budgetDropping = (firstDroppedHeader: string): number => {
-    const idx = sys.indexOf(firstDroppedHeader)
-    expect(idx).toBeGreaterThan(-1)
-    return estimateTokens(sys.slice(0, idx) + usr)
-  }
-
   const cases: { header: string; dropped: string[]; kept: string[]; gone: string[] }[] = [
     {
       header: '【全书大纲】',
@@ -363,11 +372,25 @@ describe('红线：绝不引入非当前章正文 / 非涉事实体卡', () => {
   const out = assembleAiContext(baseInputs())
   const all = out.messages.map((m) => m.content).join('')
 
-  it('(a) 输出不含任何非当前章正文哨兵子串', () => {
-    expect(all).not.toContain('SENTINEL-')
-    for (const [id, body] of Object.entries(otherBodies)) {
-      expect(body.length).toBeGreaterThan(0)
-      expect(all).not.toContain(`SENTINEL-${id}`)
+  // 结构性说明：ContextInputs 契约中根本没有「他章整章正文」通道（only chapterBody），
+  // 因此 otherBodies 的正文级断言本质是「未来重构若把全库正文塞进 inputs」的回归警报，
+  // 无法在当前通道内被证伪。真正可判别（能失败）的红线走可达通道：
+  // chapterSummaries（越窗哨兵必须不出现、窗内哨兵必须出现）与 outlineNotes（提及≠卡片）。
+  it('(a1) 可达通道：越窗章摘要哨兵绝不出现', () => {
+    for (let n = 1; n <= 11; n++) {
+      expect(all).not.toContain(`SENTINEL-FAR-ch-${String(n).padStart(2, '0')}`)
+    }
+    expect(all).not.toContain('SENTINEL-FAR-')
+  })
+
+  it('(a2) 非空洞性：窗内哨兵确实出现（证明摘要通道活跃、缺席断言可判别）', () => {
+    expect(all).toContain('SENTINEL-NEAR-ch-12')
+    expect(all).toContain('SENTINEL-NEAR-ch-13')
+    expect(all).toContain('SENTINEL-NEAR-ch-14')
+  })
+
+  it('(a3) 回归警报器：他章正文级内容不得以任何形式出现（当前无通道 → 永不泄漏）', () => {
+    for (const body of Object.values(otherBodies)) {
       expect(all).not.toContain(body.slice(0, 12))
     }
     expect(all).not.toContain(otherBodies['ch-30'])
@@ -396,6 +419,96 @@ describe('红线：绝不引入非当前章正文 / 非涉事实体卡', () => {
     const out2 = assembleAiContext(baseInputs({ entityIndex: { 'ghost-99': [CURRENT] } }))
     expect(out2.messages[0].content).not.toContain('ghost-99')
     expect(out2.messages[0].content).not.toContain('【涉事实体卡】')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 大纲通道 smuggling：提及 ≠ 卡片；整段丢弃时无残片
+// ---------------------------------------------------------------------------
+
+describe('大纲线提及非涉事实体 id', () => {
+  const plantedNotes = '待回收支线涉及 char-09 与 world-03 两条旧档'
+  const plantedBook: ContextBook = { ...book, meta: bookMeta, volumes, outlineNotes: plantedNotes }
+
+  it('满预算：提及作为作者文本留在大纲层，但绝不催生实体卡', () => {
+    const out = assembleAiContext(baseInputs({ book: plantedBook }))
+    const s = out.messages[0].content
+    expect(s).toContain('char-09') // 通道活跃：非空洞断言
+    const entEnd = s.indexOf('【前三章摘要】')
+    const ent = s.slice(s.indexOf('【涉事实体卡】'), entEnd)
+    expect(ent).not.toContain('char-09')
+    expect(ent).not.toContain('world-03')
+    expect(s).not.toContain('{"id":"char-09"') // 卡片 JSON 形态绝不出现
+  })
+
+  it('大纲层被丢弃时，内嵌提及整段消失（丢弃是真的丢，无残片泄漏）', () => {
+    const budget = budgetDropping('【全书大纲】')
+    const out = assembleAiContext(baseInputs({ budgetTokens: budget, book: plantedBook }))
+    expect(out.droppedFor).toEqual(['outline'])
+    expect(out.messages[0].content).not.toContain('char-09')
+    expect(out.messages[0].content).not.toContain('world-03')
+    expect(out.messages[0].content).not.toContain('【全书大纲】')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 跨卷前驱窗口
+// ---------------------------------------------------------------------------
+
+describe('跨卷前驱窗口', () => {
+  it('ch-11（vol-2 首章）的最近 3 章前驱是 vol-1 的 ch-08/09/10', () => {
+    const out = assembleAiContext(
+      baseInputs({
+        currentChapterId: 'ch-11',
+        chapterSummaries: {
+          'ch-08': 'CH08-越卷前驱',
+          'ch-09': 'CH09-越卷前驱',
+          'ch-10': 'CH10-越卷前驱',
+          'ch-11': 'CH11-当前章自身不应出现',
+          'ch-12': 'CH12-后继章不应出现'
+        }
+      })
+    )
+    const s = out.messages[0].content
+    expect(s).toContain('CH08-越卷前驱')
+    expect(s.indexOf('CH08-越卷前驱')).toBeLessThan(s.indexOf('CH09-越卷前驱'))
+    expect(s.indexOf('CH09-越卷前驱')).toBeLessThan(s.indexOf('CH10-越卷前驱'))
+    expect(s).not.toContain('CH11-当前章自身不应出现')
+    expect(s).not.toContain('CH12-后继章不应出现')
+    expect(s).toContain('VOL2-梗概') // ch-11 的 volumeId 仍是 vol-2
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 代理对完整性：截断绝不切开 astral 码点
+// ---------------------------------------------------------------------------
+
+describe('截断的代理对完整性', () => {
+  const EMOJI = String.fromCodePoint(0x1f600) // astral：2 个 UTF-16 码元
+  const hasLoneSurrogate = (s: string): boolean => {
+    for (const ch of Array.from(s)) {
+      const c = ch.charCodeAt(0)
+      if (c >= 0xd800 && c <= 0xdfff && ch.length === 1) return true
+    }
+    return false
+  }
+
+  it('600 个 emoji 正文、budget=174：截断边界即便落在码元奇数位也不分裂代理对', () => {
+    const out = assembleAiContext(
+      baseInputs({
+        budgetTokens: 174,
+        chapterBody: EMOJI.repeat(600),
+        chapterSummaries: {},
+        volumeSummaries: {},
+        entityIndex: {},
+        entityCards: { character: [], world: [] },
+        book: { ...book, meta: { ...bookMeta, synopsis: '' }, volumes: [], outlineNotes: '' }
+      })
+    )
+    expect(out.droppedFor).toEqual(['body-truncated'])
+    for (const m of out.messages) expect(hasLoneSurrogate(m.content)).toBe(false)
+    expect(out.messages[1].content.endsWith(EMOJI)).toBe(true) // 保尾且尾码点完整
+    expect(out.estTokens).toBeLessThanOrEqual(174)
   })
 })
 

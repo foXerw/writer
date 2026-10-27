@@ -100,16 +100,20 @@ interface Section {
   text: string
 }
 
-/** 取最长后缀使其满足 fits（estimateTokens 随长度单调不减 → 二分） */
+/**
+ * 取最长后缀使其满足 fits（estimateTokens 随长度单调不减 → 二分）。
+ * 按码点（非 UTF-16 码元）切：边界绝不劈开代理对（emoji 等 astral 字符）。
+ */
 function longestTailToFit(text: string, fits: (tail: string) => boolean): string {
+  const cps = Array.from(text)
   let lo = 0
-  let hi = text.length
+  let hi = cps.length
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2)
-    if (fits(text.slice(text.length - mid))) lo = mid
+    if (fits(cps.slice(cps.length - mid).join(''))) lo = mid
     else hi = mid - 1
   }
-  return text.slice(text.length - lo)
+  return cps.slice(cps.length - lo).join('')
 }
 
 function buildSections(inp: ContextInputs): Section[] {

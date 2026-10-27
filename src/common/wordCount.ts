@@ -6,8 +6,9 @@
 
 // markdown 语法字符：# * ` > ~ _ [ ] ( )
 const MARKDOWN_SYNTAX_RE = /[#*`>~_[\]()]/g
-// CJK 汉字：扩展 A（㐀-䶿）、基本区（一-鿿）、兼容表意文字（豈-﫿）
-const CJK_CHAR_RE = /[㐀-䶿一-鿿豈-﫿]/g
+// CJK 汉字三段：扩展 A（U+3400-U+4DBF）、基本区（U+4E00-U+9FFF）、兼容表意（U+F900-U+FAFF）。
+// 必须使用 \u 转义而非字面量：历史上字面「豈」被写成 U+8C48，导致区间误吞谚文等。
+const CJK_CHAR_RE = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/g
 // 连续拉丁字母/数字串（大小写与数字同串合并计 1）
 const LATIN_RUN_RE = /[A-Za-z0-9]+/g
 

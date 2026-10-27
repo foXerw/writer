@@ -43,3 +43,28 @@ describe('countWords 中文正确的字数统计口径', () => {
     expect(countWords('「a1b2」')).toBe(1)
   })
 })
+
+// 码位边界回归：兼容表意段曾被写成字面量 U+8C48-U+FAFF，误吞谚文等区间。
+// 以下一律 \u 转义钉死（字面「豈」是 U+8C48，绝不能再用作段界）。
+describe('CJK 码位边界（防 U+8C48 漂移回归）', () => {
+  it('谚文音节绝不按 CJK 每字计数', () => {
+    expect(countWords('\uAC1C\uAC1C\uAC1C\uAC1C\uAC1C')).toBe(0)
+    expect(countWords('\uC5B4\uC5B4\uC5B4')).toBe(0)
+  })
+
+  it('三段区间起止点 5 连探针各计 5', () => {
+    expect(countWords('\u3400'.repeat(5))).toBe(5)
+    expect(countWords('\u4DBF'.repeat(5))).toBe(5)
+    expect(countWords('\u4E00'.repeat(5))).toBe(5)
+    expect(countWords('\u9FFF'.repeat(5))).toBe(5)
+    expect(countWords('\uF900'.repeat(5))).toBe(5)
+    expect(countWords('\uFAFF'.repeat(5))).toBe(5)
+  })
+
+  it('区间外邻位不计（段间空隙）', () => {
+    expect(countWords('\u4DC0')).toBe(0)
+    expect(countWords('\uAC00')).toBe(0)
+    expect(countWords('\uF8FF')).toBe(0)
+    expect(countWords('\uFB00')).toBe(0)
+  })
+})
