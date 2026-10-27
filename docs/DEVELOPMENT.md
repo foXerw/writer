@@ -9,7 +9,8 @@
 | M1 | 审计整改与体验收口 | ✅ 完成 | 2026-08 |
 | M2 | 数据底座（v2 书目录：schema/迁移/仓库/监听/冲突） | ✅ 完成 | 2026-10-26 |
 | M3 | 图谱视图（首批两种：人物/任务关系图 + 世界观图） | ✅ 完成 | 2026-10-28 |
-| M4 | AI 维护闭环（整理→提案→差异确认；AI 服务层与 token 账本；剧情线/选项/伏笔录入 UI 补齐） | ⏳ 规划中 | - |
+| M4a | AI 服务层（设置保险库/双协议 provider/流式通道/token 账本/上下文装配器/连接测试闭环） | ✅ 完成 | 2026-10-28 |
+| M4 | AI 维护闭环（整理→提案→差异确认，消费 M4a 服务层；剧情线/选项/伏笔录入 UI 补齐） | 🔄 进行中（M4a 已交付，提案闭环待规划） | - |
 | M5 | 实时补全（ghost text，Tab 采纳） | ⏳ 规划中 | - |
 | M6 | 章节审阅（AI 读者视角结构化意见） | ⏳ 规划中 | - |
 
@@ -34,6 +35,24 @@
 > 终审整改（FI-1）CDP 实测：图谱视图不卸载，于角色面板内给墨渊新增关系「师徒→林昭」并保存，
 > 边数 3→4、新边标签出现——应用内保存即时刷新图谱端到端成立（此前 M2 自写抑制 I1 使应用内保存
 > 从不回声 book:changed，图谱对应用内编辑永不刷新）。
+>
+> M4a 交付（AI 服务层，M4 的第一片）：T1 安全硬化（dev 免安全开关移除/导出隐藏窗收紧，CDP 活体证明）；
+> T2 `src/common/ai-types.ts` + `electron/main/ai/settings.ts` 设置保险库（明文密钥只在主进程
+> `userData/ai-settings.json`，跨 IPC 仅掩码视图；空串=不修改 + `clearApiKey` 显式清除）+ 设置页
+> 「AI 服务」区块；T3 `electron/main/ai/providers/` 双协议流式适配器（OpenAI 兼容/Anthropic，
+> fetch 注入接缝全离线测试，远端文本 redact-before-truncate 防密钥回显）；T4 `chatService` 流式对话
+> 通道（requestId 隔离/取消/busy 闸/终态守卫；受理前 `[kind] ` 前缀同步 reject、受理后事件回流，
+> 渲染层 `parseKindTaggedError` 剥 IPC 包装解包）+ 按书 `.ai/usage.jsonl` token 分账 + StatsPanel
+> 「AI 用量」区块（读取失败与读取中分态）；T5 `src/common/ai-context.ts` 分层上下文装配器（纯函数，
+> 预算/优先级/正文优先红线；连带修正 `wordCount` CJK 码点区间——谚文/彝文不再按汉字计数，含此类
+> 字符的字数与 token 估算随之下降，属修复非回归）；T6 连接测试真接线（openai `GET /models`/anthropic
+> 1-token 探测，错误按 kind 中文归因、成功显示模型样例、无已存密钥置灰）+ 对话受理侧 feature 白名单。
+> 整理→提案→差异确认闭环与录入 UI 属 M4b。
+> 验证：typecheck 0 错、lint 0 error（1 既有 warning）、`npm run test` 449 用例全绿、build 通过；
+> CDP 真机冒烟：假配置（openai + `http://127.0.0.1:9/` + 假密钥）→「测试连接」toast
+> 「网络不通或地址错误：网络请求失败：TypeError: fetch failed」（kind 路由跨真实 IPC 边界成立）；
+> 「清除密钥」后掩码消失、测试按钮回置灰。收尾记录见
+> [2026-10-28-m4a-closeout.md](./superpowers/plans/2026-10-28-m4a-closeout.md)。
 >
 > 非 SPEC 里程碑的可选储备（backlog，不进上表）：多书管理与工作台扩展、存量老书批量回填（M6 后另设计）。
 
@@ -621,3 +640,4 @@
 | 2026-10-26 | 2.0 (M2) | **里程碑 M2 数据底座完成**：v2 书目录格式（`schema.ts`+校验器）、`bookStore/`（原子写/五域缓存/迁移续传/自检/fs 监听）、`project:open` 单一入口+迁移报告 UI、外部改动冲突弹窗、`docs/BOOK_FORMAT.md`。typecheck 0 错/lint 0 错/294 测试全绿/build 通过 |
 | 2026-10-28 | 3.0 (M3) | **里程碑 M3 图谱视图完成**：`graphModel` 纯构图（角色径向/世界观分列，退化数据容错）+ React Flow 只读画布 + 自定义节点 + `.graph-view` 主题；Workspace `写作\|图谱`/`人物关系\|世界观` 切换与节点点击联动侧栏；`useGraphData` 实时刷新。typecheck 0 错/lint 0 错/317 测试全绿/build 通过 + CDP 真机渲染实测 |
 | 2026-10-28 | 3.1 (M3 终审) | **M3 终审整改波 FI-1/FI-2/FI-3**：新增渲染层 `entityEvents` pub-sub，应用内角色/设定保存即时刷新图谱（CDP 实测边数 3→4、画布不重挂、零浮层）；更正「自写回声 book:changed」假前提的全部注释；「切回写作编辑器状态不丢」表述诚实化（光标/滚动恢复列 M4）；spec §3/§7 裁定修订。321 测试全绿/门禁全过 |
+| 2026-10-28 | 4.0a (M4a) | **里程碑 M4a AI 服务层完成**：安全硬化（T1）；设置保险库+掩码 IPC 契约（T2）；双协议流式 provider 适配器（T3，密钥回显脱敏不变量）；`chatService` 流式通道+按书 token 账本+`useAI`（T4，`[kind]` 前缀跨 IPC 协议）；分层上下文装配器+wordCount CJK 码点修正（T5）；连接测试真接线/清除密钥/StatsPanel 错误态/feature 白名单/文档收口（T6）。typecheck 0 错/lint 0 错/449 测试全绿/build 通过 + CDP 真机冒烟（假 baseUrl→网络分类中文 toast 跨真实 IPC 边界） |

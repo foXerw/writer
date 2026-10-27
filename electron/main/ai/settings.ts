@@ -5,6 +5,8 @@
 //
 // 合并语义（与 src/common/ai-types.ts 的 AiSettingsPatch 契约一致）：
 // - apiKey 缺省 | 空串 = 保留旧密钥（UI 发送空串即「不修改」）；非空串 = 整体替换；
+// - clearApiKey === true = 显式清除（落盘 ''）；与 apiKey 同现时清除优先（Task 2 复审裁定：
+//   破坏性动作压过写入，杜绝「一次 patch 既设又清」的歧义态）；falsy（缺省/false/0）不改写此语义；
 // - models 按键部分合并：给了值的键覆盖，未给的键保留旧值，空串 = 清除该覆盖；
 // - 非法 protocol / 类型漂移的字段一律拒绝（保留旧值），绝不整盘信任磁盘/入参。
 //
@@ -109,8 +111,8 @@ export function saveSettings(patch: AiSettingsPatch): AiSettingsView {
       ? (p.protocol as AiProtocol)
       : base.protocol,
     baseUrl: isString(p.baseUrl) ? p.baseUrl : base.baseUrl,
-    // 空串/缺省 = 保留旧密钥；非空串 = 整体替换
-    apiKey: isString(p.apiKey) && p.apiKey !== '' ? p.apiKey : base.apiKey,
+    // clearApiKey:true = 清除（优先）；否则空串/缺省 = 保留旧密钥，非空串 = 整体替换
+    apiKey: p.clearApiKey === true ? '' : isString(p.apiKey) && p.apiKey !== '' ? p.apiKey : base.apiKey,
     defaultModel: isString(p.defaultModel) ? p.defaultModel : base.defaultModel,
     models: mergeModels(base.models, p.models)
   }

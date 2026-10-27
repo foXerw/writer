@@ -3,6 +3,7 @@
 // 失败两分契约（useAI hook 同时兜两条路，T5/T6 依赖此表）：
 // ┌ 受理前（同步 reject，Error.message = `[kind] 文本`，不发任何事件）：
 // │   · requestId/messages 形状不合法      → kind 'provider'
+// │   · feature 不在白名单（Task 6 收口）  → kind 'provider'（账本写入前拒掉，防脏 feature 入册）
 // │   · isConfigured(loadSettings()) 失败  → kind 'not-configured'
 // │   · model 解析后为空                   → kind 'not-configured'（未配置模型）
 // │   · 同 requestId 在途重复              → kind 'busy'
@@ -19,7 +20,7 @@
 //
 // 测试接缝：setProviderOverride —— 仅测试注入假 AiProvider；生产恒置 null，
 // getProvider(settings) 按协议分发。除此之外本模块不 mock（sender 用结构化替身）。
-import type { AiChatRequest, AiUsageRecord } from '../../../src/common/ai-types'
+import type { AiChatRequest, AiFeature, AiUsageRecord } from '../../../src/common/ai-types'
 import { isConfigured } from '../../../src/common/ai-types'
 import { loadSettings } from './settings'
 import { getProvider } from './providers'
@@ -36,6 +37,9 @@ export interface ChatEventSender {
 
 const inflight = new Map<string, AbortController>()
 let providerOverride: AiProvider | null = null
+
+/** 受理侧 feature 白名单（Task 6）：与账本/设置同词表，白名单外绝不进在途/记账路径。 */
+const VALID_FEATURES: readonly AiFeature[] = ['organize', 'completion', 'review']
 
 /** 仅测试使用：注入假 provider；传 null 恢复真实分发。 */
 export function setProviderOverride(provider: AiProvider | null): void {
@@ -55,6 +59,10 @@ export function startChat(sender: ChatEventSender, request: AiChatRequest): { ac
   const req = (request ?? {}) as AiChatRequest
   if (typeof req.requestId !== 'string' || req.requestId === '' || !Array.isArray(req.messages)) {
     rejectWithKind('provider', '对话请求形状不合法（requestId/messages）')
+  }
+  // 渲染层可经 preload 门面送任意 JSON：feature 必须落在白名单，否则同步拒（先于在途表/账本）
+  if (!VALID_FEATURES.includes(req.feature)) {
+    rejectWithKind('provider', `未知的 AI 功能：${String(req.feature ?? '(空)')}`)
   }
   const settings = loadSettings()
   if (!isConfigured(settings)) {

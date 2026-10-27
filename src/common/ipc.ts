@@ -169,7 +169,10 @@ export type RendererToMainRequests = {
   // 明文 apiKey 永不跨 IPC；chat/cancel/getUsage 通道随 Task 4 加入，此处不预留死门面）
   'ai:getSettings': () => Promise<AiSettingsView>
   'ai:setSettings': (patch: AiSettingsPatch) => Promise<AiSettingsView>
-  'ai:testConnection': () => Promise<{ ok: true }>
+  // testConnection（M4a Task 6 真实现）：成功 resolve {ok:true, sample}（连通性证据，不含密钥）；
+  // 失败 reject，message 带 `[kind] ` 前缀（not-configured/auth/network/timeout/provider/cancelled），
+  // 由渲染层 parseKindTaggedError 解包分类——kind 属性跨不过 ipcMain.handle 序列化，前缀即协议。
+  'ai:testConnection': () => Promise<{ ok: true; sample: string }>
   // AI 对话（M4a Task 4）：chat 是 fire-and-forget 语义——resolve 的 {accepted:true} 只表示
   // 「已受理进入在途」，正文/结果/失败一律经 ai:chunk|ai:done|ai:error 事件按 requestId 回来；
   // 受理前失败（not-configured/busy/未配置模型/形状非法）则 promise 直接 reject，

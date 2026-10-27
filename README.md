@@ -42,6 +42,13 @@
 - 目标进度管理
 - 效率分析报告
 
+### AI 服务层（M4a）
+- **双协议 BYOK**: OpenAI 兼容（含 DeepSeek/Kimi/通义/OpenRouter 等兼容端点）与 Anthropic 两路适配器，自带密钥；设置页「AI 服务」区块配置（协议/Base URL/密钥/默认模型/按功能覆盖），支持连接测试与清除密钥
+- **密钥安全姿态**: 明文 API Key 只存主进程 `userData/ai-settings.json`，UI 仅掩码展示（前3…后4）、永不回填，密钥不出现在书目录/日志/账本
+- **流式对话通道**: requestId 级隔离/取消/在途防重，失败按类型（密钥被拒/网络不通/超时…）中文归因展示
+- **Token 分账**: 每本书 `.ai/usage.jsonl` 按功能与模型记录用量（只含计数，永不含正文与密钥），侧栏「AI 用量」实时汇总
+- **分层上下文装配器**: 按优先级与 token 预算组装小说上下文（大纲/前文尾部/角色卡等），正文优先红线测试钉死（M4b 功能直接消费）
+
 ## 项目结构
 
 ```
@@ -53,14 +60,17 @@ perfect-novel/
 │   │   ├── menu.ts               # 应用菜单
 │   │   ├── tray.ts               # 系统托盘
 │   │   ├── bookStore/            # v2 书籍数据仓库：迁移/原子写/域缓存/fs 监听（格式见 docs/BOOK_FORMAT.md）
+│   │   ├── ai/                   # AI 服务层（M4a）：settings 保险库/providers 双协议/chatService 流式通道/usage 账本
 │   │   └── ipc/
 │   │       ├── helpers.ts        # IPC 公共辅助
-│   │       └── modules/          # IPC 处理（project/chapter/volume/character/setting/narrative/…）
+│   │       └── modules/          # IPC 处理（project/chapter/volume/character/setting/narrative/ai/…）
 │   └── preload/
 │       └── index.ts              # 预加载脚本（contextBridge 暴露 IPC）
 ├── src/
 │   ├── common/
-│   │   └── ipc.ts                # IPC 类型定义与通道常量
+│   │   ├── ipc.ts                # IPC 类型定义与通道常量
+│   │   ├── ai-types.ts           # AI 共享类型：设置/掩码视图/patch/用量记录/错误 kind 词表
+│   │   └── ai-context.ts         # 分层上下文装配器 + token 估算（纯函数，M4a Task 5）
 │   └── renderer/
 │       ├── App.tsx               # 应用根组件
 │       ├── index.tsx             # 渲染进程入口
@@ -71,7 +81,7 @@ perfect-novel/
 │       │   ├── Editor/           # 编辑器（MonacoEditor / EditorToolbar / OutlineView）
 │       │   ├── Explorer/         # 侧边面板（ChapterTree / CharacterPanel / SettingPanel / StatsPanel）
 │       │   ├── Dialogs/          # 对话框（CommandPalette / ExportDialog / ProjectDialog）
-│       │   └── Settings/         # 设置（ThemeSettings）
+│       │   └── Settings/         # 设置（ThemeSettings / AiSettingsSection）
 │       ├── pages/                # 页面（Home / Workspace / Settings）
 │       ├── stores/               # 状态管理（Zustand）
 │       ├── hooks/                # 自定义钩子（useIPC / useKeyboard / useMenu）
@@ -207,7 +217,8 @@ ls node_modules/electron/dist/electron.exe
 
 > **完整规范见 [docs/BOOK_FORMAT.md](docs/BOOK_FORMAT.md)**：目录树全量、每类文件字段表（对照
 > `src/common/schema.ts`）、章节 front-matter 示例、`.migration-backup/` 与
-> `.novelwriter.json.migrated` 只读约定、`.ai/`（M4）预留说明，以及「第三方 / AI 工具如何安全读写
+> `.novelwriter.json.migrated` 只读约定、`.ai/`（M4a 用量账本 `usage.jsonl` + M4b 预留）说明与密钥
+> 存放姿态，以及「第三方 / AI 工具如何安全读写
 > 一本书」操作守则。旧版（v1，`.novelwriter.json` + `settings/` + `NNN-标题.md`）在打开时会被自动
 > 就地迁移为 v2（先整本备份），无需手工转换。
 

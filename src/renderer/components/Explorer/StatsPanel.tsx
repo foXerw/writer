@@ -55,23 +55,28 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
   history = [],
   projectPath
 }) => {
-  // AI 用量账本（M4a Task 4）：mount/换书即拉 + entityEvents 刷新（沿用面板既有刷新面）；
-  // 读失败静默保持 null——统计区块永远不值得把错误打到写作界面上。
+  // AI 用量账本（M4a Task 4 + Task 6 错误态）：mount/换书即拉 + entityEvents 刷新；
+  // 读失败不再静默停在「读取中」——null（尚未落定）与 error（读取失败）两态分离展示。
   const { getAIUsage } = useAIUsage()
   const [aiUsage, setAiUsage] = useState<AiUsageSummary | null>(null)
+  const [aiUsageError, setAiUsageError] = useState(false)
   useEffect(() => {
     if (!projectPath) {
       setAiUsage(null)
+      setAiUsageError(false)
       return
     }
     let alive = true
     const refresh = (): void => {
       getAIUsage(projectPath)
         .then((u) => {
-          if (alive) setAiUsage(u)
+          if (alive) {
+            setAiUsage(u)
+            setAiUsageError(false)
+          }
         })
         .catch(() => {
-          /* 静默 */
+          if (alive) setAiUsageError(true)
         })
     }
     refresh()
@@ -250,10 +255,10 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
             <Divider style={{ borderColor: 'var(--color-border)', margin: '16px 0' }} />
             <div style={{ padding: '0 16px' }}>
               <Space><RobotOutlined style={{ color: 'var(--color-text-tertiary)' }} /><Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>AI 用量</Text></Space>
-              {!aiUsage || aiUsage.total.calls === 0 ? (
+              {aiUsageError || !aiUsage || aiUsage.total.calls === 0 ? (
                 <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--color-bg-base)', borderRadius: 4 }}>
                   <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
-                    {aiUsage ? '暂无 AI 用量' : '读取中…'}
+                    {aiUsageError ? 'AI 用量读取失败' : aiUsage ? '暂无 AI 用量' : '读取中…'}
                   </Text>
                 </div>
               ) : (

@@ -1,13 +1,28 @@
-// AI 服务设置区块（M4a Task 2）：协议/Base URL/密钥/默认模型/按功能覆盖 + 保存/测试连接。
+// AI 服务设置区块（M4a Task 2 设置 + Task 6 测试连接闭环）：
+// 协议/Base URL/密钥/默认模型/按功能覆盖 + 保存/测试连接/清除密钥。
 // 渲染层只接触 AiSettingsView（掩码视图）——密钥输入框永不回填明文，
-// 留空即「不修改」（主进程空串保留语义）；测试连接在 provider 就绪前是诚实占位报错。
+// 留空即「不修改」（主进程空串保留语义）；清除走 patch.clearApiKey:true 显式路径。
+// 测试连接错误分类（T4 契约）：必须经 parseKindTaggedError 解包 `[kind] ` 前缀再展示中文文案，
+// 绝不裸匹配 message 文本——Electron 会把 handler reject 裹成 `Error invoking remote method …`。
 import React, { useCallback, useEffect, useState } from 'react'
-import { Button, Collapse, Divider, Form, Input, Select, Space, Typography, message } from 'antd'
+import { Button, Collapse, Divider, Form, Input, Popconfirm, Select, Space, Typography, message } from 'antd'
 import { RobotOutlined } from '@ant-design/icons'
-import type { AiProtocol, AiSettingsView } from '@/common/ai-types'
+import type { AiErrorEvent, AiProtocol, AiSettingsView } from '@/common/ai-types'
 import { useAISettings } from '../../hooks/useIPC'
+import { parseKindTaggedError } from '../../hooks/useAI'
 
 const { Text } = Typography
+
+/** 连接测试失败的中文归因（kind 词表穷举；busy 理论不达本通道，兜底也必须有色） */
+const TEST_FAILURE_TEXT: Record<AiErrorEvent['kind'], string> = {
+  auth: '密钥或地址被拒（401/403）',
+  network: '网络不通或地址错误',
+  timeout: '连接超时',
+  'not-configured': '请先完成配置',
+  provider: '服务返回错误',
+  cancelled: '已取消',
+  busy: '已有请求在途'
+}
 
 interface AiFormValues {
   protocol: AiProtocol
@@ -30,6 +45,7 @@ const AiSettingsSection: React.FC = () => {
   const [view, setView] = useState<AiSettingsView | null>(null)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -84,15 +100,31 @@ const AiSettingsSection: React.FC = () => {
   const handleTest = useCallback(async () => {
     setTesting(true)
     try {
-      await testAIConnection()
-      message.success('连接正常')
+      const result = await testAIConnection()
+      message.success(`连接成功（${result.sample}）`, 6)
     } catch (err) {
-      // Task 2 阶段必然走到这里：AI_PROVIDER_NOT_READY 占位，如实回显、不粉饰
-      message.error(err instanceof Error ? err.message : String(err), 8)
+      // T4 契约：先解包 `[kind] ` 前缀（含 IPC 包装剥离），按 kind 归类中文文案；解不出即 provider
+      const { kind, message: detail } = parseKindTaggedError(String((err as Error)?.message ?? err))
+      const label = TEST_FAILURE_TEXT[kind]
+      message.error(detail ? `${label}：${detail}` : label, 8)
     } finally {
       setTesting(false)
     }
   }, [testAIConnection])
+
+  const handleClearKey = useCallback(async () => {
+    setClearing(true)
+    try {
+      const next = await setAISettings({ clearApiKey: true })
+      setView(next)
+      form.setFieldValue('apiKey', undefined)
+      message.success('API 密钥已清除')
+    } catch (err) {
+      message.error(`清除密钥失败：${err instanceof Error ? err.message : String(err)}`, 8)
+    } finally {
+      setClearing(false)
+    }
+  }, [form, setAISettings])
 
   const keyPlaceholder = view?.hasKey
     ? `${view.maskedKey}（已设置，留空则不修改）`
@@ -126,11 +158,27 @@ const AiSettingsSection: React.FC = () => {
             label={<Text style={{ color: 'var(--color-text-secondary)' }}>API 密钥</Text>}
             name="apiKey"
             extra={
-              <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>
-                {view?.hasKey
-                  ? `当前已设置：${view.maskedKey}，留空则不修改`
-                  : '尚未设置 API 密钥'}
-              </Text>
+              <Space size="small">
+                <Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>
+                  {view?.hasKey
+                    ? `当前已设置：${view.maskedKey}，留空则不修改`
+                    : '尚未设置 API 密钥'}
+                </Text>
+                {view?.hasKey && (
+                  <Popconfirm
+                    title="清除 API 密钥"
+                    description="清除后需重新填写才能使用 AI 功能，确定清除？"
+                    okText="清除"
+                    okButtonProps={{ danger: true }}
+                    cancelText="取消"
+                    onConfirm={handleClearKey}
+                  >
+                    <Button type="link" danger size="small" style={{ padding: 0 }} loading={clearing}>
+                      清除密钥
+                    </Button>
+                  </Popconfirm>
+                )}
+              </Space>
             }
           >
             <Input.Password placeholder={keyPlaceholder} autoComplete="off" />
@@ -179,7 +227,8 @@ const AiSettingsSection: React.FC = () => {
             <Button type="primary" onClick={handleSave} loading={saving}>
               保存
             </Button>
-            <Button onClick={handleTest} loading={testing}>
+            {/* 无已保存密钥时置灰：测试的是主进程已存配置，未保存的输入框内容不生效 */}
+            <Button onClick={handleTest} loading={testing} disabled={view !== null && !view.hasKey}>
               测试连接
             </Button>
           </Space>

@@ -149,6 +149,33 @@ describe('saveSettings 合并语义', () => {
     expect(view.defaultModel).toBe('m1')
   })
 
+  it('clearApiKey:true → 落盘空串，视图 hasKey:false / maskedKey 空（Task 2 复审裁定的显式清除路径）', () => {
+    saveSettings({ apiKey: 'sk-will-be-cleared-9999' })
+    expect(saveSettings({}).hasKey).toBe(true) // 前置：清除前确实在册
+    const view = saveSettings({ clearApiKey: true })
+    expect(loadSettings().apiKey).toBe('')
+    expect(view.hasKey).toBe(false)
+    expect(view.maskedKey).toBe('')
+  })
+
+  it('clearApiKey 与非空 apiKey 同现 → 清除优先（破坏性动作压过写入，杜绝既设又清歧义）', () => {
+    saveSettings({ apiKey: 'sk-old-abcdef0000' })
+    const view = saveSettings({ apiKey: 'sk-new-abcdef1111', clearApiKey: true })
+    expect(loadSettings().apiKey).toBe('')
+    expect(view.hasKey).toBe(false)
+    expect(JSON.stringify(view)).not.toContain('sk-new-abcdef1111')
+  })
+
+  it('clearApiKey falsy（缺省/false/0）→ 保留与替换语义逐字不变', () => {
+    saveSettings({ apiKey: 'sk-keep-me-12345678' })
+    expect(saveSettings({ clearApiKey: false }).hasKey).toBe(true)
+    expect(saveSettings({ clearApiKey: 0 as never }).hasKey).toBe(true)
+    expect(saveSettings({ baseUrl: 'https://x.example' }).hasKey).toBe(true)
+    expect(loadSettings().apiKey).toBe('sk-keep-me-12345678')
+    // 严格 === true 才清除：'true' 字符串不得触发破坏
+    expect(saveSettings({ clearApiKey: 'true' as never }).hasKey).toBe(true)
+  })
+
   it('非法 protocol patch → 拒绝写入，保留旧值（越界防护）', () => {
     saveSettings({ protocol: 'openai' })
     const view = saveSettings({ protocol: 'midi' as never })

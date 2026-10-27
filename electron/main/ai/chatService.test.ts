@@ -206,6 +206,24 @@ describe('受理前同步失败（不发事件）', () => {
     expect(() => startChat(sender, { ...baseReq(), messages: 'oops' as never })).toThrow(/^\[provider\]/)
   })
 
+  it('feature 白名单（Task 6）：未知/缺省 feature → [provider] 同步拒，先于在途表与账本写入', async () => {
+    const chat = vi.fn(async () => okResult())
+    setProviderOverride(providerStub(chat))
+    const book = mkTmpBook()
+    const { events, sender } = fakeSender()
+    expect(() =>
+      startChat(sender, baseReq({ feature: 'summarize' as never, projectPath: book }))
+    ).toThrow(/^\[provider\]/)
+    expect(() =>
+      startChat(sender, baseReq({ requestId: 'r2', feature: undefined as never, projectPath: book }))
+    ).toThrow(/^\[provider\]/)
+    await settle()
+    expect(chat).not.toHaveBeenCalled()
+    expect(events).toHaveLength(0)
+    expect(inflightCount()).toBe(0)
+    expect(existsSync(join(book, '.ai'))).toBe(false) // 账本路径从未被触碰
+  })
+
   it('busy：同 requestId 在途重复 → 后到同步 reject；在途原请求毫发无伤；善后可复用同 id', async () => {
     let release!: () => void
     setProviderOverride(

@@ -31,11 +31,13 @@ export interface AiSettingsView {
   defaultModel: string
   models: AiModels
 }
-/** apiKey 空串/缺省 = 不改 */
+/** apiKey 空串/缺省 = 不改；clearApiKey:true = 显式清除（M4a Task 2 复审裁定的清除路径） */
 export interface AiSettingsPatch {
   protocol?: AiProtocol
   baseUrl?: string
   apiKey?: string
+  /** true = 把已存密钥清空（落盘 ''）。与非空 apiKey 同现时清除优先（删除动作压过写入）。 */
+  clearApiKey?: boolean
   defaultModel?: string
   models?: AiModels
 }

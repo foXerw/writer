@@ -513,7 +513,7 @@ export function useAISettings() {
     return ipc.ai.setSettings(patch)
   }, [ipc])
 
-  const testAIConnection = useCallback(async (): Promise<{ ok: true }> => {
+  const testAIConnection = useCallback(async (): Promise<{ ok: true; sample: string }> => {
     return ipc.ai.testConnection()
   }, [ipc])
 
