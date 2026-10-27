@@ -7,12 +7,9 @@ import { loadTheme } from './theme'
 import { migrateUserData } from './userData'
 import './ipc/handlers'
 
-// 开发环境禁用安全限制
-if (import.meta.env.DEV) {
-  app.commandLine.appendSwitch('disable-web-security')
-  app.commandLine.appendSwitch('allow-running-insecure-content')
-  app.commandLine.appendSwitch('allow-file-access-from-files')
-}
+// M4a G8 安全硬化：dev 环境的 disable-web-security / allow-running-insecure-content /
+// allow-file-access-from-files 三开关已移除（渲染进程无任何跨源/混合内容/file→fetch 需求：
+// 所有 IO 走 IPC；monaco 未配置 worker，主线程回退；导出临时 HTML 自包含）。
 
 app.whenReady().then(() => {
   // 更名搬运 novel-writer → perfect-novel：必须在 loadTheme() 与 createMainWindow() 之前，

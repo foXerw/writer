@@ -97,7 +97,11 @@ export function registerExportHandlers(): void {
     let win: BrowserWindow | null = null
     try {
       fs.writeFileSync(tmp, html, 'utf-8')
-      win = new BrowserWindow({ show: false })
+      // M4a G8：隐藏打印窗显式收紧 webPreferences（不继承任何宽松默认）
+      win = new BrowserWindow({
+        show: false,
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true }
+      })
       await win.loadURL(url.pathToFileURL(tmp).toString())
       const pdf = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4' })
       fs.writeFileSync(p.savePath, pdf)
