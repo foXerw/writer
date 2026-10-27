@@ -28,8 +28,20 @@ export type AIChatRequestWithoutId = Omit<AiChatRequest, 'requestId'>
 
 const KIND_PREFIX_RE = /^\[(not-configured|auth|network|timeout|provider|cancelled|busy)\]\s+/
 
-/** 解包 chatService 的同步 reject：`[kind] 文本` → {kind, 去前缀文本}；不合式则归 provider。 */
-export function parseKindTaggedError(message: string): { kind: AiErrorEvent['kind']; message: string } {
+/**
+ * electron ipcMain.handle 的 reject 到渲染层永远裹一层
+ * `Error invoking remote method 'ai:chat': Error: …`（本仓库 bookErrors.ts 交过同款学费：
+ * 裸 anchored 匹配在真实 IPC 边界必然失配）。归一化三步：①剥头部包装（含可选 `Error: `）；
+ * ②裁掉尾部 stack 行（`\n    at …` 起整段丢弃，展示面不背帧栈）；③再对解包后的文本做
+ * anchored `[kind] ` 解析——chatService 保证 tag 在 message 头部，所以「剥包装后锚定」
+ * 是诚实做法，不做全文扫描（正文字样里出现 `[busy] ` 开头的行不该被误路由）。
+ */
+const IPC_WRAPPER_RE = /^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/
+
+export function parseKindTaggedError(raw: string): { kind: AiErrorEvent['kind']; message: string } {
+  const unwrapped = raw.replace(IPC_WRAPPER_RE, '')
+  const nl = unwrapped.indexOf('\n    at ')
+  const message = nl >= 0 ? unwrapped.slice(0, nl) : unwrapped
   const m = KIND_PREFIX_RE.exec(message)
   if (!m) return { kind: 'provider', message }
   return { kind: m[1] as AiErrorEvent['kind'], message: message.slice(m[0].length) }

@@ -76,15 +76,25 @@ export function startChat(sender: ChatEventSender, request: AiChatRequest): { ac
   inflight.set(req.requestId, controller)
   const requestId = req.requestId
 
-  // 闭包只捕获本请求的 sender/requestId——并发多 id 天然隔离；窗口销毁即哑火。
+  // 闭包只捕获本请求的 sender/requestId——并发多 id 天然隔离。
+  // 窗口已销毁：哑火 + abort 在途控制器（绝不为死窗口继续烧供应商配额）。
   const emit = (channel: 'ai:chunk' | 'ai:done' | 'ai:error', payload: unknown): void => {
     try {
-      if (sender.isDestroyed?.() === true) return
+      if (sender.isDestroyed?.() === true) {
+        controller.abort()
+        return
+      }
       sender.send(channel, payload)
     } catch {
-      // 发送竞态（窗口刚销毁）：结果无处安放，静默丢弃，绝不让 IPC 写失败炸掉请求链路
+      // 发送竞态（isDestroyed 检查后才关的窗）：同上，静默丢弃 + 停止燃烧
+      controller.abort()
     }
   }
+
+  // 终态位：done/error 发出后本请求对渲染层已盖章。第三方 provider 若违约
+  // （resolve/reject 之后仍回访 onChunk），迟到的 chunk 一律丢弃——渲染层
+  // 「done 恰为终事件」的不变量由这里兜底，而非指望 provider 自觉。
+  let settled = false
 
   void (async () => {
     try {
@@ -93,7 +103,9 @@ export function startChat(sender: ChatEventSender, request: AiChatRequest): { ac
         settings,
         model,
         { messages: req.messages, temperature: req.temperature, maxTokens: req.maxTokens },
-        (text: string) => emit('ai:chunk', { requestId, text }),
+        (text: string) => {
+          if (!settled) emit('ai:chunk', { requestId, text })
+        },
         { signal: controller.signal, timeoutMs: DEFAULT_TIMEOUT_MS }
       )
       if (typeof req.projectPath === 'string' && req.projectPath !== '') {
@@ -107,8 +119,10 @@ export function startChat(sender: ChatEventSender, request: AiChatRequest): { ac
         }
         appendUsage(req.projectPath, rec) // 内部容错：记账失败只 warn，不影响 done
       }
+      settled = true
       emit('ai:done', { requestId, usage: result.usage })
     } catch (err) {
+      settled = true // 先盖章：error 之后 provider 若回访 onChunk，也休想再吐半个字
       const callErr =
         err instanceof AiCallError
           ? err

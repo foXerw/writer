@@ -350,6 +350,61 @@ describe('cancelChat', () => {
   })
 })
 
+describe('终态与死窗护栏（评审 FOLD Minors）', () => {
+  it('provider settle 后违约回访 onChunk：done/error 之后的迟到 chunk 一律丢弃', async () => {
+    let stray!: (t: string) => void
+    setProviderOverride(
+      providerStub(async (_s, _m, _r, onChunk) => {
+        stray = onChunk
+        onChunk('首')
+        return okResult()
+      })
+    )
+    const doneCase = fakeSender()
+    startChat(doneCase.sender, baseReq())
+    await settle()
+    stray('迟到') // resolve 后回访
+    expect(doneCase.events.map((e) => e.channel)).toEqual(['ai:chunk', 'ai:done'])
+
+    let stray2!: (t: string) => void
+    setProviderOverride(
+      providerStub(async (_s, _m, _r, onChunk) => {
+        stray2 = onChunk
+        throw new AiCallError('network', '断线')
+      })
+    )
+    const errCase = fakeSender()
+    startChat(errCase.sender, baseReq({ requestId: 'r9' }))
+    await settle()
+    stray2('幽灵') // reject 后回访
+    expect(errCase.events.map((e) => e.channel)).toEqual(['ai:error'])
+  })
+
+  it('流中途窗口销毁：下一次 emit 即 abort 控制器（不再为死窗烧配额），事件全程哑火', async () => {
+    let pushChunk!: (t: string) => void
+    let seenSignal!: AbortSignal
+    setProviderOverride(
+      providerStub((_s, _m, _r, onChunk, opts) => {
+        pushChunk = onChunk
+        seenSignal = opts?.signal as AbortSignal
+        return new Promise<ProviderChatResult>((_, reject) => {
+          seenSignal.addEventListener('abort', () => reject(new AiCallError('cancelled', '窗口已亡')), { once: true })
+        })
+      })
+    )
+    const { events, sender, setDestroyed } = fakeSender()
+    startChat(sender, baseReq())
+    await settle()
+    expect(seenSignal.aborted).toBe(false)
+    setDestroyed(true)
+    pushChunk('无人收听') // 窗口死后的第一次 emit → 触发 abort → provider reject → error emit 亦哑火
+    await settle()
+    expect(seenSignal.aborted).toBe(true)
+    expect(events).toHaveLength(0)
+    expect(inflightCount()).toBe(0)
+  })
+})
+
 describe('并发隔离（多 requestId 零串台）', () => {
   it('两请求交错出流：每条事件的 requestId 与自家 chunk/done 严格配对', async () => {
     setProviderOverride(
