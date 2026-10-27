@@ -28,6 +28,7 @@ import {
 import type { CharacterGender, CharacterRole, CharacterTag } from '@/common/ipc'
 import type { CharacterV2, EntityLink } from '@/common/schema'
 import { useCharacter, useVolume, useSetting } from '../../hooks/useIPC'
+import { notifyEntitiesChanged } from '../../services/entityEvents'
 
 const { Text } = Typography
 const { TextArea } = Input
@@ -205,9 +206,12 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
       }
       if (editingCharacter) {
         await updateCharacter(projectPath, { ...editingCharacter, ...content })
+        // FI-1：自写被 watcher 源头抑制、不回声 book:changed——图谱刷新靠本通知
+        notifyEntitiesChanged()
         messageApi.success('角色已更新')
       } else {
         await createCharacter(projectPath, content)
+        notifyEntitiesChanged()
         messageApi.success('角色已创建')
       }
       setModalVisible(false)
@@ -230,6 +234,7 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
   const handleDelete = async (characterId: string) => {
     try {
       await deleteCharacter(projectPath, characterId)
+      notifyEntitiesChanged()
       messageApi.success('角色已删除')
       loadCharacters()
     } catch (error) {

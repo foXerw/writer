@@ -18,7 +18,9 @@ export type MainToRendererEvents = {
   'file:saved': (filePath: string) => void
   'stats:updated': (stats: WritingStats) => void
   'menu:event': (event: string, ...args: unknown[]) => void
-  // Task 9：书目录外部变更（watcher 300ms debounce 合并后一次广播；含本应用自写回声——裁定 5 接受）
+  // Task 9：书目录外部变更（watcher 300ms debounce 合并后一次广播；本应用自写已在广播前按
+  // ~1s 自写窗口剔除——修订轮2 I1，取代裁定 5「接受回声噪音」，常态只达外部改动；越窗漏出的
+  // 自写仍由渲染层内容比对兜底）
   'book:changed': (event: BookChangedEvent) => void
 }
 

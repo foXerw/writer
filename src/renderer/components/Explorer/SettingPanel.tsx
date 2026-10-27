@@ -30,6 +30,7 @@ import type { SettingCategory } from '@/common/ipc'
 // parentId/order/links 暂不在面板暴露——M2 不新增世界 UI，存量字段经 updateSetting 整条透传保存）
 import type { WorldEntryV2 } from '@/common/schema'
 import { useSetting } from '../../hooks/useIPC'
+import { notifyEntitiesChanged } from '../../services/entityEvents'
 
 const { Text } = Typography
 const { TextArea } = Input
@@ -100,9 +101,12 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
       const values = await form.validateFields()
       if (editingSetting) {
         await updateSetting(projectPath, { ...editingSetting, ...values })
+        // FI-1：自写被 watcher 源头抑制、不回声 book:changed——图谱刷新靠本通知
+        notifyEntitiesChanged()
         messageApi.success('设定已更新')
       } else {
         await createSetting(projectPath, { ...values })
+        notifyEntitiesChanged()
         messageApi.success('设定已创建')
       }
       setModalVisible(false)
@@ -116,6 +120,7 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
   const handleDelete = async (settingId: string) => {
     try {
       await deleteSetting(projectPath, settingId)
+      notifyEntitiesChanged()
       messageApi.success('设定已删除')
       loadSettings()
     } catch (error) {

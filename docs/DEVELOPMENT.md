@@ -23,11 +23,17 @@
 >
 > M3 交付：`src/renderer/components/Graph/`（graphModel 纯构图/布局核心 + 单测钉死退化数据与确定性布局；
 > GraphView React Flow 只读画布；CharacterNode/WorldNode 自定义节点；`.graph-view` 作用域主题，深浅色随 token 走）；
-> `Workspace/hooks/useGraphData.ts`（角色+世界观一次拉齐、book:changed 实时刷新、加载浮层仅首拉）；
+> `Workspace/hooks/useGraphData.ts`（角色+世界观一次拉齐；刷新双腿=外部改动经 book:changed、应用内
+> 面板保存经渲染层 entityEvents pub-sub〔终审 FI-1，不新增 IPC 通道〕；加载浮层仅首拉）；
 > Workspace 主区 `写作|图谱` 一级 + `人物关系|世界观` 二级视图切换（专注模式恒为写作态）与节点点击→侧栏面板联动。
-> 验证：typecheck 0 错、lint 0 错、`npm run test` 317 用例全绿、build 通过；CDP 真机实测图谱真实渲染
-> （人物图 3 节点/3 边、世界观图 4 节点/1 边、容器 922×753px、空书显示空态、后台刷新无浮层闪烁、
-> 切回写作编辑器状态不丢）。点击后面板内定位/滚动到该实体卡未做（stretch，留 M4）。
+> 验证：typecheck 0 错、lint 0 错、`npm run test` 321 用例全绿、build 通过；CDP 真机实测图谱真实渲染
+> （人物图 3 节点/3 边、世界观图 4 节点/1 边、容器 922×753px、空书显示空态、后台刷新无浮层闪烁）。
+> 切回写作视图：内容与脏标记保留（编辑会话态在 Workspace 层 useEditorSession）；Monaco 光标/滚动位置
+> 随编辑器卸载而丢失，恢复列为 M4（见 M3 spec §3 非目标）。点击节点=侧栏切到对应面板并展开；
+> 面板内定位/滚动到该实体卡未做（M4，CharacterPanel 已留 onSelectCharacter 接缝）。
+> 终审整改（FI-1）CDP 实测：图谱视图不卸载，于角色面板内给墨渊新增关系「师徒→林昭」并保存，
+> 边数 3→4、新边标签出现——应用内保存即时刷新图谱端到端成立（此前 M2 自写抑制 I1 使应用内保存
+> 从不回声 book:changed，图谱对应用内编辑永不刷新）。
 >
 > 非 SPEC 里程碑的可选储备（backlog，不进上表）：多书管理与工作台扩展、存量老书批量回填（M6 后另设计）。
 
@@ -506,6 +512,27 @@
 
 ## 最新变更
 
+### 2026-10-28 — M3 终审整改（应用内实体编辑实时刷新 + 文档诚实化）
+
+- **FI-1**：新增渲染层 `src/renderer/services/entityEvents.ts`（实体变更 pub-sub：模块级 Set、无依赖、
+  监听器异常逐个隔离）；CharacterPanel/SettingPanel 全部 create/update/delete 成功点调用
+  `notifyEntitiesChanged()`；`useGraphData` 挂载期订阅、卸载反订阅——应用内保存后图谱即时刷新。
+  CDP 实测：图谱视图全程不卸载，角色面板给墨渊新增关系「师徒→林昭」保存后边数 **3→4**、新边标签
+  出现、3.5s 逐帧采样零「加载中」浮层。不新增 IPC 通道（spec §6 约束不破）；外部改动仍走
+  book:changed 老链路，两腿并列。
+- **前提更正**：Task 2 注释/报告曾假设「自保存会经 watcher 回声 book:changed」——自 M2 修订轮2 I1
+  起自写在广播前按 ~1s 自写窗口从源头剔除，该前提不成立；useGraphData / `common/ipc.ts` /
+  useBookEvents / Workspace / bookChangeConflict 的相关注释已全部改为事实表述。`hasLoadedRef`
+  首拉门保留（对真·外部改动的后台刷新依旧必要），其注释归因已更正。
+- **FI-2**：撤下「切回写作编辑器状态不丢」过强表述——切回写作视图：内容与脏标记保留（编辑会话态
+  在 Workspace 层 useEditorSession）；Monaco 光标/滚动位置随编辑器卸载丢失，恢复列为 M4
+  （M3 spec §3 新增非目标条目）。不改编辑器挂载生命周期。
+- **FI-3**：M3 spec §7 DoD 由「点角色节点→…选中该角色」修正为 shipped 语义「侧栏切到角色面板并
+  展开」（实体卡定位/选中列 M4，CharacterPanel 已留 `onSelectCharacter` 接缝）。
+
+**验证**：typecheck 0 错、lint 0 error（1 既有 warning）、`npm run test` 321 用例全绿
+（+entityEvents 4 条）、build 通过、CDP 真机实测如上。
+
 ### 2026-08-04 — 浅色主题（深色/浅色双主题切换）
 
 **新增功能**:
@@ -593,3 +620,4 @@
 | 2026-01-16 | 1.16 | 功能修复与深色主题优化：项目名称传递、错误弹窗样式、受控Modal组件 |
 | 2026-10-26 | 2.0 (M2) | **里程碑 M2 数据底座完成**：v2 书目录格式（`schema.ts`+校验器）、`bookStore/`（原子写/五域缓存/迁移续传/自检/fs 监听）、`project:open` 单一入口+迁移报告 UI、外部改动冲突弹窗、`docs/BOOK_FORMAT.md`。typecheck 0 错/lint 0 错/294 测试全绿/build 通过 |
 | 2026-10-28 | 3.0 (M3) | **里程碑 M3 图谱视图完成**：`graphModel` 纯构图（角色径向/世界观分列，退化数据容错）+ React Flow 只读画布 + 自定义节点 + `.graph-view` 主题；Workspace `写作\|图谱`/`人物关系\|世界观` 切换与节点点击联动侧栏；`useGraphData` 实时刷新。typecheck 0 错/lint 0 错/317 测试全绿/build 通过 + CDP 真机渲染实测 |
+| 2026-10-28 | 3.1 (M3 终审) | **M3 终审整改波 FI-1/FI-2/FI-3**：新增渲染层 `entityEvents` pub-sub，应用内角色/设定保存即时刷新图谱（CDP 实测边数 3→4、画布不重挂、零浮层）；更正「自写回声 book:changed」假前提的全部注释；「切回写作编辑器状态不丢」表述诚实化（光标/滚动恢复列 M4）；spec §3/§7 裁定修订。321 测试全绿/门禁全过 |
