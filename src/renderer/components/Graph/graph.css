@@ -1,0 +1,110 @@
+/* ============================================================
+   M3 图谱视图主题（Task 2）
+   纪律（Review Focus 5）：本文件每条规则都以 `.graph-view` 前缀限定——
+   @xyflow/react 基础样式表（GraphView.tsx 内 import，全局、只能动 .react-flow__*
+   家族，可接受）与 react-flow 默认值都不会外溢到 antd/其他界面；反向地，
+   我们的覆盖也只在该容器内生效。
+   配色不硬编码：全部引用 global.css 设计 token（xyflow v12 的 --xy-* 变量钩子
+   接受任何 CSS 值，var() 在 SVG fill/stroke 上同样解析），深浅主题自动跟随。
+   ============================================================ */
+
+.graph-view {
+  background-color: var(--color-paper);
+  overflow: hidden;
+}
+
+/* xyflow v12 全部样式走 var(--xy-x, var(--xy-x-default)) 钩子：
+   在非 default 层注入本应用色板，边/标签/控件/把手/背景点/水印一次换色 */
+.graph-view .react-flow {
+  --xy-edge-stroke: var(--color-border);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: var(--color-primary);
+  --xy-edge-label-color: var(--color-text-secondary);
+  --xy-edge-label-background-color: var(--color-bg-elevated);
+  --xy-controls-button-background-color: var(--color-bg-elevated);
+  --xy-controls-button-background-color-hover: var(--color-bg-hover);
+  --xy-controls-button-color: var(--color-text-secondary);
+  --xy-controls-button-color-hover: var(--color-text);
+  --xy-controls-button-border-color: var(--color-border);
+  --xy-controls-box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  --xy-handle-background-color: var(--color-bg-elevated);
+  --xy-handle-border-color: var(--color-text-tertiary);
+  --xy-background-pattern-color: var(--color-border);
+  --xy-attribution-background-color: transparent;
+}
+
+/* 边上的关系标签（仅角色图有）：基础 10px 偏小，且标签底框描一圈边线 */
+.graph-view .react-flow__edge-text {
+  font-size: 11px;
+}
+
+.graph-view .react-flow__edge-textbg {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.graph-view .react-flow__attribution a {
+  color: var(--color-text-tertiary);
+}
+
+/* ---------- 自定义节点卡片（CharacterNode / WorldNode 共用） ---------- */
+.graph-view .graph-node {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+  background-color: var(--color-bg-elevated);
+  /* 2px 边框是 data.color 唯一落点（组件内联 style 覆盖此兜底值） */
+  border: 2px solid var(--color-border);
+  color: var(--color-text);
+  text-align: center;
+  user-select: none;
+  transition: box-shadow 0.15s ease;
+}
+
+.graph-view .graph-node:hover {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.graph-view .graph-node--character {
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  padding: 10px;
+}
+
+.graph-view .graph-node--world {
+  min-width: 140px;
+  max-width: 200px;
+  border-radius: 10px;
+}
+
+.graph-view .graph-node__label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.graph-view .graph-node__sub {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--color-text-secondary);
+}
+
+/* ---------- 空态 / 加载态浮层（pointer-events:none 不挡画布平移缩放） ---------- */
+.graph-view .graph-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  pointer-events: none;
+  z-index: 10;
+}
