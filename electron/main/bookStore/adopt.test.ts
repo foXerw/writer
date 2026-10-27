@@ -29,7 +29,7 @@ import {
   upsertForeshadow
 } from './narrative'
 import { characterIds, worldIds } from './refs'
-import { aiIndexFile, chapterSummaryFile } from './paths'
+import { aiIndexFile, chapterSummaryFile, foreshadowFile } from './paths'
 import { newProposalId, proposalPath } from '../../../src/common/proposal'
 import type { ProposalChange, ProposalFile } from '../../../src/common/proposal'
 import type { Chapter } from '../../../src/common/ipc'
@@ -160,7 +160,7 @@ describe('FIELD_ALLOWLIST', () => {
 // ---------------------------------------------------------------------------
 
 describe('create×character', () => {
-  it('全形状 after → listCharacters 出现；aiTouched 缺失（裁定：新建不标记）；提案 settled', () => {
+  it('全形状 after → listCharacters 出现；aiTouched 播种所写非空字段（裁定 A）；提案 settled', () => {
     const { p, ch } = setup()
     const f = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter() })])
     const r = adoptChanges(p, f.id, [0], [])
@@ -169,11 +169,41 @@ describe('create×character', () => {
     expect(list).toHaveLength(1)
     expect(list[0].name).toBe('阿明')
     expect(list[0].personality).toBe('沉稳')
-    expect(list[0].aiTouched).toBeUndefined()
+    // 裁定 A：非空写入字段入册即记名（allowlist 序）；空数组字段（relationships/arc/tags/links）不入账
+    expect(list[0].aiTouched).toEqual(['name', 'gender', 'age', 'role', 'appearance', 'personality', 'background'])
     expect(list[0].createdAt).toMatch(ISO_RE)
     const stored = getProposal(p, f.id)
     expect(stored?.status).toBe('settled')
     expect(stored?.appliedIndexes).toEqual([0])
+  })
+
+  it('裁定 A 连锁：后续整理改 AI 自建卡的记名字段，无需 overwritesHuman 直接应用', () => {
+    const { p, ch } = setup()
+    const f1 = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter() })])
+    adoptChanges(p, f1.id, [0], [])
+    const created = listCharacters(p)[0]
+    const f2 = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'update', entity: 'character', targetId: created.id, after: { personality: '二稿性格' } })
+    ])
+    const r = adoptChanges(p, f2.id, [0], []) // 无旗标、无确认
+    expect(r).toEqual({ applied: [0], refused: [] })
+    const stored = getCharacter(p, created.id)!
+    expect(stored.personality).toBe('二稿性格')
+    expect(stored.aiTouched).toEqual(['name', 'gender', 'age', 'role', 'appearance', 'personality', 'background']) // 去重不加位
+  })
+
+  it('裁定 A 空值不入账：create 携空 personality → 不记名，人写后照常受保护', () => {
+    const { p, ch } = setup()
+    const f = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter({ personality: '' }) })])
+    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    const created = listCharacters(p)[0]
+    expect(created.aiTouched).not.toContain('personality')
+    // 人手填写后（repo 直写模拟）该字段 = 人写：AI 再改需旗标+确认
+    updateCharacter(p, { ...created, personality: '人写性格' })
+    const f2 = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'update', entity: 'character', targetId: created.id, after: { personality: 'AI 覆盖' } })
+    ])
+    expect(adoptChanges(p, f2.id, [0], []).refused[0].reason).toBe('REFUSED: 覆盖人写内容 personality')
   })
 
   it('after 缺必备字段 → 整条拒（错误串带字段路径）且零落盘，提案保持 pending', () => {
@@ -280,7 +310,7 @@ describe('update×character origin 保护（R1）', () => {
     expect(getCharacter(p, human.id)?.age).toBe(40)
   })
 
-  it('保留键（id/createdAt/updatedAt/aiTouched/status）与未知键在 after 中出现 → 跳过不赋值', () => {
+  it('保留键回显（id/createdAt/updatedAt/aiTouched/status）→ 静默丢弃，其余字段照常应用', () => {
     const { p, ch } = setup()
     const doc = createCharacter(p, { name: '守备', gender: 'male', role: 'minor' })
     const f = plant(p, ch.id, [
@@ -290,7 +320,6 @@ describe('update×character origin 保护（R1）', () => {
         updatedAt: '垃圾',
         aiTouched: ['伪造'],
         status: 'done',
-        origin: 'human',
         personality: 'AI 值'
       })
     ])
@@ -299,9 +328,23 @@ describe('update×character origin 保护（R1）', () => {
     const stored = getCharacter(p, doc.id)!
     expect(stored.id).toBe(doc.id)
     expect(stored.createdAt).toBe(doc.createdAt)
-    expect(stored.aiTouched).toEqual(['personality'])
+    expect(stored.aiTouched).toEqual(['personality']) // '伪造' 没混进账本
     expect((stored as unknown as Record<string, unknown>).status).toBeUndefined()
-    expect((stored as unknown as Record<string, unknown>).origin).toBeUndefined()
+  })
+
+  it('评审 I2：未知字段（非 allowlist 非保留回显）→ 整条拒 REFUSED: 未知字段 <key>，零写盘', () => {
+    const { p, ch } = setup()
+    const doc = createCharacter(p, { name: '守备', gender: 'male', role: 'minor' })
+    const f = plant(p, ch.id, [
+      updateChange(ch.id, doc.id, { personality: 'AI 值', origin: 'human' }) // 合法+未知混合
+    ])
+    const r = adoptChanges(p, f.id, [0], [])
+    expect(r.applied).toEqual([])
+    expect(r.refused[0].reason).toBe('REFUSED: 未知字段 origin')
+    const stored = getCharacter(p, doc.id)!
+    expect(stored.personality).toBe('') // 合法字段也没落盘（appliedIndexes 绝不说谎）
+    expect(stored.aiTouched).toBeUndefined()
+    expect(loadProposalRaw(p, f.id).proposal.status).toBe('pending')
   })
 
   it('after 无可应用字段（空对象/全保留键）→ REFUSED: 无可应用字段；after 非对象同拒', () => {
@@ -385,7 +428,7 @@ describe('__proto__ 加固（R2）', () => {
 // ---------------------------------------------------------------------------
 
 describe('world create/update', () => {
-  it('create×world 全形状 → listWorldEntries 出现', () => {
+  it('create×world 全形状 → listWorldEntries 出现；aiTouched 播种非空写入字段（裁定 A）', () => {
     const { p, ch } = setup()
     const f = plant(p, ch.id, [
       mkChange(ch.id, {
@@ -397,7 +440,8 @@ describe('world create/update', () => {
     const list = listWorldEntries(p)
     expect(list).toHaveLength(1)
     expect(list[0].title).toBe('青云山')
-    expect(list[0].aiTouched).toBeUndefined()
+    // 非空写入 = title/category/content/order(1≠0)/tags(非空数组)；parentId null 与 links [] 不入账
+    expect(list[0].aiTouched).toEqual(['title', 'category', 'content', 'order', 'tags'])
   })
 
   it('update×world 人写 content：无旗标拒 / 确认覆盖后 aiTouched 记账', () => {
@@ -455,6 +499,13 @@ describe('plotline / choice', () => {
     ])
     const r = adoptChanges(p, only.id, [0], [])
     expect(r.refused[0].reason).toBe('REFUSED: 无可应用字段')
+    // 评审 I2 同纪律覆盖 mergePlain 路径：未知字段整条拒，合法字段也不落盘
+    const unknown = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'update', entity: 'plotline', targetId: pl.id, after: { summary: '再改', color: '红' } })
+    ])
+    const r2 = adoptChanges(p, unknown.id, [0], [])
+    expect(r2.refused[0].reason).toBe('REFUSED: 未知字段 color')
+    expect(listPlotlines(p).find((x) => x.id === pl.id)!.summary).toBe('新纲')
   })
 
   it('create×choice 挂真章 → listChoices；幻影章 → REF_BROKEN 拒', () => {
@@ -586,6 +637,37 @@ describe('foreshadow', () => {
     const stored = readLedger(p).entries.find((x) => x.id === e.id)!
     expect(stored.status).toBe('open')
     expect(stored.resolvedChapterId).toBeNull()
+  })
+
+  it('评审 I1：转移+坏类型说明字段混合 → 整条拒且台账字节不动（禁止半应用）', () => {
+    const { p, ch } = setup()
+    const e = mkForeshadow()
+    upsertForeshadow(p, e)
+    const before = readFileSync(foreshadowFile(p), 'utf8')
+    const f = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { status: 'resolved', plannedPayoffNote: 123 } })
+    ])
+    const r = adoptChanges(p, f.id, [0], [])
+    expect(r.applied).toEqual([])
+    expect(r.refused[0].reason).toContain('伏笔形状非法')
+    expect(r.refused[0].reason).toContain('foreshadowEntry.plannedPayoffNote')
+    // 关键判别：状态转移没有先行落账——磁盘字节逐一不动
+    expect(readFileSync(foreshadowFile(p), 'utf8')).toBe(before)
+    expect(readLedger(p).entries.find((x) => x.id === e.id)?.status).toBe('open')
+  })
+
+  it('评审 I1 对照：转移+说明字段混合合法 → 双落（status resolved + 回收章 + 新说明）', () => {
+    const { p, ch } = setup()
+    const e = mkForeshadow()
+    upsertForeshadow(p, e)
+    const f = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { status: 'resolved', plannedPayoffNote: '新计划' } })
+    ])
+    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    const stored = readLedger(p).entries.find((x) => x.id === e.id)!
+    expect(stored.status).toBe('resolved')
+    expect(stored.resolvedChapterId).toBe(ch.id)
+    expect(stored.plannedPayoffNote).toBe('新计划')
   })
 
   it('update×foreshadow 仅 note 类字段：plannedPayoffNote/note 落盘、机对状态不动；表外字段拒', () => {

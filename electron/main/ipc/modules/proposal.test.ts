@@ -100,6 +100,20 @@ describe('proposal:save 双保险 + 盖章', () => {
     expect(existsSync(proposalPath(p, file.id))).toBe(false)
   })
 
+  it('条目数上限：201 条 → PROPOSAL_TOO_LARGE 拒落；200 条边界放行', async () => {
+    const p = mkTmpBook()
+    const ch = createChapter(p, '第一章')
+    const file = mkFile(ch.id)
+    file.changes = new Array(201).fill(file.changes[0])
+    await expect(
+      Promise.resolve().then(() => getHandler('proposal:save')(null, { projectPath: p, file }))
+    ).rejects.toThrow(/PROPOSAL_TOO_LARGE: 201 > 200/)
+    expect(existsSync(proposalPath(p, file.id))).toBe(false)
+    const edge: ProposalFile = { ...file, changes: new Array(200).fill(file.changes[0]) }
+    const saved = (await getHandler('proposal:save')(null, { projectPath: p, file: edge })) as ProposalFile
+    expect(saved.changes).toHaveLength(200)
+  })
+
   it('盖章：chapterId 不是现存章 → PROPOSAL_CHAPTER_MISSING 拒落', async () => {
     const p = mkTmpBook()
     createChapter(p, '第一章')

@@ -5,6 +5,8 @@
 // 错误语义（裁定：不复用 AI 路径的 [kind] 词表——proposal 通道错误是 PROPOSAL_*: 前缀的
 // 平文消息，CHAPTER_MISSING 先例同款，渲染层原样展示）：
 // - PROPOSAL_INVALID: <id|abs>: …   文件级校验失败（save 双保险 / 点读坏档抛穿）
+// - PROPOSAL_TOO_LARGE: <n> > 200   save 条目数上限（通道级策略——validateProposal 不关心数量，
+//                                   病理输出/手滑巨型文件在门口拦；存储层/引擎不设限，存量文件可读可采纳）
 // - PROPOSAL_CHAPTER_MISSING: <id>  save 盖章：提案出处章不是现存章（幻觉/过期章 id 拒落）
 // - PROPOSAL_MISSING: <id>          adopt/reject 目标提案不存在
 // - BAD_PROPOSAL_ID: <id>           id 路径安全门（join 重定向封死）
@@ -15,6 +17,9 @@ import { validateProposal } from '../../../../src/common/proposal'
 import { getProposal, listProposals, writeProposal } from '../../bookStore/proposals'
 import { adoptChanges, rejectChanges } from '../../bookStore/adopt'
 import { listChapters } from '../../bookStore/chapters'
+
+/** 单份提案条目数上限（通道级 save 政策，评审折入；T5 面板对超大提案也没有可用性）。 */
+const MAX_PROPOSAL_CHANGES = 200
 
 export function registerProposalHandlers(): void {
   ipcMain.handle('proposal:getAll', (_e, params: { projectPath: string }): ProposalFile[] =>
@@ -37,6 +42,9 @@ export function registerProposalHandlers(): void {
       if (errors.length > 0) {
         const id = typeof file === 'object' && file !== null ? String(file.id) : '?'
         throw new Error(`PROPOSAL_INVALID: ${id}: ${errors.join('; ')}`)
+      }
+      if (file.changes.length > MAX_PROPOSAL_CHANGES) {
+        throw new Error(`PROPOSAL_TOO_LARGE: ${file.changes.length} > ${MAX_PROPOSAL_CHANGES}`)
       }
       if (!listChapters(projectPath).some((c) => c.id === file.chapterId)) {
         throw new Error(`PROPOSAL_CHAPTER_MISSING: ${file.chapterId}`)

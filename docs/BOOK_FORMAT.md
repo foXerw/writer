@@ -374,7 +374,8 @@ foreshadow/summary/index）组合表钉死在 `ALLOWED_OPS`——**delete 仅限
 `after`（create/update 必填，内容深校验发生在**采纳期**）、`source` `{chapterId: UUID, quote: 非空
 ≤300 字}`（出处引文，必须逐字来自正文）、`overwritesHuman`（仅 update 有意义，见 §7.5）。
 
-- **谁写**：① 整理链（T4）经 `proposal:save` 通道落盘（主进程 validateProposal 双保险 + 出处章盖章）；
+- **谁写**：① 整理链（T4）经 `proposal:save` 通道落盘（主进程 validateProposal 双保险 + 出处章盖章
+  + 条目数上限 200（`PROPOSAL_TOO_LARGE`，通道级政策——存量超限文件仍可读可采纳））；
   ② 采纳引擎（`bookStore/adopt.ts`）记账重写（appliedIndexes/status、驳回删条目——全部条目删空 =
   整份文件删除）；③ **第三方 AI 工具可直接读写本目录**（提案即文件的本意）——写前必须过
   `validateProposal`（返回空数组才许落盘）+ 原子写（§8 守则 1），文件名 = id。
@@ -416,8 +417,11 @@ AI 采纳引擎写过的字段名清单，**只由采纳引擎维护**（应用�
 
 采纳引擎对 update 条目的行为：命中人写字段且 `overwritesHuman !== true` → 整条拒绝
 （`REFUSED: 覆盖人写内容 <field>`）；`overwritesHuman: true` 还要求该条目索引出现在通道参数
-`confirmedOverwrite[]`（差异面板显式勾选）否则 `REFUSED: 未确认覆盖`。create 的新实体**不携带**
-`aiTouched`（整卡皆 AI 产但入册即归作者监护——后续 AI 修改同样需要旗标+确认，从严）。
+`confirmedOverwrite[]`（差异面板显式勾选）否则 `REFUSED: 未确认覆盖`；`after` 携带 allowlist 与
+保留回显集（id/createdAt/updatedAt/aiTouched/status）之外的**未知字段** → 整条拒绝
+（`REFUSED: 未知字段 <key>`——静默丢弃会让采纳账目说谎）。create×character/world 的新实体
+**播种 `aiTouched` = 所写非空字段名清单**（裁定 A：AI 产字段不得伪装人写——后续整理改自己建的卡
+无需旗标；空值字段不入账，人后续填写天然是人写）。create×plotline/choice/foreshadow 无此字段。
 已知边界：人手编辑 UI 不改写 `aiTouched`（人改过的 AI 字段仍视为 AI 领地）——UI 侧收口留后续里程碑。
 
 ### 7.6 AI 设置与密钥的存放位置（不在书目录）

@@ -105,8 +105,8 @@ export interface CharacterV2 {
   /**
    * M4b origin 机制（控制器裁定 R1）：AI 采纳引擎写过的字段名清单。
    * 语义：某已存字段是「人写」当且仅当它非空（string trim 后非空 / 数组非空）且名字不在 aiTouched。
-   * 只由 adopt 引擎维护（应用字段时追加）；校验器刻意不检查本字段（宽容，向前兼容），
-   * 人手编辑路径原样回显即可。缺失 = 从未有 AI 采纳写入（v2 存量数据常态）。
+   * 只由 adopt 引擎维护（create 播种所写非空字段、update 应用时追加）；校验器刻意不检查本字段
+   * （宽容，向前兼容），人手编辑路径原样回显即可。缺失 = 从未有 AI 采纳写入（v2 存量数据常态）。
    */
   aiTouched?: string[]
   // 一律 ISO 字符串（new Date().toISOString()），根治 v1 Date 序列化漂移

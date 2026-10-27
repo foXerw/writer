@@ -8,16 +8,22 @@
 //   update 命中人写字段且无 overwritesHuman:true → 整条拒 `REFUSED: 覆盖人写内容 <field>`；
 //   overwritesHuman:true 还需通道参数 confirmedOverwrite 含该索引（UI 已确认），否则 `REFUSED: 未确认覆盖`。
 //   应用成功 = 显式逐键拷贝 + aiTouched 追加所应用键 + updatedAt 刷新（repository 侧）。
-//   create 不设 aiTouched（裁定：新建整卡皆 AI 产但暂无人写内容——入册即归作者监护，从严保护）。
+//   create×character/world 播种 aiTouched = 所写非空字段名清单（裁定 A：AI 产字段不得伪装人写——
+//   否则后续整理改自己建的卡也要旗标+确认，摩擦裁定④的收口）。
 // - R2 __proto__ 加固：提案载荷绝不 Object.assign / spread-合并进存量对象。应用一律走
 //   FIELD_ALLOWLIST（schema.ts 声明字段）+ own-property 双门；'__proto__' 与保留键
 //   （id/createdAt/updatedAt/aiTouched/status）显式跳过——'__proto__' 键的赋值会触发 setter，
 //   连 merged[key] 形式都禁止，只能 continue。
+//   update 侧未知字段（既不在 allowlist 也不在保留回显集）→ 整条拒 `REFUSED: 未知字段 <key>`
+//   （评审 I2 裁定：静默丢弃会让 appliedIndexes 说谎——提案要求了 X、什么都没应用、却显示已采纳；
+//   保留键回显照旧静默丢弃——信封回显是 T2 规约容忍的正常噪音）。
 // - R3 采纳期深校验：create×character/world/plotline/choice → after 过对应 schema 校验器
 //   （注入新鲜 randomUUID + now ISO 后全形状校验）；create×foreshadow → after 即 ForeshadowEntry
 //   （validateForeshadowEntry；id 一律注入新 UUID——防 AI 伪造/幻觉 id 撞上既有条目被 upsert 归并，
 //   这是对本引擎的从严偏差，见 T3 报告）；update×foreshadow → 仅 status/plannedPayoffNote/note，
-//   状态转移路由 narrative.ts 状态机（resolved 的回收章 = 整理章 proposal.chapterId）；
+//   任何写盘前先对「存量+拟改字段」候选整体跑 validateForeshadowEntry（评审 I1：半应用即撒谎——
+//   转移已落账而 note 类型坏被拒，条目状态与提案账目分叉；预校验保证单条全有或全无），
+//   通过后状态转移路由 narrative.ts 状态机（resolved 的回收章 = 整理章 proposal.chapterId）；
 //   update×summary → after.text 非空，targetId（create 缺省 = 整理章）必须是存在章，
 //   落 `.ai/summaries/chapters/<id>.yaml` {chapterId,text,updatedAt,aiModel}；
 //   update×index → after.adds[{entityId,chapterId}] 双 UUID 形状 + entityId ∈ 角色∪词条∪伏笔 +
@@ -177,9 +183,9 @@ function mergeGuarded(
   const merged: Record<string, unknown> = { ...stored }
   const appliedKeys: string[] = []
   for (const key of Object.keys(after)) {
-    if (key === '__proto__') continue // R2：显式跳过——对该键赋值会触发原型 setter
-    if (RESERVED_UPDATE.has(key)) continue // 系统专属键：跳过不赋值（仓库侧另行维护）
-    if (!allowlist.includes(key)) continue // schema 未声明字段：跳过不赋值（宽容，不整条拒）
+    if (key === '__proto__') continue // R2：显式跳过（安全跳过，不按未知字段拒——对该键赋值会触发原型 setter）
+    if (RESERVED_UPDATE.has(key)) continue // 保留键回显：静默丢弃（信封回显是正常噪音，仓库侧另行维护）
+    if (!allowlist.includes(key)) throw new Error(`未知字段 ${key}`) // 评审 I2：静默丢弃会让 appliedIndexes 说谎——整条拒（首个肇事键入 reason）
     if (change.overwritesHuman !== true && !touched.has(key) && isHumanContent(stored[key])) {
       throw new Error(`覆盖人写内容 ${key}`) // R1：人写内容必须显式旗标 + 通道确认
     }
@@ -192,7 +198,7 @@ function mergeGuarded(
   return merged
 }
 
-/** plotline/choice 专用：无 aiTouched 语义（类型上没有该字段），仅 allowlist + 保留键跳过。 */
+/** plotline/choice 专用：无 aiTouched 语义（类型上没有该字段）；未知字段拒绝纪律同 mergeGuarded（I2）。 */
 function mergePlain(
   stored: Record<string, unknown>,
   after: Record<string, unknown>,
@@ -201,9 +207,9 @@ function mergePlain(
   const merged: Record<string, unknown> = { ...stored }
   let count = 0
   for (const key of Object.keys(after)) {
-    if (key === '__proto__') continue
-    if (RESERVED_UPDATE.has(key)) continue
-    if (!allowlist.includes(key)) continue
+    if (key === '__proto__') continue // R2 安全跳过
+    if (RESERVED_UPDATE.has(key)) continue // 保留键回显：静默丢弃
+    if (!allowlist.includes(key)) throw new Error(`未知字段 ${key}`) // 评审 I2
     merged[key] = after[key]
     count += 1
   }
@@ -228,9 +234,25 @@ function buildCandidate(after: Record<string, unknown>, allowlist: string[]): Re
   return candidate
 }
 
+/**
+ * 裁定 A（create 播种 aiTouched）：after 实际写入且值非空的 allowlist 字段名（按 allowlist 序）。
+ * 空值字段（''/[]/0/null）不入账——空即无内容，人后续填写天然是人写（R1 判定不受影响）。
+ */
+function writtenNonEmptyKeys(after: Record<string, unknown>, allowlist: string[]): string[] {
+  const keys: string[] = []
+  for (const key of allowlist) {
+    if (hasOwn(after, key) && isHumanContent(after[key])) keys.push(key)
+  }
+  return keys
+}
+
 function adoptCreateCharacter(p: string, change: ProposalChange): void {
-  const candidate = buildCandidate(requireAfterRecord(change), FIELD_ALLOWLIST.character)
-  const errors = validateCharacterV2(candidate) // aiTouched 不在 allowlist → 新建不携带（裁定）
+  const after = requireAfterRecord(change)
+  const candidate = buildCandidate(after, FIELD_ALLOWLIST.character)
+  // 裁定 A：AI 产字段入册即记名——后续整理改自己建的卡不再被误判「覆盖人写内容」
+  const touched = writtenNonEmptyKeys(after, FIELD_ALLOWLIST.character)
+  if (touched.length > 0) candidate.aiTouched = touched // 校验器对 aiTouched 宽容（schema.ts 注释）
+  const errors = validateCharacterV2(candidate)
   if (errors.length > 0) throw new Error(`角色形状非法: ${errors.join('; ')}`)
   createCharacter(
     p,
@@ -244,7 +266,10 @@ function adoptCreateCharacter(p: string, change: ProposalChange): void {
 }
 
 function adoptCreateWorld(p: string, change: ProposalChange): void {
-  const candidate = buildCandidate(requireAfterRecord(change), FIELD_ALLOWLIST.world)
+  const after = requireAfterRecord(change)
+  const candidate = buildCandidate(after, FIELD_ALLOWLIST.world)
+  const touched = writtenNonEmptyKeys(after, FIELD_ALLOWLIST.world) // 裁定 A（同 create×character）
+  if (touched.length > 0) candidate.aiTouched = touched
   const errors = validateWorldEntryV2(candidate)
   if (errors.length > 0) throw new Error(`词条形状非法: ${errors.join('; ')}`)
   createWorldEntry(
@@ -347,16 +372,22 @@ function adoptUpdateForeshadow(p: string, proposal: RawProposal, change: Proposa
   if (!hasStatus && !hasPayoff && !hasNote) {
     throw new Error(`无可应用字段（伏笔 update 仅允许 ${FORESHADOW_UPDATE_FIELDS.join('/')}）`)
   }
-  if (hasStatus) {
-    const next = after.status
-    if (next !== entry.status) {
-      // 机对转移一律路由 narrative.ts 状态机（非法转移 FORESHADOW_TRANSITION 逐条拒）；
-      // resolved 的回收章 = 整理章（after 无 resolvedChapterId——R3 窄门刻意不放行）
-      if (next === 'resolved') resolveForeshadow(p, id, proposal.chapterId)
-      else if (next === 'abandoned') abandonForeshadow(p, id)
-      else if (next === 'open') reopenForeshadow(p, id)
-      else throw new Error(`伏笔状态非法: ${String(next)}`)
-    }
+  // 评审 I1（单条全有或全无）：任何写盘前，先对「存量 + 拟改字段」候选整体深校验——
+  // 曾经 status 转移先落账、坏类型 note 才被 upsert 拦下，条目半应用而提案账目记拒（撒谎）。
+  // 候选校验把类型/枚举错误全部前置到零写盘时点；转移合法性（FORESHADOW_TRANSITION）本身
+  // 由状态机在写前自拒，同样零写盘——两段合起来保证本条要么全落、要么磁盘字节不动。
+  const candidate: ForeshadowEntry = { ...entry } // 存量拷贝；拟改字段仅在下方显式逐键赋值（R2）
+  if (hasStatus) candidate.status = after.status as ForeshadowEntry['status']
+  if (hasPayoff) candidate.plannedPayoffNote = after.plannedPayoffNote as string
+  if (hasNote) candidate.note = after.note as string | undefined
+  const errors = validateForeshadowEntry(candidate)
+  if (errors.length > 0) throw new Error(`伏笔形状非法: ${errors.join('; ')}`)
+  if (hasStatus && candidate.status !== entry.status) {
+    // 机对转移一律路由 narrative.ts 状态机（非法转移 FORESHADOW_TRANSITION 逐条拒，写前自拒零落盘）；
+    // resolved 的回收章 = 整理章（after 无 resolvedChapterId——R3 窄门刻意不放行）
+    if (candidate.status === 'resolved') resolveForeshadow(p, id, proposal.chapterId)
+    else if (candidate.status === 'abandoned') abandonForeshadow(p, id)
+    else reopenForeshadow(p, id) // 'open'（枚举已候选校验，剩余唯一转移值）
   }
   if (hasPayoff || hasNote) {
     const fresh = readLedger(p).entries.find((e) => e.id === id) // 转移后以最新存量为基
