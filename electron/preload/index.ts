@@ -61,6 +61,13 @@ const projectAPI: RendererToMainRequests = {
   'foreshadow:abandon': (params) => ipcRenderer.invoke('foreshadow:abandon', params),
   'foreshadow:reopen': (params) => ipcRenderer.invoke('foreshadow:reopen', params),
 
+  // AI 整理提案（M4b Task 3；参数一律 {projectPath, …} 对象形状）
+  'proposal:getAll': (params) => ipcRenderer.invoke('proposal:getAll', params),
+  'proposal:get': (params) => ipcRenderer.invoke('proposal:get', params),
+  'proposal:save': (params) => ipcRenderer.invoke('proposal:save', params),
+  'proposal:adopt': (params) => ipcRenderer.invoke('proposal:adopt', params),
+  'proposal:reject': (params) => ipcRenderer.invoke('proposal:reject', params),
+
   'dialog:openDirectory': () => ipcRenderer.invoke('dialog:openDirectory'),
   'dialog:openFile': (filters) => ipcRenderer.invoke('dialog:openFile', filters),
   'dialog:saveFile': (params) => ipcRenderer.invoke('dialog:saveFile', params),
@@ -176,6 +183,15 @@ const novelWriter: NovelWriterApi = {
     resolve: projectAPI['foreshadow:resolve'],
     abandon: projectAPI['foreshadow:abandon'],
     reopen: projectAPI['foreshadow:reopen']
+  },
+
+  // AI 整理提案（M4b Task 3）
+  proposal: {
+    getAll: projectAPI['proposal:getAll'],
+    get: projectAPI['proposal:get'],
+    save: projectAPI['proposal:save'],
+    adopt: projectAPI['proposal:adopt'],
+    reject: projectAPI['proposal:reject']
   },
 
   // 对话框

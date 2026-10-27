@@ -318,6 +318,42 @@ describe('validateProposal', () => {
 })
 
 // ---------------------------------------------------------------------------
+// appliedIndexes（T3 裁定追加：可选字段，出现即要求「有限 number 数组」；语义清洗归 markSettled）
+// ---------------------------------------------------------------------------
+
+describe('validateProposal × appliedIndexes', () => {
+  it('缺失合法（存量文件常态）；空数组与有限 number 数组合法', () => {
+    expect(validateProposal(validFile())).toEqual([])
+    const a = validFile()
+    a.appliedIndexes = []
+    expect(validateProposal(a)).toEqual([])
+    const b = validFile()
+    b.appliedIndexes = [0, 2]
+    expect(validateProposal(b)).toEqual([])
+  })
+
+  it('非数组报错含 appliedIndexes', () => {
+    const f = validFile()
+    f.appliedIndexes = 'oops'
+    expect(validateProposal(f).some((e) => e.includes('appliedIndexes'))).toBe(true)
+  })
+
+  it('元素类型漂移（字符串/NaN/Infinity/null）报错', () => {
+    for (const bad of [[1, 'a'], [NaN], [Infinity], [null]]) {
+      const f = validFile()
+      f.appliedIndexes = bad
+      expect(validateProposal(f).some((e) => e.includes('appliedIndexes')), JSON.stringify(bad)).toBe(true)
+    }
+  })
+
+  it('越界/负数/非整数不在校验层拦（语义清洗归 markSettled——宽容分界）', () => {
+    const f = validFile()
+    f.appliedIndexes = [-1, 99, 1.5]
+    expect(validateProposal(f)).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 路径与 ID 纯函数
 // ---------------------------------------------------------------------------
 

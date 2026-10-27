@@ -72,6 +72,32 @@ export function backupRoot(p: string): string {
   return join(p, BACKUP_DIR_NAME)
 }
 
+// ---------------------------------------------------------------------------
+// M4b：`.ai/` 命名空间（AI 产物区——提案 / 章节摘要 / 实体-章节索引）。
+// 单文件路径拼接的字符串权威在 src/common/proposal.ts（proposalPath，主/渲染共用纯函数）；
+// 此处是主进程目录布局权威（BOOK_FORMAT §7），T4 readAiData 与 T3 仓库/引擎共用，勿再手拼。
+// ---------------------------------------------------------------------------
+
+/** 提案目录 `.ai/proposals/`（文件名 `<id>.yaml`，id 非 UUID——BAD_PROPOSAL_ID 门守形状）。 */
+export function proposalsDir(p: string): string {
+  return join(p, '.ai', 'proposals')
+}
+
+/** 章节摘要目录 `.ai/summaries/chapters/`（M4c 卷摘要预留同级 `volumes/`，当前不创建）。 */
+export function chapterSummariesDir(p: string): string {
+  return join(p, '.ai', 'summaries', 'chapters')
+}
+
+/** 单章摘要文件 `.ai/summaries/chapters/<chapterId>.yaml`（chapterId 必须已过章存在性检查——UUID）。 */
+export function chapterSummaryFile(p: string, chapterId: string): string {
+  return join(chapterSummariesDir(p), `${chapterId}.yaml`)
+}
+
+/** 实体-章节索引单文件 `.ai/index.json`（spec G7 原文：Record<entityId, chapterId[]>，真 JSON 字节）。 */
+export function aiIndexFile(p: string): string {
+  return join(p, '.ai', 'index.json')
+}
+
 /**
  * 备份目录的相对路径（相对书根）：`.migration-backup/<消毒后的 tsIso>`。
  * 消毒 = 把 Windows/POSIX 文件名非法或易碎的字符（`:` `/`）替换为 `-`，

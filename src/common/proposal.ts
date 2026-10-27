@@ -12,7 +12,8 @@
 // - overwritesHuman 仅对 op=update 有意义（要求 boolean）；出现在 create/delete 上被忽略，不报错（宽容）；
 // - file.chapterId 与 change.source.chapterId 是否一致、targetId 指向是否存在，均不校验
 //   （引用完整性归 repository/T3）；未知多余字段一律容忍（向前兼容）；
-// - ProposalFile.status 的 'pending'|'partial'|'settled' 迁移由 T3 管理，此处只查枚举归属。
+// - ProposalFile.status 的 'pending'|'partial'|'settled' 迁移由 T3 管理，此处只查枚举归属；
+// - appliedIndexes（T3 裁定追加）：可选字段，出现即要求「有限 number 数组」，语义清洗归 markSettled。
 
 import { UUID_PATTERN } from './schema'
 
@@ -60,6 +61,24 @@ export interface ProposalFile {
   aiModel: string
   status: ProposalStatus
   changes: ProposalChange[]
+  /**
+   * 已采纳条目索引（T3 裁定）：由主进程 markSettled 在采纳后重写维护，缺失 = 尚无采纳。
+   * status 迁移的单一依据：全部条目已采纳 → 'settled'、部分 → 'partial'、无 → 'pending'。
+   * 校验器宽容：出现即要求「有限 number 数组」，越界/重复的清洗归 markSettled（存储侧）。
+   */
+  appliedIndexes?: number[]
+}
+
+/** 采纳结果的拒绝条目（T3 adopt 引擎产出；reason 一律 `REFUSED: ` 前缀 + 中文/仓库错误码）。 */
+export interface ProposalAdoptRefusal {
+  index: number
+  reason: string
+}
+
+/** proposal:adopt 通道返回形状（渲染层差异面板按 index 对号入座）。 */
+export interface ProposalAdoptResult {
+  applied: number[]
+  refused: ProposalAdoptRefusal[]
 }
 
 export const PROPOSAL_OPS: readonly ProposalOp[] = ['create', 'update', 'delete']
@@ -239,6 +258,17 @@ export function validateProposal(v: unknown): string[] {
       errors.push('proposal.changes: expected non-empty array, got 0 items')
     }
     changes.forEach((item, i) => errors.push(...childErrors(i, validateChange(item))))
+  }
+
+  // appliedIndexes：可选（T3 markSettled 维护）；出现即要求「有限 number 数组」——
+  // 越界/重复/非整数的清洗归存储侧（markSettled），此处只拦类型漂移
+  const applied = v.appliedIndexes
+  if (applied !== undefined) {
+    if (!Array.isArray(applied)) {
+      errors.push(`proposal.appliedIndexes: expected array, got ${typeName(applied)}`)
+    } else if (applied.some((x) => typeof x !== 'number' || !Number.isFinite(x))) {
+      errors.push('proposal.appliedIndexes: expected array of finite numbers')
+    }
   }
 
   return errors

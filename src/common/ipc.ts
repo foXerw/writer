@@ -19,6 +19,7 @@ import type {
   PlotlineV2,
   WorldEntryV2
 } from './schema'
+import type { ProposalAdoptResult, ProposalFile } from './proposal'
 
 // 主进程 -> 渲染进程 事件
 export type MainToRendererEvents = {
@@ -148,6 +149,26 @@ export type RendererToMainRequests = {
   'foreshadow:abandon': (params: { projectPath: string; foreshadowId: string }) => Promise<ForeshadowLedger>
   'foreshadow:reopen': (params: { projectPath: string; foreshadowId: string }) => Promise<ForeshadowLedger>
 
+  // AI 整理提案相关（M4b Task 3：.ai/proposals/<id>.yaml = ProposalFile。新通道组纪律：
+  // 参数一律 {projectPath, …} 对象形状。错误是 PROPOSAL_*: 前缀平文消息（非 AI 路径的 [kind] 词表），
+  // 渲染层原样展示；逐条采纳拒绝在 adopt 结果 refused[] 里按 index 返回，不是通道错误。
+  // save 是双保险（渲染层已 validateProposal 一次）+ 盖章（出处章必须现存）；
+  // adopt 的 confirmedOverwrite = UI 已显式确认「覆盖人写内容」的条目索引（R1 origin 机制）。
+  'proposal:getAll': (params: { projectPath: string }) => Promise<ProposalFile[]>
+  'proposal:get': (params: { projectPath: string; id: string }) => Promise<ProposalFile | null>
+  'proposal:save': (params: { projectPath: string; file: ProposalFile }) => Promise<ProposalFile>
+  'proposal:adopt': (params: {
+    projectPath: string
+    proposalId: string
+    changeIndexes: number[]
+    confirmedOverwrite: number[]
+  }) => Promise<ProposalAdoptResult>
+  'proposal:reject': (params: {
+    projectPath: string
+    proposalId: string
+    changeIndexes: number[]
+  }) => Promise<void>
+
   // 系统相关
   'dialog:openDirectory': () => Promise<string | null>
   'dialog:openFile': (filters: FileFilter[]) => Promise<string | null>
@@ -245,6 +266,14 @@ export interface NovelWriterApi {
     resolve: RendererToMainRequests['foreshadow:resolve']
     abandon: RendererToMainRequests['foreshadow:abandon']
     reopen: RendererToMainRequests['foreshadow:reopen']
+  }
+  // AI 整理提案（M4b Task 3；契约见 RendererToMainRequests 上方注释）
+  proposal: {
+    getAll: RendererToMainRequests['proposal:getAll']
+    get: RendererToMainRequests['proposal:get']
+    save: RendererToMainRequests['proposal:save']
+    adopt: RendererToMainRequests['proposal:adopt']
+    reject: RendererToMainRequests['proposal:reject']
   }
   dialog: {
     openDirectory: RendererToMainRequests['dialog:openDirectory']

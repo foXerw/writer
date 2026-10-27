@@ -10,6 +10,7 @@ import type {
   StatsData,
   ExportParams
 } from '@/common/ipc'
+import type { ProposalAdoptResult, ProposalFile } from '@/common/proposal'
 import type {
   CharacterV2,
   ChoiceNodeV2,
@@ -416,6 +417,56 @@ export function useNarrative() {
     resolveForeshadow,
     abandonForeshadow,
     reopenForeshadow
+  }
+}
+
+// AI 整理提案 Hook（M4b Task 3）：与其余 Hook 同一薄包装纪律（一通道一函数）。
+// adopt 的 confirmedOverwrite = 差异面板已显式勾选「覆盖人写内容」的条目索引（origin 铁律的 UI 面）；
+// 拒绝条目在返回值 refused[] 里按 index 携中文原因（REFUSED: 前缀），面板原样展示。
+export function useProposal() {
+  const ipc = getIPC()
+
+  const getAllProposals = useCallback(async (projectPath: string): Promise<ProposalFile[]> => {
+    return ipc.proposal.getAll({ projectPath })
+  }, [ipc])
+
+  const getProposalById = useCallback(async (
+    projectPath: string,
+    id: string
+  ): Promise<ProposalFile | null> => {
+    return ipc.proposal.get({ projectPath, id })
+  }, [ipc])
+
+  const saveProposal = useCallback(async (
+    projectPath: string,
+    file: ProposalFile
+  ): Promise<ProposalFile> => {
+    return ipc.proposal.save({ projectPath, file })
+  }, [ipc])
+
+  const adoptProposalChanges = useCallback(async (
+    projectPath: string,
+    proposalId: string,
+    changeIndexes: number[],
+    confirmedOverwrite: number[]
+  ): Promise<ProposalAdoptResult> => {
+    return ipc.proposal.adopt({ projectPath, proposalId, changeIndexes, confirmedOverwrite })
+  }, [ipc])
+
+  const rejectProposalChanges = useCallback(async (
+    projectPath: string,
+    proposalId: string,
+    changeIndexes: number[]
+  ): Promise<void> => {
+    return ipc.proposal.reject({ projectPath, proposalId, changeIndexes })
+  }, [ipc])
+
+  return {
+    getAllProposals,
+    getProposalById,
+    saveProposal,
+    adoptProposalChanges,
+    rejectProposalChanges
   }
 }
 

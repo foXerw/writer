@@ -44,7 +44,14 @@
 ├── .novelwriter.json.migrated         # ★只读：v1 迁移完成凭据（旧根配置改名，见 §6）
 ├── .migration-backup/                 # ★只读：迁移前整本时间戳备份（见 §6）
 │   └── <消毒后的 ISO 时间戳>/          #   冒号/斜杠替换为 '-'（Windows 文件名合法化）
-└── .ai/                               # M4a 启用：usage.jsonl 用量账本（见 §7；首次 AI 调用后创建）
+└── .ai/                               # AI 产物区（见 §7；按需创建，缺失 = 从未用过 AI，是常态）
+    ├── usage.jsonl                    # M4a：token 用量账本（追加式 JSONL，见 §7.1）
+    ├── proposals/
+    │   └── <id>.yaml                  # M4b：AI 整理提案（ProposalFile；id = `prop-<章id前8>-<ts36>`，见 §7.2）
+    ├── summaries/
+    │   └── chapters/
+    │       └── <uuid>.yaml            # M4b：章节摘要缓存（见 §7.3）
+    └── index.json                     # M4b：实体-章节索引（Record<entityId, chapterId[]>，见 §7.4）
 ```
 
 瞬态文件：原子写使用同级临时文件 `<目标名>.tmp-<uuid>` → `renameSync` 覆盖目标；成功即消失，
@@ -129,6 +136,7 @@ front-matter 编解码契约（`src/common/chapterDoc.ts`）：
 | `arc` | CharacterArcStage[] | ✅ | 可空数组；`arc[].chapterIds` 对章 id 同一引用规则 |
 | `tags` | CharacterTag[] | ✅ | |
 | `links` | EntityLink[] | ✅ | 通用互链（目标集 = 角色 ∪ 卷 ∪ 词条） |
+| `aiTouched` | string[] | ❔ | M4b origin 机制：AI 采纳引擎写过的字段名清单（校验器不检查；语义见 §7.5） |
 | `createdAt` / `updatedAt` | string | ✅ ISO | update 由仓库侧刷新 `updatedAt`，`createdAt` 以存量为准 |
 
 EntityLink（relationships / links 通用）：
@@ -161,6 +169,7 @@ CharacterTag：`id`（非空字符串，**有意豁免 UUID**）+ `name`（非�
 | `order` | number | ✅ | |
 | `tags` | string[] | ✅ | 纯字符串数组（与角色的 CharacterTag[] 不同） |
 | `links` | EntityLink[] | ✅ | 目标集 = 角色 ∪ 卷 ∪ 词条 |
+| `aiTouched` | string[] | ❔ | M4b origin 机制（同 CharacterV2，语义见 §7.5） |
 | `createdAt` / `updatedAt` | string | ✅ ISO | |
 
 ### 4.6 `plotlines/<uuid>.yaml` — PlotlineV2
@@ -316,15 +325,12 @@ v1 根配置 `.novelwriter.json` 在**迁移成功收尾时改名**而来（`mig
 自动**续传补完**（R1 接线）：已转换的文件不重做、书 id 保持稳定、同 id 角色 json 绝不覆盖已存在的
 yaml（跳过 + warning，R2 守卫）、报告照常并入迁移 UI。
 
-## 7. `.ai/`（M4a 启用：用量账本；M4b 扩展）
+## 7. `.ai/`（AI 产物区：M4a 用量账本 + M4b 提案/摘要/索引）
 
-M4a（AI 服务层）起，本应用会在书目录创建并使用 `.ai/`。当前版本**只写一种文件**：
-`usage.jsonl`（token 用量账本，首次带 `projectPath` 的 AI 调用后出现）。以下子路径为
-**M4b 启用**的预留位，当前版本不创建、不读写，第三方工具请勿占用：
-
-- `proposals/` —— AI 整理提案（diff 确认流的落盘区）
-- `summaries/` —— 章节/卷摘要缓存
-- `index/` —— 上下文检索索引（装配器的加速结构）
+`.ai/` 是**AI 产物命名空间**，全部按需创建（从未用过 AI 的书没有此目录，是常态）。
+与正式内容域（chapters/characters/world/…）的分界：`.ai/` 下除 `proposals/` 外全是
+**派生数据**——删了可由应用再生，watcher 对整个 `.ai/` 不做域失效（`domainOf` → null）。
+M4b 起「提案即文件」：`proposals/` 是应用与第三方 AI 的**交换区**（可读写，纪律见 §7.2）。
 
 ### 7.1 `usage.jsonl` 行格式
 
@@ -345,7 +351,76 @@ JSONL：每行一个 `JSON.stringify(AiUsageRecord)`（UTF-8，追加写 `append
 坏行/类型漂移行静默跳过——账本是展示性统计，永不炸统计面板。写失败只 warn 不抛（记账失败
 绝不吞掉对话结果）。**可安全手删/整目录删除**：丢失的只是历史用量，书籍内容域零影响。
 
-### 7.2 AI 设置与密钥的存放位置（不在书目录）
+### 7.2 `proposals/<id>.yaml` — AI 整理提案（ProposalFile）
+
+「整理本章」的产物 = 一份待作者审阅的结构化变更提案（diff 确认流的落盘区；权威定义
+`src/common/proposal.ts`，读写语义 `electron/main/bookStore/proposals.ts`）。文件名 stem 即
+提案 id（权威），id 形状 `prop-<章id前8位>-<ts的36进制>`（**非 UUID**；应用侧对含路径分隔符/
+控制字符的 id 一律 `BAD_PROPOSAL_ID` 拒绝）。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | string | ✅ 非空 | 与文件名 stem 一致（读取侧以 stem 为准） |
+| `chapterId` | string | ✅ UUID | 出处章（整理触发章）；`proposal:save` 盖章：非现存章拒落 |
+| `createdAt` | string | ✅ ISO | |
+| `aiModel` | string | ✅ 非空 | 产出模型名 |
+| `status` | enum | ✅ | `pending \| partial \| settled`（迁移由应用管理，见下） |
+| `changes` | ProposalChange[] | ✅ 非空 | 变更条目（形状见下） |
+| `appliedIndexes` | number[] | ❔ | 已采纳条目索引；**唯一写入口 = 应用的 markSettled 记账**（缺失 = 尚无采纳） |
+
+ProposalChange：`op`（create/update/delete）× `entity`（character/world/plotline/choice/
+foreshadow/summary/index）组合表钉死在 `ALLOWED_OPS`——**delete 仅限 plotline/choice/foreshadow**
+（AI 无权删角色/设定，分工铁律）；`targetId`（update/delete 必填）、`before`（展示用快照，可选）、
+`after`（create/update 必填，内容深校验发生在**采纳期**）、`source` `{chapterId: UUID, quote: 非空
+≤300 字}`（出处引文，必须逐字来自正文）、`overwritesHuman`（仅 update 有意义，见 §7.5）。
+
+- **谁写**：① 整理链（T4）经 `proposal:save` 通道落盘（主进程 validateProposal 双保险 + 出处章盖章）；
+  ② 采纳引擎（`bookStore/adopt.ts`）记账重写（appliedIndexes/status、驳回删条目——全部条目删空 =
+  整份文件删除）；③ **第三方 AI 工具可直接读写本目录**（提案即文件的本意）——写前必须过
+  `validateProposal`（返回空数组才许落盘）+ 原子写（§8 守则 1），文件名 = id。
+- **谁读**：审阅面板（`proposal:getAll/get`）；坏文件列表侧 warn+跳过（面板永不崩），点读抛穿
+  `PROPOSAL_INVALID`。采纳期对每条 change 重跑 `validateChange`（双保险——手改坏的条目按条拒绝，
+  好条目照救）。
+- **status 迁移**（唯一口径）：`appliedIndexes` 覆盖全部条目 → `settled`；部分 → `partial`；
+  无 → `pending`。绝不允许手工改 status 而不同步 appliedIndexes（应用重写时以 appliedIndexes 重算）。
+
+### 7.3 `summaries/chapters/<uuid>.yaml` — 章节摘要缓存
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `chapterId` | string | ✅ | 与文件名 stem 一致 |
+| `text` | string | ✅ 非空 | 摘要正文 |
+| `updatedAt` | string | ✅ ISO | 写入时刻 |
+| `aiModel` | string | ✅ | 产出该摘要的提案的模型名 |
+
+**谁写**：仅采纳引擎（summary 条目的 adopt；出处章必须现存）。**谁读**：整理链上下文装配
+（T4 `book:readAiData`）。派生缓存——可安全手删（该章摘要缺席直至下次整理重建）。
+
+### 7.4 `index.json` — 实体-章节索引（单文件）
+
+`Record<entityId, chapterId[]>`：entityId ∈ 角色 ∪ 世界观词条 ∪ 伏笔条目；chapterId 数组去重、
+按章序（`listChapters` 的 order 升序）存储；历史残留的已删章 id 排尾部（按 id 稳定）。
+**真 JSON 字节**（`JSON.stringify` 2 空格缩进——`.json` 后缀名副其实，第三方 `JSON.parse` 直接可读）。
+
+**谁写**：仅采纳引擎（index update 条目的 merge 写；`adds[]` 的 entityId/chapterId 双 UUID +
+存在性硬门）。**谁读**：T4 `book:readAiData`、M4c 跳章节。派生结构——损坏时应用 warn 并按空索引
+重建；可安全手删（索引由后续整理补建）。
+
+### 7.5 origin 语义：`aiTouched` 与人写内容保护（M4b 铁律）
+
+`CharacterV2` / `WorldEntryV2` 携可选字段 `aiTouched?: string[]`（校验器刻意不检查——宽容）：
+AI 采纳引擎写过的字段名清单，**只由采纳引擎维护**（应用字段成功时追加；人手编辑路径原样回显）。
+
+> **某存量字段是「人写」当且仅当：它非空（string trim 后非空 / 数组非空 / number ≠ 0 /
+> boolean true）且字段名不在该实体的 `aiTouched` 里。**
+
+采纳引擎对 update 条目的行为：命中人写字段且 `overwritesHuman !== true` → 整条拒绝
+（`REFUSED: 覆盖人写内容 <field>`）；`overwritesHuman: true` 还要求该条目索引出现在通道参数
+`confirmedOverwrite[]`（差异面板显式勾选）否则 `REFUSED: 未确认覆盖`。create 的新实体**不携带**
+`aiTouched`（整卡皆 AI 产但入册即归作者监护——后续 AI 修改同样需要旗标+确认，从严）。
+已知边界：人手编辑 UI 不改写 `aiTouched`（人改过的 AI 字段仍视为 AI 领地）——UI 侧收口留后续里程碑。
+
+### 7.6 AI 设置与密钥的存放位置（不在书目录）
 
 协议/Base URL/API Key 存于 **Electron `userData`/`ai-settings.json`**（机器级配置，随应用不随书）：
 
@@ -385,8 +460,11 @@ JSONL：每行一个 `JSON.stringify(AiUsageRecord)`（UTF-8，追加写 `append
    建议**应用关闭时**再改它。
 10. **实体文件外部改动是安全的**：watcher 300ms debounce 后广播 `book:changed` 并失效对应域缓存，
     应用自动重拉；若与用户未保存编辑冲突会弹「保留我的 / 重新加载」。但请避免与编辑会话高频抢写。
-11. **绝不写入/清理**：`.migration-backup/`、`.novelwriter.json*`（两态都只读）、`.ai/`、
-    以及不属于 §2 树内布局的散落路径（应用忽略但会进 `validateMigration` 视野）。
+11. **绝不写入/清理**：`.migration-backup/`、`.novelwriter.json*`（两态都只读）、以及不属于
+    §2 树内布局的散落路径（应用忽略但会进 `validateMigration` 视野）。`.ai/` 分区对待（§7）：
+    `proposals/` **可读写**（第三方 AI 交换区——写前 validateProposal + 原子写 + 文件名即 id）；
+    `usage.jsonl` 只许应用追加；`summaries/`、`index.json` 是应用管理的派生数据——可整删
+    （应用会再生），请勿改写半份。
 12. **写完自检**：`validateMigration(bookPath)` 是迁移/改写后的体检入口——逐文件校验 + front-matter
     可读性 + order 重复 + v1 残留扫描，永不抛穿（问题以字符串数组返回，空数组 = 健康）。
 13. **换行与 BOM**：应用**容忍 CRLF/BOM 读取**（剥一个前导 BOM、定界行去行尾 `\r` 再识别，外部工具整本
