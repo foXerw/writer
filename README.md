@@ -25,6 +25,7 @@
 ### 创作工具
 - **章节管理**: 树状结构组织章节
 - **角色卡片**: 完整角色档案系统
+- **图谱视图**: 人物关系图 / 世界观层级图（`写作|图谱` 切换，React Flow 只读画布，随书目录变更实时刷新，点节点联动侧栏面板）
 - **世界观设定**: 地理、历史、魔法体系
 - **情节追踪**: 主线支线时间线
 - **灵感笔记**: 随手记录创作片段
@@ -65,6 +66,7 @@ perfect-novel/
 │       ├── index.tsx             # 渲染进程入口
 │       ├── index.html            # HTML 模板
 │       ├── components/            # React 组件
+│       │   ├── Graph/            # 图谱视图（GraphView / CharacterNode / WorldNode / graphModel 纯构图布局）
 │       │   ├── Layout/           # 布局（EditorTabs）
 │       │   ├── Editor/           # 编辑器（MonacoEditor / EditorToolbar / OutlineView）
 │       │   ├── Explorer/         # 侧边面板（ChapterTree / CharacterPanel / SettingPanel / StatsPanel）

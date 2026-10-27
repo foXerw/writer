@@ -118,10 +118,13 @@ export function buildCharacterGraph(chars: CharacterV2[]): Graph {
       kind: 'character',
       entityId: c.id
     }
-    if (i === 0) return { id: c.id, position: { x: 0, y: 0 }, data }
+    // type 必须显式给出：GraphView 的 nodeTypes 按 type 分发自定义节点，缺省会退化成
+    // React Flow 内置 default 矩形（Task 3 真机实测抓出的接线断点，测试钉死防回归）
+    if (i === 0) return { id: c.id, type: 'character', position: { x: 0, y: 0 }, data }
     const angle = ((i - 1) / ringCount) * Math.PI * 2
     return {
       id: c.id,
+      type: 'character',
       position: { x: radius * Math.cos(angle), y: radius * Math.sin(angle) },
       data
     }
@@ -220,6 +223,7 @@ export function buildWorldGraph(entries: WorldEntryV2[]): Graph {
       if (!e) return
       nodes.push({
         id,
+        type: 'world', // 同角色图：type 是 nodeTypes 分发键，缺失即退化 default 节点
         position: { x: col * COL_X, y: row * ROW_Y },
         data: {
           label: e.title,

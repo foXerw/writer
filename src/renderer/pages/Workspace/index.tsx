@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Layout, Button, Typography, App } from 'antd'
+import { Layout, Button, Typography, App, Segmented } from 'antd'
 import { PlusOutlined, BookOutlined, SaveOutlined } from '@ant-design/icons'
 import MonacoEditor, { type MonacoEditorHandle } from '../../components/Editor/MonacoEditor'
 import EditorToolbar from '../../components/Editor/EditorToolbar'
 import EditorTabs from '../../components/Layout/EditorTabs'
 import OutlineView from '../../components/Editor/OutlineView'
 import SidebarPanel, { type SidebarTab } from '../../components/Workspace/SidebarPanel'
+import GraphView from '../../components/Graph/GraphView'
+import type { GraphKind } from '../../components/Graph/graphModel'
 import CommandPalette from '../../components/Dialogs/CommandPalette'
 import ExportDialog, { type ExportOptions } from '../../components/Dialogs/ExportDialog'
 import { useMenu } from '../../hooks/useMenu'
@@ -96,6 +98,9 @@ function Workspace() {
   // 模式状态
   const [focusMode, setFocusMode] = useState(false)
   const [typewriterMode, setTypewriterMode] = useState(false)
+  // M3 主区视图（Task 3）：写作 | 图谱 一级切换 + 图谱内 人物关系 | 世界观 二级切换
+  const [viewMode, setViewMode] = useState<'write' | 'graph'>('write')
+  const [graphKind, setGraphKind] = useState<GraphKind>('character')
   // 命令面板 / 大纲 / 导出对话框
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [outlineVisible, setOutlineVisible] = useState(false)
@@ -372,8 +377,29 @@ function Workspace() {
     onToggleSidebar: () => setSidebarCollapsed((v) => !v), onOutline: () => setOutlineVisible((v) => !v)
   })
 
-  // 主区渲染单一出口（§7.6 布局接缝）：M1 恒返回编辑器+大纲视图，M3 在此切出图谱视图
-  const renderMainView = () => (
+  // 图谱节点点击 → 侧栏切到对应面板并展开。entityId 刻意暂未消费：面板内选中/滚动到该实体卡
+  // 需给 CharacterPanel/SettingPanel 增受控选中管线（brief Step 3 定为 stretch，留 M4，不新建子系统）。
+  const handleGraphNodeClick = (_entityId: string, kind: GraphKind) => {
+    setSidebarTab(kind === 'character' ? 'characters' : 'settings')
+    setSidebarCollapsed(false)
+  }
+
+  // 主区渲染单一出口（§7.6 布局接缝）：M1 恒返回编辑器+大纲视图，M3 在此切出图谱视图。
+  // 专注模式是写作专属态：focusMode 开启时降级为写作视图（菜单/快捷键/命令面板从图谱态进入专注
+  // 同样生效，退专注自动回图谱），切换条同步隐藏——编辑器 fragment 由此保持一字未动（零回归约束）。
+  const effectiveViewMode = focusMode ? 'write' : viewMode
+  const renderMainView = () => {
+    if (effectiveViewMode === 'graph') {
+      // 宿主容器契约（Task 2 坑 a；编辑器 e000148 同款教训）：GraphView 根为 absolute;inset:0，
+      // 父级必须 position:relative 且已有确定尺寸——本容器 flex:1 + minHeight:0 在列向 Layout 中
+      // 吃满剩余高度；若父级是 auto 高度块，inset:0 会塌成 0×0（白屏，但 typecheck/build 全绿）。
+      return (
+        <div style={{ position: 'relative', flex: 1, minHeight: 0, width: '100%' }}>
+          <GraphView projectPath={projectPath ?? ''} kind={graphKind} onNodeClick={handleGraphNodeClick} />
+        </div>
+      )
+    }
+    return (
     <>
       {/* Tab栏：专注模式隐藏 */}
       {!focusMode && (
@@ -430,7 +456,8 @@ function Workspace() {
         )}
       </Layout>
     </>
-  )
+    )
+  }
   const mainView = renderMainView()
 
   return (
@@ -448,8 +475,41 @@ function Workspace() {
         onBack={handleBack} onOpenSettings={() => navigate('/settings')}
         onSetTab={setSidebarTab} onToggleCollapse={() => setSidebarCollapsed(v => !v)}
       />
-      {/* 主内容区：单一出口 */}
+      {/* 主内容区：单一出口。视图切换条常驻主区顶部（focusMode 除外——专注是写作专属态），
+          保证 写作↔图谱 双向都可达；图谱态下再出 人物关系|世界观 二级切换 */}
       <Layout>
+        {!focusMode && (
+          <div
+            style={{
+              flex: '0 0 auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: 'var(--space-2) var(--space-4)',
+              background: 'var(--color-bg-base)',
+              borderBottom: '1px solid var(--color-border)'
+            }}
+          >
+            <Segmented
+              value={viewMode}
+              onChange={(v) => setViewMode(v as 'write' | 'graph')}
+              options={[
+                { label: '写作', value: 'write' },
+                { label: '图谱', value: 'graph' }
+              ]}
+            />
+            {viewMode === 'graph' && (
+              <Segmented
+                value={graphKind}
+                onChange={(v) => setGraphKind(v as GraphKind)}
+                options={[
+                  { label: '人物关系', value: 'character' },
+                  { label: '世界观', value: 'world' }
+                ]}
+              />
+            )}
+          </div>
+        )}
         {mainView}
       </Layout>
     </Layout>

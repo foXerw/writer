@@ -1,6 +1,6 @@
 # Novel Writer 开发路线图
 
-> 更新时间: 2026-10-26
+> 更新时间: 2026-10-28
 
 ## 里程碑进度
 
@@ -8,7 +8,7 @@
 |--------|------|------|----------|
 | M1 | 审计整改与体验收口 | ✅ 完成 | 2026-08 |
 | M2 | 数据底座（v2 书目录：schema/迁移/仓库/监听/冲突） | ✅ 完成 | 2026-10-26 |
-| M3 | 图谱视图（首批两种：人物/任务关系图 + 世界观图） | ⏳ 规划中 | - |
+| M3 | 图谱视图（首批两种：人物/任务关系图 + 世界观图） | ✅ 完成 | 2026-10-28 |
 | M4 | AI 维护闭环（整理→提案→差异确认；AI 服务层与 token 账本；剧情线/选项/伏笔录入 UI 补齐） | ⏳ 规划中 | - |
 | M5 | 实时补全（ghost text，Tab 采纳） | ⏳ 规划中 | - |
 | M6 | 章节审阅（AI 读者视角结构化意见） | ⏳ 规划中 | - |
@@ -20,6 +20,14 @@
 > 验证：typecheck 0 错、lint 0 错、`npm run test` 294 用例全绿、build 通过。图谱视图不在 M2（随 M3），
 > 剧情线/选项/伏笔录入 UI 亦不在 M2（随 M4，待 AI 数据形态定型后补齐）。里程碑范围以
 > [SPEC §8](./superpowers/specs/2026-10-25-perfect-novel-repositioning-design.md) 为权威。
+>
+> M3 交付：`src/renderer/components/Graph/`（graphModel 纯构图/布局核心 + 单测钉死退化数据与确定性布局；
+> GraphView React Flow 只读画布；CharacterNode/WorldNode 自定义节点；`.graph-view` 作用域主题，深浅色随 token 走）；
+> `Workspace/hooks/useGraphData.ts`（角色+世界观一次拉齐、book:changed 实时刷新、加载浮层仅首拉）；
+> Workspace 主区 `写作|图谱` 一级 + `人物关系|世界观` 二级视图切换（专注模式恒为写作态）与节点点击→侧栏面板联动。
+> 验证：typecheck 0 错、lint 0 错、`npm run test` 317 用例全绿、build 通过；CDP 真机实测图谱真实渲染
+> （人物图 3 节点/3 边、世界观图 4 节点/1 边、容器 922×753px、空书显示空态、后台刷新无浮层闪烁、
+> 切回写作编辑器状态不丢）。点击后面板内定位/滚动到该实体卡未做（stretch，留 M4）。
 >
 > 非 SPEC 里程碑的可选储备（backlog，不进上表）：多书管理与工作台扩展、存量老书批量回填（M6 后另设计）。
 
@@ -584,3 +592,4 @@
 | 2026-08-04 | 1.17 | 新增浅色主题：深色/浅色双主题切换（CSS 变量 + antd 浅色 token + Monaco novel-light + 主进程持久化） |
 | 2026-01-16 | 1.16 | 功能修复与深色主题优化：项目名称传递、错误弹窗样式、受控Modal组件 |
 | 2026-10-26 | 2.0 (M2) | **里程碑 M2 数据底座完成**：v2 书目录格式（`schema.ts`+校验器）、`bookStore/`（原子写/五域缓存/迁移续传/自检/fs 监听）、`project:open` 单一入口+迁移报告 UI、外部改动冲突弹窗、`docs/BOOK_FORMAT.md`。typecheck 0 错/lint 0 错/294 测试全绿/build 通过 |
+| 2026-10-28 | 3.0 (M3) | **里程碑 M3 图谱视图完成**：`graphModel` 纯构图（角色径向/世界观分列，退化数据容错）+ React Flow 只读画布 + 自定义节点 + `.graph-view` 主题；Workspace `写作\|图谱`/`人物关系\|世界观` 切换与节点点击联动侧栏；`useGraphData` 实时刷新。typecheck 0 错/lint 0 错/317 测试全绿/build 通过 + CDP 真机渲染实测 |

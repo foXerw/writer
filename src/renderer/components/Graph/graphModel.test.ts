@@ -116,6 +116,18 @@ describe('buildCharacterGraph', () => {
     })
   })
 
+  it("每个节点带 type:'character'（GraphView nodeTypes 分发键，缺失即退化 default 矩形）", () => {
+    // Task 3 真机实测抓出的接线断点：无 type 时 nodeTypes 永不命中自定义节点，
+    // 图谱虽「渲染成功」但全是内置灰框、graph.css 作用域全落空——纯渲染层才暴露，单测钉死
+    const chars = [
+      char(ID_A, '甲', 'protagonist', [{ targetId: ID_B, kind: '朋友' }]),
+      char(ID_B, '乙', 'antagonist')
+    ]
+    const g = buildCharacterGraph(chars)
+    expect(g.nodes).toHaveLength(2)
+    for (const n of g.nodes) expect(n.type).toBe('character')
+  })
+
   it('自环（targetId === 自身 id）被静默丢弃', () => {
     const chars = [
       char(ID_A, '甲', 'protagonist', [
@@ -238,6 +250,12 @@ describe('buildWorldGraph', () => {
   it('空输入 → nodes/edges 均为空数组，不抛', () => {
     const g = buildWorldGraph([])
     expect(g).toEqual({ nodes: [], edges: [] })
+  })
+
+  it("每个节点带 type:'world'（同角色图：nodeTypes 分发键钉死）", () => {
+    const g = buildWorldGraph([entry(ID_A, '山', 'location'), entry(ID_B, '河', 'history')])
+    expect(g.nodes).toHaveLength(2)
+    for (const n of g.nodes) expect(n.type).toBe('world')
   })
 
   it('单节点（parentId=null）→ 1 节点 0 边', () => {

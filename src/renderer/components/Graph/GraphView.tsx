@@ -6,8 +6,21 @@
 //      "nodeTypes not stable" 且每次渲染重挂全部节点。
 // 只读画布：nodesDraggable/nodesConnectable/elementsSelectable 全关——数据是唯一真源，
 // 拖动会制造与 graphModel 布局打架的本地状态；平移/缩放/点选仍然可用。
-import { useMemo } from 'react'
-import { ReactFlow, Background, Controls, type Edge, type Node } from '@xyflow/react'
+// 坑 (c)（Task 3 真机实测抓出，v12 受控模式经典哑火）：直接把 useMemo 出的 nodes/edges 传给
+// ReactFlow 而不给 onNodesChange，节点尺寸测量（ResizeObserver → dimensions change）会被静默
+// 丢弃——边因 isNodeInitialized=false 全部不画、节点 visibility:hidden，画布只剩背景点，
+// 而 typecheck/build 全绿。故用 useNodesState/useEdgesState 本地受控：数据图重算即整体 set，
+// 测量类 change 经 hook 返回的 onNodesChange 落进本地 state，边得以渲染（只读交互下无其他 change）。
+import { useEffect, useMemo } from 'react'
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  useEdgesState,
+  useNodesState,
+  type Edge,
+  type Node
+} from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './graph.css'
 import CharacterNode from './CharacterNode'
@@ -37,6 +50,14 @@ function GraphView({ projectPath, kind, onNodeClick }: GraphViewProps) {
     [kind, characters, worldEntries]
   )
 
+  // 坑 (c)：见文件头注释——受控 nodes/edges 必须配 change 回写，否则测量丢失、图不渲染
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<GraphNodeData>>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  useEffect(() => {
+    setNodes(graph.nodes)
+    setEdges(graph.edges)
+  }, [graph, setNodes, setEdges])
+
   const isEmpty = (kind === 'character' ? characters : worldEntries).length === 0
 
   return (
@@ -44,8 +65,10 @@ function GraphView({ projectPath, kind, onNodeClick }: GraphViewProps) {
       {/* key=kind：切换图谱种类时整体重挂画布 → fitView 重新取景（数据刷新不重挂、不丢视角） */}
       <ReactFlow<Node<GraphNodeData>, Edge>
         key={kind}
-        nodes={graph.nodes}
-        edges={graph.edges}
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         fitView
         nodesDraggable={false}

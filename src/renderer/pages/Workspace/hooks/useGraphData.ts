@@ -32,6 +32,11 @@ export function useGraphData(projectPath: string | undefined): GraphData {
 
   const mountedRef = useRef(true)
   const generationRef = useRef(0)
+  // Task 3 收口（Task 2 Minor）：loading 只服务「首拉」。自有写盘经 watcher 回声触发的后台
+  // refresh 不再把 loading 翻回 true——否则每次自保存都有「加载中…」浮层盖住已渲染的图。
+  // 空态门（GraphView 的 !loading && isEmpty）不受损：后台刷新期间 loading 恒 false 且数据
+  // 保持上一次好值，既不闪加载层也不闪空态层；拉取失败仍停在 hasLoaded=false，下次 refresh 可自愈。
+  const hasLoadedRef = useRef(false)
 
   useEffect(() => {
     mountedRef.current = true
@@ -43,7 +48,7 @@ export function useGraphData(projectPath: string | undefined): GraphData {
   const refresh = useCallback(() => {
     if (!projectPath) return
     const gen = ++generationRef.current
-    setLoading(true)
+    if (!hasLoadedRef.current) setLoading(true)
     void (async () => {
       let payload: { chars: CharacterV2[]; world: WorldEntryV2[] } | null = null
       try {
@@ -57,6 +62,7 @@ export function useGraphData(projectPath: string | undefined): GraphData {
       }
       if (!mountedRef.current || gen !== generationRef.current) return
       if (payload) {
+        hasLoadedRef.current = true
         setCharacters(payload.chars)
         setWorldEntries(payload.world)
       }
