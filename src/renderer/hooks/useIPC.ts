@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import type { AiSettingsPatch, AiSettingsView } from '@/common/ai-types'
 import type {
   NovelWriterApi,
   ProjectData,
@@ -494,5 +495,31 @@ export function useExport() {
 
   return {
     exportDocument
+  }
+}
+
+// AI 设置 Hook（M4a Task 2）：与其余 Hook 同一薄包装纪律（一通道一函数）。
+// 渲染层永远只拿到 AiSettingsView（掩码视图）；apiKey 的「不修改」语义 = patch.apiKey 留空/不传。
+export function useAISettings() {
+  const ipc = getIPC()
+
+  const getAISettings = useCallback(async (): Promise<AiSettingsView> => {
+    return ipc.ai.getSettings()
+  }, [ipc])
+
+  const setAISettings = useCallback(async (
+    patch: AiSettingsPatch
+  ): Promise<AiSettingsView> => {
+    return ipc.ai.setSettings(patch)
+  }, [ipc])
+
+  const testAIConnection = useCallback(async (): Promise<{ ok: true }> => {
+    return ipc.ai.testConnection()
+  }, [ipc])
+
+  return {
+    getAISettings,
+    setAISettings,
+    testAIConnection
   }
 }

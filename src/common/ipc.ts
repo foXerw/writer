@@ -2,6 +2,7 @@
 
 // 仅类型导入（双向 type-only 环：schema.ts 从这里取枚举类型，这里从 schema 取 CharacterV2——
 // tsc/vite 编译期即擦除，无运行时循环依赖）。
+import type { AiSettingsPatch, AiSettingsView } from './ai-types'
 import type {
   CharacterV2,
   ChoiceNodeV2,
@@ -149,6 +150,12 @@ export type RendererToMainRequests = {
   'export:word': (params: ExportParams) => Promise<boolean>
   'export:epub': (params: ExportParams) => Promise<boolean>
   'export:pdf': (params: ExportParams) => Promise<boolean>
+
+  // AI 相关（M4a Task 2：设置保险库三通道。getSettings 返回值永远是掩码视图 AiSettingsView——
+  // 明文 apiKey 永不跨 IPC；chat/cancel/getUsage 通道随 Task 4 加入，此处不预留死门面）
+  'ai:getSettings': () => Promise<AiSettingsView>
+  'ai:setSettings': (patch: AiSettingsPatch) => Promise<AiSettingsView>
+  'ai:testConnection': () => Promise<{ ok: true }>
 }
 
 // preload 暴露给渲染进程的统一 IPC 门面（window.novelWriter 的唯一类型）。
@@ -231,6 +238,12 @@ export interface NovelWriterApi {
     word: RendererToMainRequests['export:word']
     epub: RendererToMainRequests['export:epub']
     pdf: RendererToMainRequests['export:pdf']
+  }
+  // AI 设置（M4a Task 2；对话方法随 Task 4 在此组扩展）
+  ai: {
+    getSettings: RendererToMainRequests['ai:getSettings']
+    setSettings: RendererToMainRequests['ai:setSettings']
+    testConnection: RendererToMainRequests['ai:testConnection']
   }
   on: {
     // 注：以下四条为 M1 遗留死通道（主进程从未广播），M4 清理待办——保留不动（Task 9 裁定 6）

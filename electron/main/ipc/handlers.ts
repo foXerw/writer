@@ -9,6 +9,7 @@ import { registerSettingHandlers } from './modules/setting'
 import { registerNarrativeHandlers } from './modules/narrative'
 import { registerStatsHandlers } from './modules/stats'
 import { registerExportHandlers } from './modules/export'
+import { registerAiHandlers } from './modules/ai'
 
 // 聚合入口：按原有顺序注册全部 IPC 通道。
 // 保持原有语义——main/index.ts `import './ipc/handlers'` 时（早于 app.whenReady）即完成注册，
@@ -25,6 +26,7 @@ export function registerAllIpcHandlers(): void {
   registerNarrativeHandlers()
   registerStatsHandlers()
   registerExportHandlers()
+  registerAiHandlers()
 }
 
 registerAllIpcHandlers()

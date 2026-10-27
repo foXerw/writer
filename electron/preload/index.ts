@@ -71,7 +71,12 @@ const projectAPI: RendererToMainRequests = {
 
   'export:word': (params) => ipcRenderer.invoke('export:word', params),
   'export:epub': (params) => ipcRenderer.invoke('export:epub', params),
-  'export:pdf': (params) => ipcRenderer.invoke('export:pdf', params)
+  'export:pdf': (params) => ipcRenderer.invoke('export:pdf', params),
+
+  // AI 设置（M4a Task 2；返回形状永远是掩码视图，明文 apiKey 不经过此通道）
+  'ai:getSettings': () => ipcRenderer.invoke('ai:getSettings'),
+  'ai:setSettings': (patch) => ipcRenderer.invoke('ai:setSettings', patch),
+  'ai:testConnection': () => ipcRenderer.invoke('ai:testConnection')
 }
 
 // 主进程 -> 渲染进程 监听
@@ -191,6 +196,13 @@ const novelWriter: NovelWriterApi = {
     word: projectAPI['export:word'],
     epub: projectAPI['export:epub'],
     pdf: projectAPI['export:pdf']
+  },
+
+  // AI 设置（M4a Task 2；对话方法随 Task 4 扩展）
+  ai: {
+    getSettings: projectAPI['ai:getSettings'],
+    setSettings: projectAPI['ai:setSettings'],
+    testConnection: projectAPI['ai:testConnection']
   },
 
   // 监听器

@@ -1,6 +1,7 @@
 import { Button, Space, Typography } from 'antd'
 import { LeftOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
+import AiSettingsSection from '../../components/Settings/AiSettingsSection'
 import ThemeSettings from '../../components/Settings/ThemeSettings'
 import { useShortcutStore } from '../../stores'
 
@@ -34,6 +35,8 @@ function Settings() {
       </div>
       <div style={{ flex: 1, overflow: 'auto' }}>
         <ThemeSettings />
+        {/* AI 服务设置（M4a Task 2）：紧随主题区块，密钥仅掩码展示 */}
+        <AiSettingsSection />
         <div style={{ padding: '0 16px', marginTop: 16, borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
           <Space direction="vertical" style={{ width: '100%' }}>
             <Text style={{ color: 'var(--color-text)', fontWeight: 500 }}>快捷键</Text>
