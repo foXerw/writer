@@ -5,7 +5,7 @@
 // 注入模式：两个 provider 都调用共享 `http.fetch`（providers/http.ts），测试只 spy 这一个接缝。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AiChatRequest, AiSettings } from '../../../../src/common/ai-types'
-import { http, redactKey } from './http'
+import { ensureOk, http, redactKey } from './http'
 import { getProvider } from './index'
 import { AiCallError, extractJsonLoose } from './types'
 
@@ -525,5 +525,31 @@ describe('testConnection', () => {
     const err = await captureError(() => getProvider(settings).testConnection(settings))
     expect(err.kind).toBe('not-configured')
     expect(calls.length).toBe(0)
+  })
+})
+
+// ==================== ensureOk：先脱敏后截断（Task 3 复审 FOLD，Task 4 落测） ====================
+
+describe('ensureOk 截断/脱敏顺序不变量', () => {
+  it('长密钥横跨截断线：旧序「先截后遮」会漏出头碎片（本用例可判新旧序）', async () => {
+    // LONG_KEY 从 index 280 起（32 字符，跨过 slice(0,300) 线）。旧序：截断只剩前 20 字符，
+    // redactKey 找不到完整串 → AiCallError 的 capMessage 再裁到 message[0..296]（前缀 10 字），
+    // capped[280..286] 的 `sk-sent` 明文头仍能活到最终 message。新序先脱敏，绝无此段。
+    const LONG_KEY = 'sk-sentinel-key-0123456789abcdef'
+    const body = 'A'.repeat(280) + LONG_KEY + 'B'.repeat(100)
+    const err = await captureError(() => ensureOk(new Response(body, { status: 401 }), LONG_KEY))
+    expect(err.kind).toBe('auth')
+    expect(err.message).not.toContain(LONG_KEY)
+    expect(err.message).not.toContain('sk-sent') // 连 7 字符的头碎片都不许在
+    expect(err.message).not.toContain('0123456789')
+    expect(err.message.length).toBeLessThanOrEqual(300)
+  })
+
+  it('短体内含密钥 → 正常脱敏；空体只报 status；读体失败有占位', async () => {
+    const err = await captureError(() => ensureOk(new Response(`bad ${SENTINEL_KEY} bad`, { status: 403 }), SENTINEL_KEY))
+    expect(err.message).toContain('[已脱敏]')
+    expect(err.message).not.toContain('sk-sen')
+    const err2 = await captureError(() => ensureOk(new Response('', { status: 500 })))
+    expect({ kind: err2.kind, message: err2.message }).toEqual({ kind: 'provider', message: 'HTTP 500' })
   })
 })

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { AiChunkEvent, AiDoneEvent, AiErrorEvent } from '../../src/common/ai-types'
 import type { BookChangedEvent, NovelWriterApi } from '../../src/common/ipc'
 import {
   RendererToMainRequests,
@@ -76,7 +77,11 @@ const projectAPI: RendererToMainRequests = {
   // AI 设置（M4a Task 2；返回形状永远是掩码视图，明文 apiKey 不经过此通道）
   'ai:getSettings': () => ipcRenderer.invoke('ai:getSettings'),
   'ai:setSettings': (patch) => ipcRenderer.invoke('ai:setSettings', patch),
-  'ai:testConnection': () => ipcRenderer.invoke('ai:testConnection')
+  'ai:testConnection': () => ipcRenderer.invoke('ai:testConnection'),
+  // AI 对话（M4a Task 4）：chat 只回「已受理」，结果走下面三个事件通道（契约见 src/common/ipc.ts）
+  'ai:chat': (request) => ipcRenderer.invoke('ai:chat', request),
+  'ai:cancel': (requestId) => ipcRenderer.invoke('ai:cancel', requestId),
+  'ai:getUsage': (projectPath) => ipcRenderer.invoke('ai:getUsage', projectPath)
 }
 
 // 主进程 -> 渲染进程 监听
@@ -198,11 +203,14 @@ const novelWriter: NovelWriterApi = {
     pdf: projectAPI['export:pdf']
   },
 
-  // AI 设置（M4a Task 2；对话方法随 Task 4 扩展）
+  // AI 设置 + 对话（M4a Task 2/4）
   ai: {
     getSettings: projectAPI['ai:getSettings'],
     setSettings: projectAPI['ai:setSettings'],
-    testConnection: projectAPI['ai:testConnection']
+    testConnection: projectAPI['ai:testConnection'],
+    chat: projectAPI['ai:chat'],
+    cancel: projectAPI['ai:cancel'],
+    getUsage: projectAPI['ai:getUsage']
   },
 
   // 监听器
@@ -218,6 +226,29 @@ const novelWriter: NovelWriterApi = {
       ipcRenderer.on('book:changed', listener)
       return () => {
         ipcRenderer.removeListener('book:changed', listener)
+      }
+    },
+    // Task 4：AI 流式事件三通道——与 bookChanged 逐字同纪律（包装函数入队、
+    // removeListener 精确摘除自己的那一个；绝不用 removeAllListeners）
+    aiChunk: (handler: (event: AiChunkEvent) => void) => {
+      const listener = (_e: IpcRendererEvent, event: AiChunkEvent): void => handler(event)
+      ipcRenderer.on('ai:chunk', listener)
+      return () => {
+        ipcRenderer.removeListener('ai:chunk', listener)
+      }
+    },
+    aiDone: (handler: (event: AiDoneEvent) => void) => {
+      const listener = (_e: IpcRendererEvent, event: AiDoneEvent): void => handler(event)
+      ipcRenderer.on('ai:done', listener)
+      return () => {
+        ipcRenderer.removeListener('ai:done', listener)
+      }
+    },
+    aiError: (handler: (event: AiErrorEvent) => void) => {
+      const listener = (_e: IpcRendererEvent, event: AiErrorEvent): void => handler(event)
+      ipcRenderer.on('ai:error', listener)
+      return () => {
+        ipcRenderer.removeListener('ai:error', listener)
       }
     }
   },

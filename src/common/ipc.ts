@@ -2,7 +2,15 @@
 
 // 仅类型导入（双向 type-only 环：schema.ts 从这里取枚举类型，这里从 schema 取 CharacterV2——
 // tsc/vite 编译期即擦除，无运行时循环依赖）。
-import type { AiSettingsPatch, AiSettingsView } from './ai-types'
+import type {
+  AiChatRequest,
+  AiChunkEvent,
+  AiDoneEvent,
+  AiErrorEvent,
+  AiSettingsPatch,
+  AiSettingsView,
+  AiUsageSummary
+} from './ai-types'
 import type {
   CharacterV2,
   ChoiceNodeV2,
@@ -23,6 +31,12 @@ export type MainToRendererEvents = {
   // ~1s 自写窗口剔除——修订轮2 I1，取代裁定 5「接受回声噪音」，常态只达外部改动；越窗漏出的
   // 自写仍由渲染层内容比对兜底）
   'book:changed': (event: BookChangedEvent) => void
+  // Task 4：AI 流式对话事件（event.sender 定向广播，非全局；按 requestId 认领）。
+  // ai:chat 的受理前失败（not-configured/busy 等）不走 ai:error，而是同步 reject——
+  // 事件按 requestId 分发，重复请求的失败发事件会误杀在途原请求，这是有意的分界。
+  'ai:chunk': (event: AiChunkEvent) => void
+  'ai:done': (event: AiDoneEvent) => void
+  'ai:error': (event: AiErrorEvent) => void
 }
 
 // book:changed 事件载荷（Task 9）：paths = 相对书根、正斜杠、升序去重的变更路径
@@ -156,6 +170,13 @@ export type RendererToMainRequests = {
   'ai:getSettings': () => Promise<AiSettingsView>
   'ai:setSettings': (patch: AiSettingsPatch) => Promise<AiSettingsView>
   'ai:testConnection': () => Promise<{ ok: true }>
+  // AI 对话（M4a Task 4）：chat 是 fire-and-forget 语义——resolve 的 {accepted:true} 只表示
+  // 「已受理进入在途」，正文/结果/失败一律经 ai:chunk|ai:done|ai:error 事件按 requestId 回来；
+  // 受理前失败（not-configured/busy/未配置模型/形状非法）则 promise 直接 reject，
+  // message 形如 `[busy] 请求 … 正在处理中`（kind 编进前缀，useAI 解包成 AiErrorEvent.kind）。
+  'ai:chat': (request: AiChatRequest) => Promise<{ accepted: true }>
+  'ai:cancel': (requestId: string) => Promise<boolean>
+  'ai:getUsage': (projectPath: string) => Promise<AiUsageSummary>
 }
 
 // preload 暴露给渲染进程的统一 IPC 门面（window.novelWriter 的唯一类型）。
@@ -244,6 +265,10 @@ export interface NovelWriterApi {
     getSettings: RendererToMainRequests['ai:getSettings']
     setSettings: RendererToMainRequests['ai:setSettings']
     testConnection: RendererToMainRequests['ai:testConnection']
+    // Task 4：对话三通道（契约见 RendererToMainRequests 上方注释）
+    chat: RendererToMainRequests['ai:chat']
+    cancel: RendererToMainRequests['ai:cancel']
+    getUsage: RendererToMainRequests['ai:getUsage']
   }
   on: {
     // 注：以下四条为 M1 遗留死通道（主进程从未广播），M4 清理待办——保留不动（Task 9 裁定 6）
@@ -253,6 +278,11 @@ export interface NovelWriterApi {
     statsUpdated: (callback: (stats: WritingStats) => void) => void
     // Task 9：订阅 book:changed，返回精确反订阅函数（removeListener 只摘自己加的监听——镜像 menu.onEvent 先例）
     bookChanged: (handler: (event: BookChangedEvent) => void) => () => void
+    // Task 4：AI 流式事件三通道——与 bookChanged 同一纪律（typed handler、返回精确反订阅，
+    // removeListener 摘本次包装函数，绝不用 removeAllListeners 误伤其他订阅者）
+    aiChunk: (handler: (event: AiChunkEvent) => void) => () => void
+    aiDone: (handler: (event: AiDoneEvent) => void) => () => void
+    aiError: (handler: (event: AiErrorEvent) => void) => () => void
   }
   menu: {
     onEvent: (handler: (event: string, ...args: unknown[]) => void) => () => void

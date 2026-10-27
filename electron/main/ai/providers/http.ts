@@ -113,7 +113,11 @@ export function redactKey(text: string, apiKey?: string): string {
   return text.split(apiKey).join('[已脱敏]')
 }
 
-/** 非 2xx → AiCallError：401/403 → auth，其余 → provider；响应体摘要 ≤300 且经 redactKey。 */
+/**
+ * 非 2xx → AiCallError：401/403 → auth，其余 → provider；响应体摘要 ≤300 且经 redactKey。
+ * 顺序不变量（Task 3 复审 FOLD）：先对全文 redactKey，再截 300——反序时恰好横跨
+ * 截断线的密钥只留下前缀碎片，redactKey 找不到完整串就再也遮不掉。
+ */
 export async function ensureOk(resp: Response, apiKey?: string): Promise<void> {
   if (resp.ok) return
   let bodyText = ''
@@ -122,9 +126,10 @@ export async function ensureOk(resp: Response, apiKey?: string): Promise<void> {
   } catch {
     bodyText = '(无法读取响应体)'
   }
-  if (bodyText.length > 300) bodyText = `${bodyText.slice(0, 300)}…[已截断]`
+  const redacted = redactKey(bodyText, apiKey)
+  const capped = redacted.length > 300 ? `${redacted.slice(0, 300)}…[已截断]` : redacted
   const kind = resp.status === 401 || resp.status === 403 ? 'auth' : 'provider'
-  throw new AiCallError(kind, `HTTP ${resp.status}${bodyText ? `: ${redactKey(bodyText, apiKey)}` : ''}`)
+  throw new AiCallError(kind, `HTTP ${resp.status}${capped ? `: ${capped}` : ''}`)
 }
 
 /**

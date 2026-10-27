@@ -60,6 +60,19 @@ export interface AiMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
 }
+/** 用量计数（账本聚合的原子形状；tokens 单位为 token 数，非金额） */
+export interface AiUsageCounter {
+  calls: number
+  prompt: number
+  completion: number
+  cached: number
+}
+/** ai:getUsage 返回形状（Task 4 usage.ts 聚合产出；跨 IPC 只含计数，绝不含正文/密钥） */
+export interface AiUsageSummary {
+  byFeature: Record<AiFeature, AiUsageCounter>
+  total: AiUsageCounter
+  byModel: Record<string, { prompt: number; completion: number }>
+}
 export interface AiChunkEvent {
   requestId: string
   text: string

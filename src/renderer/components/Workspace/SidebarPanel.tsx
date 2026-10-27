@@ -178,6 +178,7 @@ function SidebarPanel({
                 streak={statsView.streak}
                 dailyGoal={dailyGoal}
                 history={statsView.history}
+                projectPath={projectPath}
               />
             )}
           </div>

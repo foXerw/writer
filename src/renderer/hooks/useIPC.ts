@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { AiSettingsPatch, AiSettingsView } from '@/common/ai-types'
+import type { AiSettingsPatch, AiSettingsView, AiUsageSummary } from '@/common/ai-types'
 import type {
   NovelWriterApi,
   ProjectData,
@@ -522,4 +522,16 @@ export function useAISettings() {
     setAISettings,
     testAIConnection
   }
+}
+
+// AI 用量账本 Hook（M4a Task 4）：ai:getUsage 的薄包装（StatsPanel 的「AI 用量」区块用）。
+// 对话发起走 hooks/useAI（事件回流模型，不适合一通道一函数的薄包装纪律）。
+export function useAIUsage() {
+  const ipc = getIPC()
+
+  const getAIUsage = useCallback(async (projectPath: string): Promise<AiUsageSummary> => {
+    return ipc.ai.getUsage(projectPath)
+  }, [ipc])
+
+  return { getAIUsage }
 }

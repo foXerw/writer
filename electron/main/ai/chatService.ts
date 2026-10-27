@@ -1,0 +1,146 @@
+// AI 对话编排（M4a Task 4）：ai:chat / ai:cancel 通道的主进程核心。
+//
+// 失败两分契约（useAI hook 同时兜两条路，T5/T6 依赖此表）：
+// ┌ 受理前（同步 reject，Error.message = `[kind] 文本`，不发任何事件）：
+// │   · requestId/messages 形状不合法      → kind 'provider'
+// │   · isConfigured(loadSettings()) 失败  → kind 'not-configured'
+// │   · model 解析后为空                   → kind 'not-configured'（未配置模型）
+// │   · 同 requestId 在途重复              → kind 'busy'
+// │     ——busy/not-configured 绝不走 ai:error 事件：事件按 requestId 分发，
+// │     重复请求的失败若发事件会误杀「正在途的原请求」的 UI。
+// └ 受理后（invoke 已回 {accepted:true}，一切结果只经事件通道，均带 requestId）：
+//     · ai:chunk {requestId, text}（0..n 条，provider onChunk 直转）
+//     · ai:done  {requestId, usage}（成功尾；usage 与账本同源）
+//     · ai:error {requestId, kind, message}（AiCallError 原 kind 直通；其余归 'provider'）
+//
+// 并发隔离：module 级 Map<requestId, AbortController>；每个请求的 emit 闭包只捕获
+// 自己的 requestId 与 sender，多 id 并发互不串台（测试钉死）。
+// finally 删除用「控制器身份比对」防 id 复用竞态（旧请求善后时绝不删掉复用同 id 的新控制器）。
+//
+// 测试接缝：setProviderOverride —— 仅测试注入假 AiProvider；生产恒置 null，
+// getProvider(settings) 按协议分发。除此之外本模块不 mock（sender 用结构化替身）。
+import type { AiChatRequest, AiUsageRecord } from '../../../src/common/ai-types'
+import { isConfigured } from '../../../src/common/ai-types'
+import { loadSettings } from './settings'
+import { getProvider } from './providers'
+import { AiCallError } from './providers/types'
+import type { AiProvider } from './providers/types'
+import { DEFAULT_TIMEOUT_MS } from './providers/http'
+import { appendUsage } from './usage'
+
+/** event.sender 的最小形状（真实 WebContents 结构满足；测试传替身，同 watcher.ts 先例）。 */
+export interface ChatEventSender {
+  send(channel: 'ai:chunk' | 'ai:done' | 'ai:error', payload: unknown): void
+  isDestroyed?(): boolean
+}
+
+const inflight = new Map<string, AbortController>()
+let providerOverride: AiProvider | null = null
+
+/** 仅测试使用：注入假 provider；传 null 恢复真实分发。 */
+export function setProviderOverride(provider: AiProvider | null): void {
+  providerOverride = provider
+}
+
+/** 同步受理失败：kind 编进 message 前缀 `[kind] `，hook 侧 parseKind 解包（不另立通道）。 */
+function rejectWithKind(kind: string, message: string): never {
+  throw new Error(`[${kind}] ${message}`)
+}
+
+/**
+ * 受理一次对话。返回 {accepted:true} 仅代表「已进入在途」，正文/结果永远走事件通道。
+ * 同步 throw 的形状见文件头失败两分契约。
+ */
+export function startChat(sender: ChatEventSender, request: AiChatRequest): { accepted: true } {
+  const req = (request ?? {}) as AiChatRequest
+  if (typeof req.requestId !== 'string' || req.requestId === '' || !Array.isArray(req.messages)) {
+    rejectWithKind('provider', '对话请求形状不合法（requestId/messages）')
+  }
+  const settings = loadSettings()
+  if (!isConfigured(settings)) {
+    rejectWithKind('not-configured', 'AI 尚未配置（协议/BaseUrl/密钥需齐全）')
+  }
+  // model 解析：显式 model > 功能覆盖 > 默认模型；空即受理失败（此刻还没有任何在途状态）
+  const featureModel = req.feature ? settings.models[req.feature] : undefined
+  const model = (typeof req.model === 'string' && req.model !== '' ? req.model : undefined)
+    ?? (featureModel && featureModel !== '' ? featureModel : undefined)
+    ?? (settings.defaultModel !== '' ? settings.defaultModel : '')
+  if (!model) {
+    rejectWithKind('not-configured', '未配置模型')
+  }
+  if (inflight.has(req.requestId)) {
+    rejectWithKind('busy', `请求 ${req.requestId} 正在处理中`)
+  }
+
+  const controller = new AbortController()
+  inflight.set(req.requestId, controller)
+  const requestId = req.requestId
+
+  // 闭包只捕获本请求的 sender/requestId——并发多 id 天然隔离；窗口销毁即哑火。
+  const emit = (channel: 'ai:chunk' | 'ai:done' | 'ai:error', payload: unknown): void => {
+    try {
+      if (sender.isDestroyed?.() === true) return
+      sender.send(channel, payload)
+    } catch {
+      // 发送竞态（窗口刚销毁）：结果无处安放，静默丢弃，绝不让 IPC 写失败炸掉请求链路
+    }
+  }
+
+  void (async () => {
+    try {
+      const provider = providerOverride ?? getProvider(settings)
+      const result = await provider.chat(
+        settings,
+        model,
+        { messages: req.messages, temperature: req.temperature, maxTokens: req.maxTokens },
+        (text: string) => emit('ai:chunk', { requestId, text }),
+        { signal: controller.signal, timeoutMs: DEFAULT_TIMEOUT_MS }
+      )
+      if (typeof req.projectPath === 'string' && req.projectPath !== '') {
+        const rec: AiUsageRecord = {
+          ts: new Date().toISOString(),
+          feature: req.feature,
+          model,
+          promptTokens: result.usage.promptTokens,
+          completionTokens: result.usage.completionTokens,
+          cachedTokens: result.usage.cachedTokens
+        }
+        appendUsage(req.projectPath, rec) // 内部容错：记账失败只 warn，不影响 done
+      }
+      emit('ai:done', { requestId, usage: result.usage })
+    } catch (err) {
+      const callErr =
+        err instanceof AiCallError
+          ? err
+          : new AiCallError(
+              'provider',
+              `AI 调用异常：${String((err as Error | undefined)?.name ?? 'UnknownError')}`
+            )
+      // AiCallError.message 构造点已保证 ≤300 且经 redactKey——跨 IPC 前无需二次脱敏。
+      emit('ai:error', { requestId, kind: callErr.kind, message: callErr.message })
+    } finally {
+      // 身份比对：复用同 requestId 的新请求在途时，旧请求善后不得误删新控制器
+      if (inflight.get(requestId) === controller) inflight.delete(requestId)
+    }
+  })()
+
+  return { accepted: true }
+}
+
+/**
+ * 取消在途请求。幂等且诚实：在途且首次取消 → true（触发 abort）；
+ * 已取消过/已善后/未知 id → false。abort 后 provider 以 AiCallError('cancelled')
+ * 收尾，ai:error 事件照常发给渲染层（由事件侧完成 UI 清理）。
+ */
+export function cancelChat(requestId: string): boolean {
+  const controller = inflight.get(requestId)
+  if (!controller) return false
+  const wasPending = !controller.signal.aborted
+  controller.abort()
+  return wasPending
+}
+
+/** 仅测试：在途请求数（生产代码不得依赖）。 */
+export function inflightCount(): number {
+  return inflight.size
+}

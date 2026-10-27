@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Card, Statistic, Progress, Row, Col, Typography, Space, Divider } from 'antd'
 import {
   FileTextOutlined,
@@ -6,8 +6,12 @@ import {
   FireOutlined,
   TrophyOutlined,
   RiseOutlined,
-  CalendarOutlined
+  CalendarOutlined,
+  RobotOutlined
 } from '@ant-design/icons'
+import type { AiFeature, AiUsageSummary } from '@/common/ai-types'
+import { useAIUsage } from '../../hooks/useIPC'
+import { subscribeEntitiesChanged } from '../../services/entityEvents'
 
 const { Text } = Typography
 
@@ -17,6 +21,14 @@ interface HistoryDay {
   minutes: number
 }
 
+// AI 功能中文标签（与 AiFeature 枚举逐一对应；顺序即展示顺序）
+const AI_FEATURE_LABELS: Record<AiFeature, string> = {
+  organize: '整理',
+  completion: '补全',
+  review: '审阅'
+}
+const AI_FEATURE_ORDER: readonly AiFeature[] = ['organize', 'completion', 'review']
+
 interface StatsPanelProps {
   todayWordCount?: number
   totalWordCount?: number
@@ -24,6 +36,14 @@ interface StatsPanelProps {
   streak?: number
   dailyGoal?: number
   history?: HistoryDay[]     // 近 N 天（oldest→newest）；默认 []
+  /** 书目录绝对路径（M4a Task 4）：给定才显示「AI 用量」区块（账本按书记账） */
+  projectPath?: string
+}
+
+/** 一行计数文本：`2 次 · 提示 120 / 补全 45 tokens`（缓存仅在 >0 时追加）；feature 名由行左侧标签给出 */
+function formatUsageLine(c: { calls: number; prompt: number; completion: number; cached: number }): string {
+  const base = `${c.calls} 次 · 提示 ${c.prompt.toLocaleString()} / 补全 ${c.completion.toLocaleString()} tokens`
+  return c.cached > 0 ? `${base} · 缓存 ${c.cached.toLocaleString()}` : base
 }
 
 const StatsPanel: React.FC<StatsPanelProps> = ({
@@ -32,8 +52,35 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
   writingDuration = 0,
   streak = 0,
   dailyGoal = 2000,
-  history = []
+  history = [],
+  projectPath
 }) => {
+  // AI 用量账本（M4a Task 4）：mount/换书即拉 + entityEvents 刷新（沿用面板既有刷新面）；
+  // 读失败静默保持 null——统计区块永远不值得把错误打到写作界面上。
+  const { getAIUsage } = useAIUsage()
+  const [aiUsage, setAiUsage] = useState<AiUsageSummary | null>(null)
+  useEffect(() => {
+    if (!projectPath) {
+      setAiUsage(null)
+      return
+    }
+    let alive = true
+    const refresh = (): void => {
+      getAIUsage(projectPath)
+        .then((u) => {
+          if (alive) setAiUsage(u)
+        })
+        .catch(() => {
+          /* 静默 */
+        })
+    }
+    refresh()
+    const unsubscribe = subscribeEntitiesChanged(refresh)
+    return () => {
+      alive = false
+      unsubscribe()
+    }
+  }, [projectPath, getAIUsage])
   const progress = useMemo(
     () => Math.min(Math.round((todayWordCount / dailyGoal) * 100), 100),
     [todayWordCount, dailyGoal]
@@ -196,6 +243,46 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
             </>
           )}
         </div>
+
+        {/* AI 用量（M4a Task 4：<book>/.ai/usage.jsonl 账本聚合；仅在传入 projectPath 时出现） */}
+        {projectPath && (
+          <>
+            <Divider style={{ borderColor: 'var(--color-border)', margin: '16px 0' }} />
+            <div style={{ padding: '0 16px' }}>
+              <Space><RobotOutlined style={{ color: 'var(--color-text-tertiary)' }} /><Text style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>AI 用量</Text></Space>
+              {!aiUsage || aiUsage.total.calls === 0 ? (
+                <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--color-bg-base)', borderRadius: 4 }}>
+                  <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
+                    {aiUsage ? '暂无 AI 用量' : '读取中…'}
+                  </Text>
+                </div>
+              ) : (
+                <>
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    marginTop: 8, padding: '8px 12px', background: 'var(--color-bg-base)', borderRadius: 4
+                  }}>
+                    <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>总计</Text>
+                    <Text style={{ color: 'var(--color-primary)', fontSize: 11 }}>
+                      {formatUsageLine(aiUsage.total)}
+                    </Text>
+                  </div>
+                  {AI_FEATURE_ORDER.filter((f) => aiUsage.byFeature[f].calls > 0).map((f) => (
+                    <div key={f} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      marginTop: 8, padding: '8px 12px', background: 'var(--color-bg-base)', borderRadius: 4
+                    }}>
+                      <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>{AI_FEATURE_LABELS[f]}</Text>
+                      <Text style={{ color: 'var(--color-text)', fontSize: 11 }}>
+                        {formatUsageLine(aiUsage.byFeature[f])}
+                      </Text>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
