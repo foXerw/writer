@@ -79,6 +79,21 @@ export interface EntityLink {
   note?: string
 }
 
+/**
+ * M4c-2 create 幂等令牌（provenance token）：adopt 引擎在 create×五实体（character/world/
+ * plotline/choice/foreshadow）落盘时盖章的 {提案 id, 条目记账键}。引擎创建前按 aiSource 全等
+ * 扫描目标域：命中 = 该条目已应用过（如 markSettled 记账写失败后的重试）→ 视为已应用，
+ * 绝不再造双胞胎实体。**只由 adopt 引擎写入**（update/delete 不注入不查询；提案载荷里的
+ * aiSource 一律进不了实体——不在 FIELD_ALLOWLIST）；手写实体请勿伪造（伪造会让 AI 重试
+ * 误判「已应用」跳过创建，见 BOOK_FORMAT §7.5/§8）。cid = changeKey 派生值（change.cid ??
+ * 位置回退键）；legacy 位置键的身份随 reject 重排漂移——复用位置可能误命中陈旧令牌
+ * （BOOK_FORMAT §7.5 已知取舍；应用盖章的提案恒有 cid，无此窗口）。
+ */
+export interface AiSource {
+  proposalId: string
+  cid: string
+}
+
 export interface CharacterArcStage {
   title: string
   summary: string
@@ -109,6 +124,8 @@ export interface CharacterV2 {
    * （宽容，向前兼容），人手编辑路径原样回显即可。缺失 = 从未有 AI 采纳写入（v2 存量数据常态）。
    */
   aiTouched?: string[]
+  /** M4c-2 create 幂等令牌（adopt 引擎专属出处盖章；语义见 AiSource）。 */
+  aiSource?: AiSource
   // 一律 ISO 字符串（new Date().toISOString()），根治 v1 Date 序列化漂移
   createdAt: string
   updatedAt: string
@@ -125,6 +142,8 @@ export interface WorldEntryV2 {
   links: EntityLink[]
   /** M4b origin 机制（裁定 R1，语义同 CharacterV2.aiTouched）：AI 采纳引擎写过的字段名清单。 */
   aiTouched?: string[]
+  /** M4c-2 create 幂等令牌（adopt 引擎专属出处盖章；语义见 AiSource）。 */
+  aiSource?: AiSource
   createdAt: string
   updatedAt: string
 }
@@ -142,6 +161,8 @@ export interface PlotlineV2 {
   summary: string
   status: 'active' | 'done' | 'dormant'
   stages: PlotlineStage[]
+  /** M4c-2 create 幂等令牌（adopt 引擎专属出处盖章；语义见 AiSource）。 */
+  aiSource?: AiSource
   createdAt: string
   updatedAt: string
 }
@@ -156,6 +177,8 @@ export interface ChoiceNodeV2 {
   title: string
   chapterId: string
   options: ChoiceOption[]
+  /** M4c-2 create 幂等令牌（adopt 引擎专属出处盖章；语义见 AiSource）。 */
+  aiSource?: AiSource
   createdAt: string
   updatedAt: string
 }
@@ -168,6 +191,8 @@ export interface ForeshadowEntry {
   resolvedChapterId: string | null
   status: 'open' | 'resolved' | 'abandoned'
   note?: string
+  /** M4c-2 create 幂等令牌（adopt 引擎专属出处盖章；语义见 AiSource）。 */
+  aiSource?: AiSource
 }
 
 export interface ForeshadowLedger {
@@ -272,6 +297,22 @@ function expectStringArray(
   if (!Array.isArray(value) || value.some((x) => typeof x !== 'string')) {
     errors.push(`${path}: expected array of strings, got ${typeName(value)}`)
   }
+}
+
+/**
+ * aiSource（M4c-2 create 幂等令牌，五实体共用）：可选字段，缺省合法（手写/存量数据常态）；
+ * 出现即要求「两个非空字符串字段的对象」——坏形状记错并带字段路径（宁拒：垃圾令牌会让
+ * adopt 引擎的幂等扫描失真）。未知多余子字段容忍（与全局向前兼容口径一致）。
+ */
+function expectAiSource(obj: Record<string, unknown>, path: string, errors: Errors): void {
+  const value = obj.aiSource
+  if (value === undefined) return
+  if (!isRecord(value)) {
+    errors.push(`${path}.aiSource: expected object, got ${typeName(value)}`)
+    return
+  }
+  expectString(value, 'proposalId', `${path}.aiSource.proposalId`, errors, true)
+  expectString(value, 'cid', `${path}.aiSource.cid`, errors, true)
 }
 
 /** 取数组字段；非数组则记错并返回 null。 */
@@ -396,6 +437,7 @@ export function validateCharacterV2(v: unknown): string[] {
     )
   }
   validateLinkArray(v, 'links', 'character.links', errors)
+  expectAiSource(v, 'character', errors)
   expectString(v, 'createdAt', 'character.createdAt', errors)
   expectString(v, 'updatedAt', 'character.updatedAt', errors)
   return errors
@@ -412,6 +454,7 @@ export function validateWorldEntryV2(v: unknown): string[] {
   expectNumber(v, 'order', 'worldEntry.order', errors)
   expectStringArray(v, 'tags', 'worldEntry.tags', errors)
   validateLinkArray(v, 'links', 'worldEntry.links', errors)
+  expectAiSource(v, 'worldEntry', errors)
   expectString(v, 'createdAt', 'worldEntry.createdAt', errors)
   expectString(v, 'updatedAt', 'worldEntry.updatedAt', errors)
   return errors
@@ -440,6 +483,7 @@ export function validatePlotlineV2(v: unknown): string[] {
       errors.push(...childErrors('plotline.stages', i, validatePlotlineStage(stage)))
     )
   }
+  expectAiSource(v, 'plotline', errors)
   expectString(v, 'createdAt', 'plotline.createdAt', errors)
   expectString(v, 'updatedAt', 'plotline.updatedAt', errors)
   return errors
@@ -465,6 +509,7 @@ export function validateChoiceNodeV2(v: unknown): string[] {
       errors.push(...childErrors('choiceNode.options', i, validateChoiceOption(option)))
     )
   }
+  expectAiSource(v, 'choiceNode', errors)
   expectString(v, 'createdAt', 'choiceNode.createdAt', errors)
   expectString(v, 'updatedAt', 'choiceNode.updatedAt', errors)
   return errors
@@ -480,6 +525,7 @@ export function validateForeshadowEntry(v: unknown): string[] {
   expectStringOrNull(v, 'resolvedChapterId', 'foreshadowEntry.resolvedChapterId', errors)
   expectEnum(v, 'status', 'foreshadowEntry.status', FORESHADOW_STATUSES, errors)
   expectOptionalString(v, 'note', 'foreshadowEntry.note', errors)
+  expectAiSource(v, 'foreshadowEntry', errors)
   return errors
 }
 

@@ -137,6 +137,7 @@ front-matter 编解码契约（`src/common/chapterDoc.ts`）：
 | `tags` | CharacterTag[] | ✅ | |
 | `links` | EntityLink[] | ✅ | 通用互链（目标集 = 角色 ∪ 卷 ∪ 词条） |
 | `aiTouched` | string[] | ❔ | M4b origin 机制：AI 采纳引擎写过的字段名清单（校验器不检查；语义见 §7.5） |
+| `aiSource` | `{ proposalId: string; cid: string }` | ❔ | M4c-2 create 幂等令牌：采纳引擎 create 落盘时盖章的出处（两字段均非空字符串；语义见 §7.5，**手写实体请勿伪造**，见 §8） |
 | `createdAt` / `updatedAt` | string | ✅ ISO | update 由仓库侧刷新 `updatedAt`，`createdAt` 以存量为准 |
 
 EntityLink（relationships / links 通用）：
@@ -170,6 +171,7 @@ CharacterTag：`id`（非空字符串，**有意豁免 UUID**）+ `name`（非�
 | `tags` | string[] | ✅ | 纯字符串数组（与角色的 CharacterTag[] 不同） |
 | `links` | EntityLink[] | ✅ | 目标集 = 角色 ∪ 卷 ∪ 词条 |
 | `aiTouched` | string[] | ❔ | M4b origin 机制（同 CharacterV2，语义见 §7.5） |
+| `aiSource` | `{ proposalId: string; cid: string }` | ❔ | M4c-2 create 幂等令牌（同 CharacterV2，语义见 §7.5，勿伪造见 §8） |
 | `createdAt` / `updatedAt` | string | ✅ ISO | |
 
 ### 4.6 `plotlines/<uuid>.yaml` — PlotlineV2
@@ -181,6 +183,7 @@ CharacterTag：`id`（非空字符串，**有意豁免 UUID**）+ `name`（非�
 | `summary` | string | ✅ | |
 | `status` | enum | ✅ | `active \| done \| dormant` |
 | `stages` | PlotlineStage[] | ✅ | `title` ✅ 非空、`summary` ✅、`chapterIds` string[] ✅、`entityIds` string[] ✅ |
+| `aiSource` | `{ proposalId: string; cid: string }` | ❔ | M4c-2 create 幂等令牌（同 CharacterV2，语义见 §7.5，勿伪造见 §8） |
 | `createdAt` / `updatedAt` | string | ✅ ISO | |
 
 ### 4.7 `choices/<uuid>.yaml` — ChoiceNodeV2
@@ -191,6 +194,7 @@ CharacterTag：`id`（非空字符串，**有意豁免 UUID**）+ `name`（非�
 | `title` | string | ✅ 非空 | |
 | `chapterId` | string | ✅ 非空 | 单值章引用；改到幻影才拒（存量悬挂保留） |
 | `options` | ChoiceOption[] | ✅ | `{ label: string ✅非空, consequence: string ✅ }` |
+| `aiSource` | `{ proposalId: string; cid: string }` | ❔ | M4c-2 create 幂等令牌（同 CharacterV2，语义见 §7.5，勿伪造见 §8） |
 | `createdAt` / `updatedAt` | string | ✅ ISO | |
 
 ### 4.8 `foreshadow.yaml` — ForeshadowLedger（单文件整本台账）
@@ -206,6 +210,7 @@ CharacterTag：`id`（非空字符串，**有意豁免 UUID**）+ `name`（非�
 | `resolvedChapterId` | string \| null | ✅ | 未回收 = null |
 | `status` | enum | ✅ | `open \| resolved \| abandoned`（`reopen` 通道支持撤回边） |
 | `note` | string | ❔ | 可选 |
+| `aiSource` | `{ proposalId: string; cid: string }` | ❔ | M4c-2 create 幂等令牌（同 CharacterV2，语义见 §7.5，勿伪造见 §8） |
 
 ### 4.9 `.novelwriter/stats.json` — StatsData
 
@@ -478,10 +483,23 @@ AI 采纳引擎写过的字段名清单，**只由采纳引擎维护**（应用�
 采纳引擎对 update 条目的行为：命中人写字段且 `overwritesHuman !== true` → 整条拒绝
 （`REFUSED: 覆盖人写内容 <field>`）；`overwritesHuman: true` 还要求该条目索引出现在通道参数
 `confirmedOverwrite[]`（差异面板显式勾选）否则 `REFUSED: 未确认覆盖`；`after` 携带 allowlist 与
-保留回显集（id/createdAt/updatedAt/aiTouched/status）之外的**未知字段** → 整条拒绝
+保留回显集（id/createdAt/updatedAt/aiTouched/status/aiSource）之外的**未知字段** → 整条拒绝
 （`REFUSED: 未知字段 <key>`——静默丢弃会让采纳账目说谎）。create×character/world 的新实体
 **播种 `aiTouched` = 所写非空字段名清单**（裁定 A：AI 产字段不得伪装人写——后续整理改自己建的卡
 无需旗标；空值字段不入账，人后续填写天然是人写）。create×plotline/choice/foreshadow 无此字段。
+
+**`aiSource` create 幂等令牌（M4c-2，五实体通用）**：`CharacterV2` / `WorldEntryV2` / `PlotlineV2` /
+`ChoiceNodeV2` / `ForeshadowEntry` 携可选字段 `aiSource?: { proposalId: string; cid: string }`
+（出现即要求两个非空字符串——坏形状 = 文档级校验错误，列表侧 warn+跳过）。**只由采纳引擎写入**：
+create×五实体落盘时盖章 `aiSource = { proposalId: 提案 id, cid: 该条目的记账键 }`（changeKey 单源：
+`change.cid`，legacy 无 cid 条目 = 位置回退键）。创建前引擎按令牌全等扫描目标域既有实体：
+**命中 = 该条目已应用过 → 视为已应用（计入 applied、不新建、绝不双胞胎）**。这关闭了 M4b 终审/
+M4c-1 钉死的最后残留窗口：上次采纳实体已落盘、`markSettled` 记账写失败抛穿 → `appliedCids` 账目
+丢失 → 重试放行到 create → 旧世界造出双胞胎；现在重试命中原实体的令牌而跳过，并当场把账补上。
+update/delete 路径**不注入也不查询**令牌（其幂等来自既有的值等/缺席语义；update 载荷里回显或
+伪造的 `aiSource` 按保留键静默丢弃，存量令牌经基座拷贝原样保留）。已知取舍：legacy 无 cid 提案
+的位置回退键身份随 reject 重排漂移——重排后复用的位置键可能命中重排前盖章的陈旧令牌（应用
+盖章的提案恒有 cid，无此窗口；第三方手写提案请带 cid，见 §8）。
 
 **差异面板交互（T5）**：`op=update` 且 `overwritesHuman: true` 的条目在审阅面板带橙色警示行
 （列出将被覆盖的 after 字段），复选框**默认不勾**——只有作者手动勾选该条，其索引才进入通道参数
@@ -541,6 +559,13 @@ AI 采纳引擎写过的字段名清单，**只由采纳引擎维护**（应用�
 13. **换行与 BOM**：应用**容忍 CRLF/BOM 读取**（剥一个前导 BOM、定界行去行尾 `\r` 再识别，外部工具整本
     改写 CRLF 不会让章节隐身），但**写出一律 LF**（无 BOM）——第三方文件请以 `serializeChapterDoc` 的
     字节为准；正文内部换行（含 `\r\n`）应用读侧逐字节保留，请勿依赖应用帮你归一化。
+14. **勿伪造 `aiSource`、勿事后增删改 `cid`**：`aiSource`（§7.5）是采纳引擎在 AI create 落盘时盖章的
+    出处令牌——**手写/新建实体请勿携带该字段**；伪造的令牌与某提案 {id, 条目键} 全等时，会让 AI
+    采纳（含重试）误判「已应用」而**跳过创建**——实体静默少一张，且提案账目显示已采纳。提案文件里
+    **勿对既有条目事后增删改 `cid`**（记账主键——漂移会让采纳账目/面板灰化全部错位；确需重组条目
+    时，同步迁移 `appliedCids`/`appliedIndexes` 记账）。手写提案建议每条自带全文件唯一的 `cid`：
+    无 cid 的条目回退位置记账，reject 重排后位置身份漂移（包括陈旧 `aiSource` 令牌误命中复用位置，
+    见 §7.5 已知取舍）。
 
 ## 9. v1 → v2 迁移语义速览（`electron/main/bookStore/migrate.ts`）
 

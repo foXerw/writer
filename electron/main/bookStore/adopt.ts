@@ -38,13 +38,17 @@
 // （cid ?? 位置回退键，单源 src/common/proposal.ts——跨窗口 reject 重排后陈旧勾选不再错位：
 // 在场键按当前 changes 解析、不在场键 REFUSED 条目键未知）。批内有采纳 → markSettled 记账
 // （appliedCids∪appliedIndexes 双写 + status 重算）；全拒 → 提案文件零字节改动。重复键只处理
-// 一次；已采纳键再报 → `REFUSED: 条目已采纳`（防双写：create 重复会造出双胞胎实体）。
+// 一次；已采纳键再报 → `REFUSED: 条目已采纳`（防双写第一道闸）。M4c-2 起 create 另有第二道闸
+// （aiSource 幂等令牌，见 create 段头）：markSettled 写失败 → 账目丢失 → 重试放行时，create
+// 前扫描目标域既有实体的 aiSource={proposalId,条目键} 全等命中 = 已应用 → 跳过创建绝不双胞胎
+// （M4b 终审/M4c-1 钉死的最后残留窗口在此关闭）；创建成功一律盖章令牌进新实体。
 // 双保险：每条在采纳现场重跑 validateChange（ALLOWED_OPS 复查）——手改文件绕过 writeProposal
 // 前置校验时，delete×character 之流仍在这里被逐条拒。
 import { existsSync, readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import type { CharacterGender, CharacterRole, SettingCategory } from '../../../src/common/ipc'
 import type {
+  AiSource,
   CharacterV2,
   ChoiceNodeV2,
   ForeshadowEntry,
@@ -74,8 +78,8 @@ import {
   markSettled,
   saveProposalRaw
 } from './proposals'
-import { createCharacter, getCharacter, updateCharacter } from './characters'
-import { createWorldEntry, getWorldEntry, updateWorldEntry } from './world'
+import { createCharacter, getCharacter, listCharacters, updateCharacter } from './characters'
+import { createWorldEntry, getWorldEntry, listWorldEntries, updateWorldEntry } from './world'
 import { listChapters } from './chapters'
 import {
   abandonForeshadow,
@@ -118,8 +122,12 @@ export const FIELD_ALLOWLIST: Record<ProposalEntity, string[]> = {
 /** update×foreshadow 的窄门（裁定 R3）：机对 status 走状态机 + 两个说明字段；其余键忽略。 */
 const FORESHADOW_UPDATE_FIELDS = ['status', 'plannedPayoffNote', 'note']
 
-/** update 路径的保留键：仓库/系统专属（plotline.status 是生命周期字段，AI 不得改写）。 */
-const RESERVED_UPDATE = new Set(['id', 'createdAt', 'updatedAt', 'aiTouched', 'status'])
+/**
+ * update 路径的保留键：仓库/系统专属（plotline.status 是生命周期字段，AI 不得改写；
+ * aiSource 是 M4c-2 create 幂等令牌——引擎专属，after 回显/伪造一律静默丢弃，
+ * 存量令牌经 {...stored} 基座原样保留，update 侧永不注入也永不查询）。
+ */
+const RESERVED_UPDATE = new Set(['id', 'createdAt', 'updatedAt', 'aiTouched', 'status', 'aiSource'])
 
 // ---------------------------------------------------------------------------
 // 小工具
@@ -233,7 +241,26 @@ function mergePlain(
 
 // ---------------------------------------------------------------------------
 // create（R3：注入新 id/时间戳后全形状深校验，再过 repository 二次校验 + 原子写）
+// M4c-2 create 幂等（aiSource 令牌——markSettled 失败重试的双胞胎窗口关闭）：
+// 每个 create 路径落盘前先按 aiSource 全等扫描目标域既有实体，命中 {proposalId:本提案,
+// cid:本条目键} = 该条目已经落过盘（典型盘面：上次采纳实体已写、markSettled 记账写失败抛穿，
+// appliedCids 账目丢失 → 重试放行到这里）→ 视为已应用：计入 applied、不新建、绝不双胞胎，
+// 并由本次批次的 markSettled 把账补上。未命中 → 照常创建，并把令牌盖章进新实体。
+// M4c-1 的 appliedCids 账目守卫仍是第一道闸（账在 → 「条目已采纳」拒），令牌是账目丢失时的
+// 第二道闸——两道合起来 create 幂等闭环。update/delete 不注入不查询（既有值等/缺席语义已幂等）。
+// 扫描成本：每 create 一次目标域全量线性扫（list 命中 Task 9 域缓存零 IO；台账单文件整读）——
+// O(n)/条，书规模（实体数百级）下可忽略；换来的是数据完整性窗口归零，划算。
 // ---------------------------------------------------------------------------
+
+/**
+ * 令牌匹配（扫描口径）：entity.aiSource 与 {proposalId, cid:key} 双字段全等（深等价 = 两个
+ * 字符串 ===；列表侧已过 schema 校验——aiSource 要么缺省要么合法形状，垃圾形状进不了这里）。
+ * 刻意不做模糊匹配：任一字段不符（别提案/别条目/伪造残缺）一律 miss → 照常创建，宁多不漏。
+ */
+function aiSourceHit(entity: { aiSource?: AiSource }, proposalId: string, key: string): boolean {
+  const s = entity.aiSource
+  return s !== undefined && s.proposalId === proposalId && s.cid === key
+}
 
 /** allowlist + own-property 双门拷贝（R2：'__proto__'/未知键/继承属性天然进不来）。 */
 function buildCandidate(after: Record<string, unknown>, allowlist: string[]): Record<string, unknown> {
@@ -260,9 +287,11 @@ function writtenNonEmptyKeys(after: Record<string, unknown>, allowlist: string[]
   return keys
 }
 
-function adoptCreateCharacter(p: string, change: ProposalChange): void {
+function adoptCreateCharacter(p: string, proposalId: string, key: string, change: ProposalChange): void {
+  if (listCharacters(p).some((c) => aiSourceHit(c, proposalId, key))) return // M4c-2 幂等扫描：命中 = 已应用
   const after = requireAfterRecord(change)
   const candidate = buildCandidate(after, FIELD_ALLOWLIST.character)
+  candidate.aiSource = { proposalId, cid: key } // 引擎专属盖章（allowlist 不含 aiSource——after 伪造进不来，令牌恒由本行盖章）
   // 裁定 A：AI 产字段入册即记名——后续整理改自己建的卡不再被误判「覆盖人写内容」
   const touched = writtenNonEmptyKeys(after, FIELD_ALLOWLIST.character)
   if (touched.length > 0) candidate.aiTouched = touched // 校验器对 aiTouched 宽容（schema.ts 注释）
@@ -279,9 +308,11 @@ function adoptCreateCharacter(p: string, change: ProposalChange): void {
   ) // 仓库侧再跑 validate + REF_BROKEN 引用检查 + 原子写（双保险；id/时间戳以仓库注入为准）
 }
 
-function adoptCreateWorld(p: string, change: ProposalChange): void {
+function adoptCreateWorld(p: string, proposalId: string, key: string, change: ProposalChange): void {
+  if (listWorldEntries(p).some((e) => aiSourceHit(e, proposalId, key))) return // M4c-2 幂等扫描
   const after = requireAfterRecord(change)
   const candidate = buildCandidate(after, FIELD_ALLOWLIST.world)
+  candidate.aiSource = { proposalId, cid: key } // 引擎专属盖章（同 create×character）
   const touched = writtenNonEmptyKeys(after, FIELD_ALLOWLIST.world) // 裁定 A（同 create×character）
   if (touched.length > 0) candidate.aiTouched = touched
   const errors = validateWorldEntryV2(candidate)
@@ -297,8 +328,10 @@ function adoptCreateWorld(p: string, change: ProposalChange): void {
   )
 }
 
-function adoptCreatePlotline(p: string, change: ProposalChange): void {
+function adoptCreatePlotline(p: string, proposalId: string, key: string, change: ProposalChange): void {
+  if (listPlotlines(p).some((x) => aiSourceHit(x, proposalId, key))) return // M4c-2 幂等扫描
   const candidate = buildCandidate(requireAfterRecord(change), FIELD_ALLOWLIST.plotline)
+  candidate.aiSource = { proposalId, cid: key } // 引擎专属盖章
   const errors = validatePlotlineV2(candidate)
   if (errors.length > 0) throw new Error(`剧情线形状非法: ${errors.join('; ')}`)
   createPlotline(
@@ -312,8 +345,10 @@ function adoptCreatePlotline(p: string, change: ProposalChange): void {
   )
 }
 
-function adoptCreateChoice(p: string, change: ProposalChange): void {
+function adoptCreateChoice(p: string, proposalId: string, key: string, change: ProposalChange): void {
+  if (listChoices(p).some((x) => aiSourceHit(x, proposalId, key))) return // M4c-2 幂等扫描
   const candidate = buildCandidate(requireAfterRecord(change), FIELD_ALLOWLIST.choice)
+  candidate.aiSource = { proposalId, cid: key } // 引擎专属盖章
   const errors = validateChoiceNodeV2(candidate)
   if (errors.length > 0) throw new Error(`选项形状非法: ${errors.join('; ')}`)
   createChoice(
@@ -323,14 +358,16 @@ function adoptCreateChoice(p: string, change: ProposalChange): void {
   ) // chapterId 幻影由仓库引用检查拒（REF_BROKEN）
 }
 
-function adoptCreateForeshadow(p: string, change: ProposalChange): void {
+function adoptCreateForeshadow(p: string, proposalId: string, key: string, change: ProposalChange): void {
+  if (readLedger(p).entries.some((e) => aiSourceHit(e, proposalId, key))) return // M4c-2 幂等扫描（台账单文件整读）
   const after = requireAfterRecord(change)
   // 裁定偏差（从严）：id 一律注入新鲜 UUID、after.id 忽略——伪造/幻觉 id 撞上既有条目时
   // upsert 会走「归并覆盖载荷」分支，等于静默改写存量伏笔；新鲜 id 保证本操作永远是追加。
   const candidate: Record<string, unknown> = { id: randomUUID() }
-  for (const key of FIELD_ALLOWLIST.foreshadow) {
-    if (hasOwn(after, key)) candidate[key] = after[key]
+  for (const field of FIELD_ALLOWLIST.foreshadow) {
+    if (hasOwn(after, field)) candidate[field] = after[field]
   }
+  candidate.aiSource = { proposalId, cid: key } // 引擎专属盖章
   const errors = validateForeshadowEntry(candidate)
   if (errors.length > 0) throw new Error(`伏笔形状非法: ${errors.join('; ')}`)
   upsertForeshadow(p, candidate as unknown as ForeshadowEntry) // absent id → 追加语义（writeLedger 校验闸门在后）
@@ -556,13 +593,14 @@ function applyChange(
 ): void {
   const entity = change.entity
   if (change.op === 'create') {
+    // M4c-2：create×五实体携 (proposalId=proposal.id, 条目键=key)——aiSource 幂等扫描 + 盖章令牌
     switch (entity) {
-      case 'character': return adoptCreateCharacter(p, change)
-      case 'world': return adoptCreateWorld(p, change)
-      case 'plotline': return adoptCreatePlotline(p, change)
-      case 'choice': return adoptCreateChoice(p, change)
-      case 'foreshadow': return adoptCreateForeshadow(p, change)
-      case 'summary': return adoptSummary(p, proposal, change)
+      case 'character': return adoptCreateCharacter(p, proposal.id, key, change)
+      case 'world': return adoptCreateWorld(p, proposal.id, key, change)
+      case 'plotline': return adoptCreatePlotline(p, proposal.id, key, change)
+      case 'choice': return adoptCreateChoice(p, proposal.id, key, change)
+      case 'foreshadow': return adoptCreateForeshadow(p, proposal.id, key, change)
+      case 'summary': return adoptSummary(p, proposal, change) // .ai/ 派生数据：文件级覆写天然幂等，无令牌
       default: throw new Error(`不支持的 op×entity: create×${entity}`) // create×index 已被 validateChange 拦
     }
   }

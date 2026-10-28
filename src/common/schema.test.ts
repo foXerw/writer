@@ -351,3 +351,100 @@ describe('validateForeshadowEntry / validateForeshadowLedger', () => {
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// M4c-2：aiSource create 幂等令牌（五实体可选字段，同一校验口径）
+// ---------------------------------------------------------------------------
+
+describe('aiSource（M4c-2 create 幂等令牌）', () => {
+  function validWorld(): Record<string, unknown> {
+    return {
+      id: UUID_A,
+      title: '云梦泽',
+      category: 'location',
+      content: '大泽',
+      parentId: null,
+      order: 1,
+      tags: [],
+      links: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    }
+  }
+  function validPlotline(): Record<string, unknown> {
+    return {
+      id: UUID_A,
+      title: '复仇线',
+      summary: '主线',
+      status: 'active',
+      stages: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    }
+  }
+  function validChoice(): Record<string, unknown> {
+    return {
+      id: UUID_A,
+      title: '岔路',
+      chapterId: UUID_B,
+      options: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    }
+  }
+  function validForeshadow(): Record<string, unknown> {
+    return {
+      id: UUID_A,
+      title: '玉佩来历',
+      plantedChapterId: UUID_B,
+      plannedPayoffNote: '第 30 章',
+      resolvedChapterId: null,
+      status: 'open'
+    }
+  }
+  /** 五域验证器（同一 aiSource 口径）：[前缀, 验证器, 合法样本工厂]。 */
+  const FIVE: Array<[string, (v: unknown) => string[], () => Record<string, unknown>]> = [
+    ['character', validateCharacterV2, validCharacter],
+    ['worldEntry', validateWorldEntryV2, validWorld],
+    ['plotline', validatePlotlineV2, validPlotline],
+    ['choiceNode', validateChoiceNodeV2, validChoice],
+    ['foreshadowEntry', validateForeshadowEntry, validForeshadow]
+  ]
+
+  it('缺省合法（手写/存量数据常态）；出现且形状合法（两个非空字符串）→ []', () => {
+    for (const [, validate, mk] of FIVE) {
+      expect(validate(mk())).toEqual([]) // 缺省
+      const v = mk()
+      v.aiSource = { proposalId: 'prop-3f2b6c1a-abc', cid: UUID_B }
+      expect(validate(v)).toEqual([]) // 合法令牌
+    }
+  })
+
+  it('坏形状 → 错误串带 <entity>.aiSource 字段路径（非对象/缺子字段/空串/类型漂移）', () => {
+    for (const [prefix, validate, mk] of FIVE) {
+      const bad: unknown[] = [
+        'prop-1', // 非对象
+        null, // null（出现即要求对象）
+        { proposalId: 'p', cid: '' }, // cid 空串
+        { proposalId: 42, cid: 'k' }, // proposalId 类型漂移
+        { cid: 'k' } // 缺 proposalId
+      ]
+      for (const value of bad) {
+        const v = mk()
+        v.aiSource = value
+        const errors = validate(v)
+        expect(errors.length, `${prefix}: ${JSON.stringify(value)}`).toBeGreaterThan(0)
+        expect(
+          errors.some((e) => e.includes(`${prefix}.aiSource`)),
+          `${prefix}: ${JSON.stringify(value)} → ${errors.join('; ')}`
+        ).toBe(true)
+      }
+    }
+  })
+
+  it('未知多余子字段容忍（向前兼容全局口径）', () => {
+    const v = validCharacter()
+    v.aiSource = { proposalId: 'p', cid: 'k', future: true }
+    expect(validateCharacterV2(v)).toEqual([])
+  })
+})

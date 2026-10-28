@@ -12,6 +12,10 @@
 // - M4c-1 稳定键：通道参数 = changeKey 键集（cid ?? 位置回退键，单源 src/common/proposal.ts）。
 //   判别性测试 = 跨窗口 reject 重排后按 cid 采纳「不误拒、不错放」（旧位置世界两案都会错位，
 //   RED 证据见 task-1-report）；legacy 文件（无 cid 仅 appliedIndexes）三操作全链路位置语义兼容。
+// - M4c-2 create 幂等（aiSource 令牌）：create×五实体落盘前按 aiSource={proposalId,条目键} 扫描
+//   目标域——命中 = 已应用（计入 applied、不新建、绝不双胞胎）；未命中 → 创建并盖章令牌。
+//   判别性测试 = markSettled 失败（账目回滚）后重试同批「计数不变 + applied 报键」（旧世界双胞胎，
+//   M4b 终审 + M4c-1 钉死的最后残留窗口在此关闭）；update/delete 不注入不查询（既有幂等语义不动）。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -160,7 +164,8 @@ describe('FIELD_ALLOWLIST', () => {
 
   it('任何实体表都不含 __proto__ 与保留键', () => {
     for (const list of Object.values(FIELD_ALLOWLIST)) {
-      for (const banned of ['__proto__', 'id', 'createdAt', 'updatedAt', 'aiTouched']) {
+      // aiSource（M4c-2）：引擎专属出处令牌——绝不可经提案载荷写入（create 由引擎盖章、update 保留键丢弃）
+      for (const banned of ['__proto__', 'id', 'createdAt', 'updatedAt', 'aiTouched', 'aiSource']) {
         expect(list).not.toContain(banned)
       }
     }
@@ -980,12 +985,17 @@ describe('rejectChanges', () => {
     // M4c-1：adopt 已双写过 appliedCids → reject 必须同步重算（legacy 回退键按新位置，防陈旧键错位）
     expect(raw.proposal.appliedCids).toEqual([changeKey(raw.proposal.changes[0], 0)])
     expect(raw.proposal.status).toBe('partial')
-    // 重排后位置 0 已采纳 → 再采纳被拒（防双写），位置 1（丙）可正常采纳
+    // 重排后位置 0 已采纳 → 再采纳被拒（防双写第一道闸）；位置 1（丙）进入 create——
+    // M4c-2 legacy 取舍（本测试无 cid，键 = 位置回退键）：乙 的 aiSource 令牌盖的是重排前的
+    // 位置键 idx:1，reject 重排后 idx:1 改指 丙 → create 前的幂等扫描误命中 乙 → 丙 按「已应用」
+    // 处理（计入 applied、不双胞胎、不落盘）。位置键身份随 reject 漂移正是 M4c-1 引入 cid 的动机；
+    // 应用盖章的提案（M4c-1 起）恒有 cid → 令牌 = 真 UUID，不存在本窗口。第三方手写提案请带 cid
+    // （BOOK_FORMAT §8）。账目机制本身（本测试的正题）不受影响：
     const r = adoptChanges(p, f.id, [changeKey(raw.proposal.changes[0], 0), changeKey(raw.proposal.changes[1], 1)], [])
     expect(r.applied).toEqual([changeKey(raw.proposal.changes[1], 1)])
     expect(r.refused[0].reason).toBe('REFUSED: 条目已采纳')
     expect(loadProposalRaw(p, f.id).proposal.status).toBe('settled')
-    expect(listCharacters(p).map((c) => c.name).sort()).toEqual(['乙', '丙'].sort())
+    expect(listCharacters(p).map((c) => c.name)).toEqual(['乙']) // 丙 被陈旧位置令牌挡住（legacy 取舍，见上注）
   })
 
   it('驳回已采纳条目：applied 出账（双账皆空不携键），status 回落', () => {
@@ -1223,12 +1233,14 @@ describe('cid 稳定键（M4c-1：跨窗口重排判别 / 重放幂等 / 未知�
     expect(raw2.proposal.status).toBe('settled')
   })
 
-  it('markSettled 失败窗口的诚实边界：记账丢失 → 重试双胞胎（cid 不关闭该窗口，面板 resync 兜底——见 task-1-report 关注项）', () => {
+  it('markSettled 失败窗口已关闭（M4c-2 判别测试）：记账丢失 → 重试同批 → aiSource 命中跳过创建（无双胞胎）+ applied 仍报键', () => {
     const { p, ch } = setup()
     const { f, cidB } = plantWithCids(p, ch.id)
     adoptChanges(p, f.id, [cidB], [])
     expect(listCharacters(p)).toHaveLength(1)
+    const first = listCharacters(p)[0]
     // 模拟 markSettled 写盘失败（T3 顾虑 5 失败窗口）：实体已落盘而盘上账目回滚成未记账形态
+    // （原子写失败 = 文件保持旧字节——回滚重写与真实失败后的盘上状态逐字节等价）
     const { proposal: raw } = loadProposalRaw(p, f.id)
     writeProposal(p, {
       id: raw.id,
@@ -1238,9 +1250,153 @@ describe('cid 稳定键（M4c-1：跨窗口重排判别 / 重放幂等 / 未知�
       status: 'pending',
       changes: raw.changes as ProposalChange[]
     })
-    // 重试同批（同 cid）→ 账目已丢 → 引擎放行 → 双胞胎（新旧世界一致的残留窗口，诚实钉死：
-    // 稳定键解决的是「账在而位置漂移」，解决不了「账根本没写上」——后者靠面板 resync 文案兜底）
-    adoptChanges(p, f.id, [cidB], [])
-    expect(listCharacters(p)).toHaveLength(2)
+    // 重试同批（同 cid）→ 盘上账目已丢，但首采实体携 aiSource={proposalId,cid} 令牌 →
+    // create 前扫描命中 = 已应用：不新建、不双胞胎，applied 照常报键并补账（M4c-1 钉死的残留窗口在此关闭）
+    const retry = adoptChanges(p, f.id, [cidB], [])
+    expect(retry).toEqual({ applied: [cidB], refused: [] })
+    expect(listCharacters(p)).toHaveLength(1) // 判别点：旧世界此处 = 2（双胞胎）
+    expect(listCharacters(p)[0].id).toBe(first.id) // 原卡仍在，没有新卡
+    expect(loadProposalRaw(p, f.id).proposal.appliedCids).toEqual([cidB]) // 重试把账补上
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M4c-2：create 幂等（aiSource 令牌——markSettled 失败重试的双胞胎窗口关闭）
+// ---------------------------------------------------------------------------
+
+describe('create 幂等（M4c-2 aiSource 令牌）', () => {
+  it('命中跳过：域内已有 aiSource 同 {proposalId,条目键} 的实体 → 不新建、applied 报键、账目当场补上', () => {
+    const { p, ch } = setup()
+    const f = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) })])
+    const k0 = keyOf(f, 0)
+    // 预置带令牌的实体（模拟「前次采纳已落盘、账目却丢了」的盘面上残留的孪生源）
+    const twin = createCharacter(p, { name: '哨兵', gender: 'male', role: 'minor' }, {
+      aiSource: { proposalId: f.id, cid: k0 }
+    })
+    const r = adoptChanges(p, f.id, [k0], [])
+    expect(r).toEqual({ applied: [k0], refused: [] })
+    expect(listCharacters(p)).toHaveLength(1) // 命中 → 跳过创建，绝不双胞胎
+    expect(listCharacters(p)[0].id).toBe(twin.id)
+    expect(loadProposalRaw(p, f.id).proposal.appliedCids).toEqual([k0])
+  })
+
+  it('近似不命中：proposalId 或 cid 任一不符 → 照常创建（扫描是双字段全等，不是模糊匹配）', () => {
+    const { p, ch } = setup()
+    const f = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) })])
+    const k0 = keyOf(f, 0)
+    createCharacter(p, { name: '别家', gender: 'male', role: 'minor' }, {
+      aiSource: { proposalId: 'prop-other-1', cid: k0 } // 同键异提案
+    })
+    createCharacter(p, { name: '半截', gender: 'female', role: 'minor' }, {
+      aiSource: { proposalId: f.id, cid: 'other-key' } // 同提案异键
+    })
+    expect(adoptChanges(p, f.id, [k0], []).applied).toEqual([k0])
+    expect(listCharacters(p)).toHaveLength(3) // 两张近似卡都没误伤：正常创建第三张
+  })
+
+  it('伏笔域（台账扫描）同样命中跳过：create×foreshadow 重试不追加第二条', () => {
+    const { p, ch } = setup()
+    const f = plant(p, ch.id, [
+      mkChange(ch.id, {
+        entity: 'foreshadow',
+        after: { title: '断剑', plantedChapterId: ch.id, plannedPayoffNote: '后文回收', resolvedChapterId: null, status: 'open' }
+      })
+    ])
+    const k0 = keyOf(f, 0)
+    upsertForeshadow(p, { ...mkForeshadow(), title: '断剑', aiSource: { proposalId: f.id, cid: k0 } })
+    const r = adoptChanges(p, f.id, [k0], [])
+    expect(r).toEqual({ applied: [k0], refused: [] })
+    expect(readLedger(p).entries).toHaveLength(1)
+  })
+
+  it('create×五域一律注入 aiSource={proposalId, 条目键}（键 = changeKey 派生值）', () => {
+    const { p, ch } = setup()
+    const f = plant(p, ch.id, [
+      mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) }),
+      mkChange(ch.id, {
+        entity: 'world',
+        after: { title: '青云山', category: 'location', content: '云雾缭绕', parentId: null, order: 0, tags: [], links: [] }
+      }),
+      mkChange(ch.id, { entity: 'plotline', after: { title: '主线', summary: '复仇', status: 'active', stages: [] } }),
+      mkChange(ch.id, { entity: 'choice', after: { title: '岔路', chapterId: ch.id, options: [] } }),
+      mkChange(ch.id, {
+        entity: 'foreshadow',
+        after: { title: '断剑', plantedChapterId: ch.id, plannedPayoffNote: '后文回收', resolvedChapterId: null, status: 'open' }
+      })
+    ])
+    const keys = keysOf(f, [0, 1, 2, 3, 4])
+    expect(adoptChanges(p, f.id, keys, []).applied).toEqual(keys)
+    expect(listCharacters(p)[0].aiSource).toEqual({ proposalId: f.id, cid: keys[0] })
+    expect(listWorldEntries(p)[0].aiSource).toEqual({ proposalId: f.id, cid: keys[1] })
+    expect(listPlotlines(p)[0].aiSource).toEqual({ proposalId: f.id, cid: keys[2] })
+    expect(listChoices(p)[0].aiSource).toEqual({ proposalId: f.id, cid: keys[3] })
+    expect(readLedger(p).entries[0].aiSource).toEqual({ proposalId: f.id, cid: keys[4] })
+  })
+
+  it('手写实体（无 aiSource）不受扫描影响：create 照常落盘，手写卡始终不带 aiSource 键', () => {
+    const { p, ch } = setup()
+    const humanId = seedHumanCharacter(p)
+    const f = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter({ name: '新卡' }) })])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
+    expect(listCharacters(p)).toHaveLength(2) // 手写卡的存在没有让 create 误判「已应用」
+    const human = getCharacter(p, humanId)!
+    expect('aiSource' in human).toBe(false)
+    expect(human.aiSource).toBeUndefined()
+  })
+
+  it('update 路径零注入：手写卡 update 后无 aiSource 键；after 回显/伪造 aiSource → 保留键静默丢弃', () => {
+    const { p, ch } = setup()
+    const humanId = seedHumanCharacter(p)
+    const f = plant(p, ch.id, [
+      mkChange(ch.id, {
+        op: 'update',
+        entity: 'character',
+        targetId: humanId,
+        after: { personality: 'AI 覆盖', aiSource: { proposalId: 'prop-fake', cid: 'fake-key' } },
+        overwritesHuman: true
+      })
+    ])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), keysOf(f, [0]))
+    expect(r.applied).toEqual(keysOf(f, [0])) // 伪造键按保留回显丢弃，合法字段照常应用（不整条拒）
+    const stored = getCharacter(p, humanId)!
+    expect(stored.personality).toBe('AI 覆盖')
+    expect('aiSource' in stored).toBe(false) // 伪造没落盘，update 也从不注入
+  })
+
+  it('update 保留既有令牌：AI 自建卡经后续整理 update，aiSource 纹丝不动（出处可追溯）', () => {
+    const { p, ch } = setup()
+    const f1 = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) })])
+    expect(adoptChanges(p, f1.id, keysOf(f1, [0]), []).applied).toEqual(keysOf(f1, [0]))
+    const created = listCharacters(p)[0]
+    const f2 = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'update', entity: 'character', targetId: created.id, after: { personality: '二稿性格' } })
+    ])
+    expect(adoptChanges(p, f2.id, keysOf(f2, [0]), []).applied).toEqual(keysOf(f2, [0]))
+    expect(getCharacter(p, created.id)?.personality).toBe('二稿性格')
+    expect(getCharacter(p, created.id)?.aiSource).toEqual({ proposalId: f1.id, cid: keyOf(f1, 0) })
+  })
+
+  it('legacy 无 cid 条目：aiSource.cid = 位置回退键（changeKey 单源派生），账目回滚后重试同样不双胞胎', () => {
+    const { p, ch } = setup()
+    const f = plant(p, ch.id, [
+      mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) }),
+      mkChange(ch.id, { after: fullCharacterAfter({ name: '乙' }) })
+    ]) // 无 cid → 键 = 位置回退键（keyOf 派生，绝不内联前缀字面量——grep 门）
+    const k1 = keyOf(f, 1)
+    expect(adoptChanges(p, f.id, [k1], []).applied).toEqual([k1])
+    expect(listCharacters(p)[0].aiSource).toEqual({ proposalId: f.id, cid: k1 })
+    // 账目回滚（markSettled 失败等价盘面）→ 重试 → 令牌命中跳过
+    const { proposal: raw } = loadProposalRaw(p, f.id)
+    writeProposal(p, {
+      id: raw.id,
+      chapterId: raw.chapterId,
+      createdAt: raw.createdAt,
+      aiModel: raw.aiModel,
+      status: 'pending',
+      changes: raw.changes as ProposalChange[]
+    })
+    const retry = adoptChanges(p, f.id, [k1], [])
+    expect(retry).toEqual({ applied: [k1], refused: [] })
+    expect(listCharacters(p)).toHaveLength(1) // 回退键令牌同样关窗
   })
 })
