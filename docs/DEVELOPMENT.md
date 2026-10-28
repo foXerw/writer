@@ -1,6 +1,6 @@
 # Novel Writer 开发路线图
 
-> 更新时间: 2026-10-28
+> 更新时间: 2026-10-29
 
 ## 里程碑进度
 
@@ -11,7 +11,7 @@
 | M3 | 图谱视图（首批两种：人物/任务关系图 + 世界观图） | ✅ 完成 | 2026-10-28 |
 | M4a | AI 服务层（设置保险库/双协议 provider/流式通道/token 账本/上下文装配器/连接测试闭环） | ✅ 完成 | 2026-10-28 |
 | M4b | 整理闭环（整理本章→提案落盘→差异确认→采纳引擎，origin 人写保护；消费 M4a 服务层） | ✅ 完成 | 2026-10-28 |
-| M4 | AI 维护闭环总目标（剧情线/选项/伏笔录入 UI、图谱 3-5 视图、章节审阅等余下 M4c+ 范围） | 🔄 进行中（M4a/M4b 已交付） | - |
+| M4 | AI 维护闭环总目标（剧情线/选项/伏笔录入 UI、图谱 3-5 视图、章节审阅等余下 M4c+ 范围） | 🔄 进行中（M4a/M4b/M4c 录入+五视图+跳章片已交付；章节审阅归 M6） | - |
 | M5 | 实时补全（ghost text，Tab 采纳） | ⏳ 规划中 | - |
 | M6 | 章节审阅（AI 读者视角结构化意见） | ⏳ 规划中 | - |
 
@@ -70,6 +70,26 @@
 > CDP 真机冒烟：手工 pending 提案 → 徽章 1 → 点数字面板开且视图保持写作 → 覆盖条目橙警默认不勾 →
 > 勾选采纳 → 角色面板新角色出现、图谱节点刷新、徽章清零，全程 console 零报错。收尾记录见
 > [2026-10-28-m4b-closeout.md](./superpowers/plans/2026-10-28-m4b-closeout.md)。
+>
+> M4c 交付（叙事 UI + 图谱五视图，M4 的第三片；底座 = M4c-1 稳定 change-id 记账）：
+> T1 `aiSource` create 幂等令牌——五实体可选字段 + 采纳引擎 create 落盘盖章/命中跳过，
+> markSettled 失败重试双胞胎窗口关闭（legacy 无 cid 位置键的角加角取舍成文 BOOK_FORMAT §7.5/§8）；
+> T2 `src/common/entityRefs.ts` 实体→章节引用并集纯函数（index ∪ 显式字段，去重/剔悬挂/书序）；
+> T3 `graphModel` 三新 builder（剧情走向 stage 链/关键选项按章分列无边/角色成长单列弧光）+
+> STATUS_COLORS 双主题 token；T4 GraphView 五视图 + arc 角色选择器（默认主角、随 kind 重置）+
+> 节点「出现章节」跳章菜单（无引用回退切侧栏面板）+ 坏台账图谱侧空降级（R1）；
+> T5 `NarrativePanel` 侧栏第五 tab（剧情线/关键选项/伏笔三段录入，状态机只走通道）+
+> `narrativeErrors.ts` 13 前缀中文词表单源；T6 viewState 按章配对跨「写作↔图谱」恢复 +
+> 整理在途「取消」按钮（复用 `ai:cancel` 零新通道）+ 结转小批清零（narrow-gate 统一拒/
+> `proposalErrors` 词表/静态 message 三文件/e2e 补 overwritesHuman/aiTouched 措辞限定）；
+> T7 收尾——台账坏值「两副面孔」裁定落码（整理侧 fail-loud + 中文归一 `withLedgerLoudError`），
+> README/BOOK_FORMAT/DEVELOPMENT 零漂移对表。
+> 验证：typecheck 0 错、lint 0 error（1 既有 warning）、`npm run test` 736 用例全绿、build 通过；
+> CDP 真机总冒烟：叙事面板真实点击 seed → 五视图逐个渲染（arc 默认主角实证）→ 节点跳章菜单 →
+> 编辑器落章 → viewState 第 5 行往返 + 跨章泄漏复现归零 → CRUD 往返含坏台账双面孔 →
+> **真 key（DeepSeek Anthropic 兼容端点）首次闭环**：连接测试通过 → 整理在途取消成功 →
+> 整理完整跑通、差异面板条目可见，全程 console 零报错。裁定/结转/人工验证清单见
+> [2026-10-28-m4c2-closeout.md](./superpowers/plans/2026-10-28-m4c2-closeout.md)。
 >
 > 非 SPEC 里程碑的可选储备（backlog，不进上表）：多书管理与工作台扩展、存量老书批量回填（M6 后另设计）。
 
@@ -659,3 +679,4 @@
 | 2026-10-28 | 3.1 (M3 终审) | **M3 终审整改波 FI-1/FI-2/FI-3**：新增渲染层 `entityEvents` pub-sub，应用内角色/设定保存即时刷新图谱（CDP 实测边数 3→4、画布不重挂、零浮层）；更正「自写回声 book:changed」假前提的全部注释；「切回写作编辑器状态不丢」表述诚实化（光标/滚动恢复列 M4）；spec §3/§7 裁定修订。321 测试全绿/门禁全过 |
 | 2026-10-28 | 4.0a (M4a) | **里程碑 M4a AI 服务层完成**：安全硬化（T1）；设置保险库+掩码 IPC 契约（T2）；双协议流式 provider 适配器（T3，密钥回显脱敏不变量）；`chatService` 流式通道+按书 token 账本+`useAI`（T4，`[kind]` 前缀跨 IPC 协议）；分层上下文装配器+wordCount CJK 码点修正（T5）；连接测试真接线/清除密钥/StatsPanel 错误态/feature 白名单/文档收口（T6）。typecheck 0 错/lint 0 错/449 测试全绿/build 通过 + CDP 真机冒烟（假 baseUrl→网络分类中文 toast 跨真实 IPC 边界） |
 | 2026-10-28 | 4.0b (M4b) | **里程碑 M4b 整理闭环完成**：空闲超时语义收口（T0）；提案 schema+组合表单一权威（T1）；organize 提示词契约（T2）；提案仓库+origin 守卫采纳引擎+`proposal:*` 通道（T3）；「整理本章」触发链+徽章+`book:readAiData`（T4）；差异审阅面板（T5）；端到端离线链路证明+`PROPOSAL_DUPLICATE` 闸门+`.ai/` 三件套文档正式化+收尾（T6）。typecheck 0 错/lint 0 error/627 测试全绿/build 通过 + CDP 真机冒烟（手工提案→徽章→面板橙警默认不勾→采纳落盘→图谱刷新→徽章清零，console 零报错） |
+| 2026-10-29 | 4.0c (M4c-2) | **里程碑 M4c-2 叙事 UI + 图谱五视图完成**：`aiSource` create 幂等令牌关双胞胎窗（T1）；实体→章节引用并集纯函数（T2）；graphModel 三新 builder（T3）；GraphView 五视图+跳章菜单+arc 选择器+坏台账图谱侧降级（T4）；NarrativePanel 三段录入+narrativeErrors 词表（T5）；viewState 按章配对+整理取消 UI+结转小批清零（T6）；收尾裁定「台账坏值两副面孔」落码+文档对表（T7）。typecheck 0 错/lint 0 error/736 测试全绿/build 通过 + CDP 真机总冒烟（真实 DeepSeek key 首次闭环：连接测试→整理取消→整理跑通→差异面板可见，五视图/跳章/CRUD/坏台账全过，console 零报错）。收尾记录见 [2026-10-28-m4c2-closeout.md](./superpowers/plans/2026-10-28-m4c2-closeout.md) |

@@ -25,7 +25,10 @@
 ### 创作工具
 - **章节管理**: 树状结构组织章节
 - **角色卡片**: 完整角色档案系统
-- **图谱视图**: 人物关系图 / 世界观层级图（`写作|图谱` 切换，React Flow 只读画布，随书目录变更实时刷新，点节点联动侧栏面板）
+- **叙事面板**: 剧情线（阶段链）/ 关键选项（挂章分支）/ 伏笔台账（埋章→回收/弃置→重开状态机）三合一录入，侧栏第五个 tab；保存即时联动图谱与整理上下文
+- **图谱视图**: 人物关系 / 世界观 / 剧情走向 / 关键选项 / 角色成长 五视图（`写作|图谱` 切换，React Flow 只读画布，随书目录变更实时刷新；角色成长档带角色选择器，默认主角）
+- **跳章节**: 图谱节点点击弹出「出现章节」菜单（实体→章节引用 = AI 索引 ∪ 显式引用并集，悬挂引用自动剔除），选中直达该章编辑器；无引用的节点回退打开对应侧栏面板
+- **编辑器视图态恢复**: 写作↔图谱来回切换保留光标/滚动位置（按章配对，绝不把旧章光标复活进他章）
 - **世界观设定**: 地理、历史、魔法体系
 - **情节追踪**: 主线支线时间线
 - **灵感笔记**: 随手记录创作片段
@@ -53,6 +56,7 @@
 - **整理本章**: AI 在分层上下文中读取当前章正文，对角色卡/世界观/剧情线/选项/伏笔/章摘要/实体索引提出变更**建议**——AI 只提议、永不直写正式数据，提案落盘为 `.ai/proposals/*.yaml`（图谱入口以徽章显示未消化份数）
 - **人逐条确认**: 差异审阅面板逐条列出变更（动作/目标/改动摘要/出处引文），支持逐条采纳或驳回；同章存在未消化提案时禁止重复整理（按钮禁用 + 服务端 `PROPOSAL_DUPLICATE` 双闸门），徽章随消化自动回落
 - **人写内容保护（origin 铁律）**: 你手写的字段 AI 动不了——覆盖人写内容的条目必须显式旗标，面板标橙警示且**默认不勾选**，由你亲手勾选确认才落盘；AI 写过的字段自动记名（`aiTouched`），后续整理改自己建的内容不误伤
+- **整理可取消（M4c-2）**: 整理在途期间工具栏按钮原位变「取消」，点击即中止在途 AI 请求（toast「已取消整理」）；采纳引擎 create 带幂等令牌（`aiSource`），记账写失败后重试不产生重复实体
 
 ## 项目结构
 
@@ -81,10 +85,10 @@ perfect-novel/
 │       ├── index.tsx             # 渲染进程入口
 │       ├── index.html            # HTML 模板
 │       ├── components/            # React 组件
-│       │   ├── Graph/            # 图谱视图（GraphView / CharacterNode / WorldNode / graphModel 纯构图布局）
+│       │   ├── Graph/            # 图谱视图（GraphView / CharacterNode / WorldNode / CardNode / graphModel 五视图纯构图布局）
 │       │   ├── Layout/           # 布局（EditorTabs）
 │       │   ├── Editor/           # 编辑器（MonacoEditor / EditorToolbar / OutlineView）
-│       │   ├── Explorer/         # 侧边面板（ChapterTree / CharacterPanel / SettingPanel / StatsPanel）
+│       │   ├── Explorer/         # 侧边面板（ChapterTree / CharacterPanel / SettingPanel / StatsPanel / NarrativePanel）
 │       │   ├── Dialogs/          # 对话框（CommandPalette / ExportDialog / ProjectDialog）
 │       │   └── Settings/         # 设置（ThemeSettings / AiSettingsSection）
 │       ├── pages/                # 页面（Home / Workspace / Settings）
@@ -237,7 +241,7 @@ ls node_modules/electron/dist/electron.exe
 ├── volumes/<uuid>.yaml  # 卷
 ├── characters/<uuid>.yaml  # 人物卡（关系边按 id）
 ├── world/<类别>/<uuid>.yaml # 世界观词条（location/history/magic/culture/other）
-├── plotlines/ choices/  # 剧情线 / 关键选项（纯数据层，录入 UI 随 M4）
+├── plotlines/ choices/  # 剧情线 / 关键选项（录入 UI = 侧栏「叙事」面板，M4c-2）
 ├── foreshadow.yaml      # 伏笔台账
 ├── .ai/                 # AI 产物区（用量账本/提案/摘要/索引，按需创建，详见 BOOK_FORMAT.md §7）
 └── .migration-backup/   # 迁移备份（只读，详见 BOOK_FORMAT.md）

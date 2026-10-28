@@ -35,7 +35,7 @@
 │   ├── culture/<uuid>.yaml
 │   └── other/<uuid>.yaml
 ├── plotlines/
-│   └── <uuid>.yaml                    # 剧情线（PlotlineV2；纯数据层，录入 UI 随 M4）
+│   └── <uuid>.yaml                    # 剧情线（PlotlineV2；录入 UI = 侧栏「叙事」面板，M4c-2 起）
 ├── choices/
 │   └── <uuid>.yaml                    # 关键选项（ChoiceNodeV2）
 ├── foreshadow.yaml                    # 伏笔台账（ForeshadowLedger，整本单文件）
