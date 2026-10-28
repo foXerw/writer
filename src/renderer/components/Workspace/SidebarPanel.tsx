@@ -5,19 +5,21 @@ import {
   UserOutlined,
   SettingOutlined,
   BarChartOutlined,
+  BranchesOutlined,
   LeftOutlined
 } from '@ant-design/icons'
 import ChapterTree from '../Explorer/ChapterTree'
 import CharacterPanel from '../Explorer/CharacterPanel'
 import SettingPanel from '../Explorer/SettingPanel'
 import StatsPanel from '../Explorer/StatsPanel'
+import NarrativePanel from '../Explorer/NarrativePanel'
 import type { WritingStatsView } from '../../pages/Workspace/hooks/useWritingStats'
 import type { Chapter } from '@/common/ipc'
 
 const { Sider } = Layout
 const { Text } = Typography
 
-export type SidebarTab = 'chapters' | 'characters' | 'settings' | 'stats'
+export type SidebarTab = 'chapters' | 'characters' | 'settings' | 'stats' | 'narrative'
 
 interface SidebarPanelProps {
   projectPath: string
@@ -40,7 +42,7 @@ interface SidebarPanelProps {
 }
 
 // 左侧边栏 —— Task 7 自原 Workspace/index.tsx 的 Sider 区块原样迁移：
-// 项目头部 / Tab 切换 / 章节·角色·设定·统计四面板 / 收起按钮。
+// 项目头部 / Tab 切换 / 章节·角色·设定·统计·叙事五面板 / 收起按钮。
 // tab 与 collapsed 仍由 Workspace 持有（菜单事件需驱动侧栏），此处只经回调上报。
 function SidebarPanel({
   projectPath,
@@ -65,7 +67,8 @@ function SidebarPanel({
     { key: 'chapters', label: '章节', icon: <FileTextOutlined /> },
     { key: 'characters', label: '角色', icon: <UserOutlined /> },
     { key: 'settings', label: '设定', icon: <SettingOutlined /> },
-    { key: 'stats', label: '统计', icon: <BarChartOutlined /> }
+    { key: 'stats', label: '统计', icon: <BarChartOutlined /> },
+    { key: 'narrative', label: '叙事', icon: <BranchesOutlined /> }
   ]
 
   return (
@@ -179,6 +182,12 @@ function SidebarPanel({
                 dailyGoal={dailyGoal}
                 history={statsView.history}
                 projectPath={projectPath}
+              />
+            )}
+            {tab === 'narrative' && (
+              <NarrativePanel
+                projectPath={projectPath}
+                chapters={chapters}
               />
             )}
           </div>

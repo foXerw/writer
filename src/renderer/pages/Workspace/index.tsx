@@ -383,7 +383,11 @@ function Workspace() {
         setSidebarTab(event === 'characters' ? 'characters' : event === 'settings' ? 'settings' : 'stats')
         setSidebarCollapsed(false)
         break
-      // 'plot' (Ctrl+3) 无对应面板，暂不处理
+      // 'plot' (Ctrl+3) → 叙事面板（Task 5：剧情线/关键选项/伏笔录入宿主）
+      case 'plot':
+        setSidebarTab('narrative')
+        setSidebarCollapsed(false)
+        break
       case 'export': setExportDialogOpen(true); break
       case 'shortcuts': setShortcutDialogOpen(true); break
       default: break
@@ -403,14 +407,17 @@ function Workspace() {
   // 在 GraphView 内弹跳章菜单）：侧栏切到对应面板并展开。entityId 刻意暂未消费：面板内
   // 选中/滚动到该实体卡需给面板增受控选中管线（M3 定为 stretch，不新建子系统）。
   // arc stage 节点 entityId 回指角色 → 与 character 同落「角色」面板；plotline/choice
-  // 尚无对应面板（Task 5「叙事」tab 接入后补映射），暂不动作。
+  // 节点落 Task 5「叙事」面板——只切 tab：停在对应段需给面板加受控选段/选中管线
+  //（与 entityId 同条 stretch 裁定，不新建子系统）。
   const handleGraphNodeClick = (_entityId: string, kind: GraphKind) => {
-    const tab =
+    const tab: SidebarTab | null =
       kind === 'character' || kind === 'arc'
         ? 'characters'
         : kind === 'world'
           ? 'settings'
-          : null
+          : kind === 'plotline' || kind === 'choice'
+            ? 'narrative'
+            : null
     if (tab === null) return
     setSidebarTab(tab)
     setSidebarCollapsed(false)
