@@ -230,7 +230,11 @@ function ProposalReviewDialog({
   const handleAdopt = async (): Promise<void> => {
     if (!projectPath || !detail || busy) return
     const id = detail.id
-    const sent = checkedList
+    // M1（评审折入）：夹取越界索引——detail 是上一次点读的快照，跨窗口他端 reject 会重排/缩短
+    // changes；若把越界索引喂给 needsOverwriteConfirm，detail.changes[i] 为 undefined、
+    // 读 .overwritesHuman 直接 TypeError → Promise 无人接住 → 采纳按钮静默死掉。
+    // 夹住后越界项不上送（它们指向的已不是用户勾选时的条目，宁可漏发等重读后再发，绝不错发）。
+    const sent = checkedList.filter((i) => i < detail.changes.length)
     if (sent.length === 0) return
     // overwritesHuman 勾选条目同时进两个数组（引擎通道门：confirmedOverwrite 缺席 = 必拒）
     const confirmedOverwrite = sent.filter((i) => needsOverwriteConfirm(detail.changes[i]))
@@ -276,7 +280,14 @@ function ProposalReviewDialog({
           return next
         })
         const msg = err instanceof Error ? err.message : String(err)
-        setNotice(`采纳状态未知，已重新同步：${n} 条实际已生效（通道报错：${msg}）`)
+        // M2（评审折入）：n===0 时「0 条实际已生效」在 markSettled 整窗失败期会说谎——实体
+        // 已落盘而 appliedIndexes 未记上，盘上读到的就是 0。n=0 走中性文案不宣告生效数；
+        // n>0 才有实证（appliedIndexes 记账存在），保留「实际已生效」口径。
+        setNotice(
+          n > 0
+            ? `采纳状态未知，已重新同步：${n} 条实际已生效（通道报错：${msg}）`
+            : `采纳状态未知（盘上记录已生效 0 条，请以列表为准；通道报错：${msg}）`
+        )
         if (n > 0) notifyEntitiesChanged()
       }
       await refreshList()
@@ -428,7 +439,7 @@ function ProposalReviewDialog({
           {loadingList && proposals.length === 0 ? (
             <Spin style={{ display: 'block', margin: 'var(--space-5) auto' }} />
           ) : proposals.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待审阅的提案" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待确认的提案" />
           ) : (
             <List size="small" split={false} dataSource={navRows} renderItem={renderNavRow} />
           )}

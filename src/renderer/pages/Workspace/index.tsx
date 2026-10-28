@@ -527,9 +527,11 @@ function Workspace() {
                 {
                   // 提案徽章（M4b Task 4）：未消化提案数挂在图谱入口上——T5 审阅面板
                   // （提案处理的宿主视图）在图谱侧，count=0 时 Badge 自动隐身。
-                  // T5 接线：点击徽章数字打开审阅面板（stopPropagation 避免顺手切视图——
-                  // 点「图谱」文字仍是视图切换，两条路互不踩腿；count=0 时数字不存在，
-                  // 点击自然落回切换语义）
+                  // T5 接线：点击徽章数字打开审阅面板。注意 antd Segmented 条目是
+                  // <label><input type=radio>——点击任意后代的【默认行为】就会激活 radio
+                  // 切换视图，stopPropagation 只停冒泡、拦不住默认动作（评审 I1 实测坐实）。
+                  // 因此必须 preventDefault 取消激活 + stopPropagation 双管齐下：点数字=只开面板、
+                  // 视图留在写作；点「图谱」文字仍是纯切换；count=0 时数字不存在，点击自然回落切换。
                   label: (
                     <span
                       className="proposal-review-entry"
@@ -538,6 +540,7 @@ function Workspace() {
                           organize.pendingCount > 0 &&
                           (e.target as HTMLElement).closest('.ant-badge-count')
                         ) {
+                          e.preventDefault()
                           e.stopPropagation()
                           setProposalReviewOpen(true)
                         }
