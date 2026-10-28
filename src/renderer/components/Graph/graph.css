@@ -82,6 +82,14 @@
   border-radius: 10px;
 }
 
+/* M4c-2 Task 4（CardNode）：剧情线 stage / 关键选项 / 弧光 stage 三类矩形卡片同形，
+   合并一条规则；--plotline/--choice/--arc 修饰类留白，供后续各自微调 */
+.graph-view .graph-node--card {
+  min-width: 140px;
+  max-width: 220px;
+  border-radius: 10px;
+}
+
 .graph-view .graph-node__label {
   font-size: 13px;
   font-weight: 600;
@@ -107,4 +115,26 @@
   color: var(--color-text-secondary);
   pointer-events: none;
   z-index: 10;
+}
+
+/* arc 档角色选择条：浮在画布顶部中央。与 graph-status 相反必须可点击
+   （不继承 pointer-events:none，z-index 高一层压过空态浮层） */
+.graph-view .graph-arc-select {
+  position: absolute;
+  top: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.graph-view .graph-arc-select__label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }

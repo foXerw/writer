@@ -100,7 +100,8 @@ function Workspace() {
   // 模式状态
   const [focusMode, setFocusMode] = useState(false)
   const [typewriterMode, setTypewriterMode] = useState(false)
-  // M3 主区视图（Task 3）：写作 | 图谱 一级切换 + 图谱内 人物关系 | 世界观 二级切换
+  // M3 主区视图（Task 3）：写作 | 图谱 一级切换 + 图谱内二级切换（M4c-2 Task 4 扩为五档：
+  // 人物关系 | 世界观 | 剧情走向 | 关键选项 | 角色成长）
   const [viewMode, setViewMode] = useState<'write' | 'graph'>('write')
   const [graphKind, setGraphKind] = useState<GraphKind>('character')
   // 命令面板 / 大纲 / 导出对话框
@@ -398,11 +399,34 @@ function Workspace() {
     onToggleSidebar: () => setSidebarCollapsed((v) => !v), onOutline: () => setOutlineVisible((v) => !v)
   })
 
-  // 图谱节点点击 → 侧栏切到对应面板并展开。entityId 刻意暂未消费：面板内选中/滚动到该实体卡
-  // 需给 CharacterPanel/SettingPanel 增受控选中管线（brief Step 3 定为 stretch，留 M4，不新建子系统）。
+  // 图谱节点点击回退通道（M4c-2 Task 4 起仅「无章节引用」的节点走这里——有引用的节点
+  // 在 GraphView 内弹跳章菜单）：侧栏切到对应面板并展开。entityId 刻意暂未消费：面板内
+  // 选中/滚动到该实体卡需给面板增受控选中管线（M3 定为 stretch，不新建子系统）。
+  // arc stage 节点 entityId 回指角色 → 与 character 同落「角色」面板；plotline/choice
+  // 尚无对应面板（Task 5「叙事」tab 接入后补映射），暂不动作。
   const handleGraphNodeClick = (_entityId: string, kind: GraphKind) => {
-    setSidebarTab(kind === 'character' ? 'characters' : 'settings')
+    const tab =
+      kind === 'character' || kind === 'arc'
+        ? 'characters'
+        : kind === 'world'
+          ? 'settings'
+          : null
+    if (tab === null) return
+    setSidebarTab(tab)
     setSidebarCollapsed(false)
+  }
+
+  // 图谱跳章菜单确认（M4c-2 Task 4）：定位章对象 → 打开 → 切回写作视图（用户落在该章编辑器）。
+  // chapters 是会话态（GraphView 的菜单项恒由同一列表生成）；脱靶仅发生在菜单渲染后该章
+  // 被删除的竞态窗口——给出可读提示而非静默无响应。
+  const handleJumpToChapter = (chapterId: string) => {
+    const target = chapters.find((c) => c.id === chapterId)
+    if (!target) {
+      message.warning('该章节已不存在，可能刚被删除')
+      return
+    }
+    openChapter(target)
+    setViewMode('write')
   }
 
   // 主区渲染单一出口（§7.6 布局接缝）：M1 恒返回编辑器+大纲视图，M3 在此切出图谱视图。
@@ -416,7 +440,13 @@ function Workspace() {
       // 吃满剩余高度；若父级是 auto 高度块，inset:0 会塌成 0×0（白屏，但 typecheck/build 全绿）。
       return (
         <div style={{ position: 'relative', flex: 1, minHeight: 0, width: '100%' }}>
-          <GraphView projectPath={projectPath ?? ''} kind={graphKind} onNodeClick={handleGraphNodeClick} />
+          <GraphView
+            projectPath={projectPath ?? ''}
+            kind={graphKind}
+            chapters={chapters}
+            onNodeClick={handleGraphNodeClick}
+            onJumpToChapter={handleJumpToChapter}
+          />
         </div>
       )
     }
@@ -505,7 +535,7 @@ function Workspace() {
         onSetTab={setSidebarTab} onToggleCollapse={() => setSidebarCollapsed(v => !v)}
       />
       {/* 主内容区：单一出口。视图切换条常驻主区顶部（focusMode 除外——专注是写作专属态），
-          保证 写作↔图谱 双向都可达；图谱态下再出 人物关系|世界观 二级切换 */}
+          保证 写作↔图谱 双向都可达；图谱态下再出五档二级切换（M4c-2 Task 4） */}
       <Layout>
         {!focusMode && (
           <div
@@ -561,7 +591,10 @@ function Workspace() {
                 onChange={(v) => setGraphKind(v as GraphKind)}
                 options={[
                   { label: '人物关系', value: 'character' },
-                  { label: '世界观', value: 'world' }
+                  { label: '世界观', value: 'world' },
+                  { label: '剧情走向', value: 'plotline' },
+                  { label: '关键选项', value: 'choice' },
+                  { label: '角色成长', value: 'arc' }
                 ]}
               />
             )}
