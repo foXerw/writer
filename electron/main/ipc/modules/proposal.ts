@@ -13,10 +13,11 @@
 // - PROPOSAL_CHAPTER_MISSING: <id>  save 盖章：提案出处章不是现存章（幻觉/过期章 id 拒落）
 // - PROPOSAL_MISSING: <id>          adopt/reject 目标提案不存在
 // - BAD_PROPOSAL_ID: <id>           id 路径安全门（join 重定向封死）
-// 逐条拒绝不是通道错误：adopt 的 REFUSED: 条目在结果对象 refused[] 里按 index 返回。
+// 逐条拒绝不是通道错误：adopt 的 REFUSED: 条目在结果对象 refused[] 里按 key 返回
+// （M4c-1 键域：adopt/reject 参数 = changeKey 键集——cid ?? 位置回退键，单源 proposal.ts）。
 import { ipcMain } from 'electron'
 import type { ProposalAdoptResult, ProposalFile } from '../../../../src/common/proposal'
-import { validateProposal } from '../../../../src/common/proposal'
+import { isUnsettled, validateProposal } from '../../../../src/common/proposal'
 import { getProposal, listProposals, writeProposal } from '../../bookStore/proposals'
 import { adoptChanges, rejectChanges } from '../../bookStore/adopt'
 import { listChapters } from '../../bookStore/chapters'
@@ -54,9 +55,9 @@ export function registerProposalHandlers(): void {
       }
       // Task 6 P2 同章去重闸门：已有未消化提案（pending/partial）的章拒收第二份——
       // UI 防呆挡不住两个窗口各自在途的场景，盘上单份未消化提案是不变量（settled 存量不拦：
-      // 消化完毕的章当然可以再整理出新提案）。
+      // 消化完毕的章当然可以再整理出新提案）。谓词走 isUnsettled 单源（m4b 结转 d 项，M4c-1）。
       const dupe = listProposals(projectPath).find(
-        (f) => f.chapterId === file.chapterId && f.status !== 'settled'
+        (f) => f.chapterId === file.chapterId && isUnsettled(f)
       )
       if (dupe) {
         throw new Error(`PROPOSAL_DUPLICATE: ${file.chapterId}`)
@@ -72,14 +73,14 @@ export function registerProposalHandlers(): void {
       params: {
         projectPath: string
         proposalId: string
-        changeIndexes: number[]
-        confirmedOverwrite?: number[]
+        changeKeys: string[]
+        confirmedOverwrite?: string[]
       }
     ): ProposalAdoptResult =>
       adoptChanges(
         params.projectPath,
         params.proposalId,
-        params.changeIndexes,
+        params.changeKeys,
         params.confirmedOverwrite ?? [] // 缺省 = 无任何覆盖确认（overwritesHuman 条目一律拒——从严）
       )
   )
@@ -88,7 +89,7 @@ export function registerProposalHandlers(): void {
     'proposal:reject',
     (
       _e,
-      params: { projectPath: string; proposalId: string; changeIndexes: number[] }
-    ): void => rejectChanges(params.projectPath, params.proposalId, params.changeIndexes)
+      params: { projectPath: string; proposalId: string; changeKeys: string[] }
+    ): void => rejectChanges(params.projectPath, params.proposalId, params.changeKeys)
   )
 }

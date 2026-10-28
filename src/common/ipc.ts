@@ -165,22 +165,23 @@ export type RendererToMainRequests = {
 
   // AI 整理提案相关（M4b Task 3：.ai/proposals/<id>.yaml = ProposalFile。新通道组纪律：
   // 参数一律 {projectPath, …} 对象形状。错误是 PROPOSAL_*: 前缀平文消息（非 AI 路径的 [kind] 词表），
-  // 渲染层原样展示；逐条采纳拒绝在 adopt 结果 refused[] 里按 index 返回，不是通道错误。
+  // 渲染层原样展示；逐条采纳拒绝在 adopt 结果 refused[] 里按 key 返回，不是通道错误。
   // save 是双保险（渲染层已 validateProposal 一次）+ 盖章（出处章必须现存）；
-  // adopt 的 confirmedOverwrite = UI 已显式确认「覆盖人写内容」的条目索引（R1 origin 机制）。
+  // M4c-1 键域：adopt/reject 以 changeKey 键集说话（cid ?? 位置回退键，单源 proposal.ts），
+  // confirmedOverwrite = UI 已显式确认「覆盖人写内容」的条目键（R1 origin 机制）。
   'proposal:getAll': (params: { projectPath: string }) => Promise<ProposalFile[]>
   'proposal:get': (params: { projectPath: string; id: string }) => Promise<ProposalFile | null>
   'proposal:save': (params: { projectPath: string; file: ProposalFile }) => Promise<ProposalFile>
   'proposal:adopt': (params: {
     projectPath: string
     proposalId: string
-    changeIndexes: number[]
-    confirmedOverwrite: number[]
+    changeKeys: string[]
+    confirmedOverwrite: string[]
   }) => Promise<ProposalAdoptResult>
   'proposal:reject': (params: {
     projectPath: string
     proposalId: string
-    changeIndexes: number[]
+    changeKeys: string[]
   }) => Promise<void>
 
   // 系统相关

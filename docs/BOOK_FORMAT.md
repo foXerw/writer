@@ -366,16 +366,19 @@ JSONL：每行一个 `JSON.stringify(AiUsageRecord)`（UTF-8，追加写 `append
 | `aiModel` | string | ✅ 非空 | 产出模型名 |
 | `status` | enum | ✅ | `pending \| partial \| settled`（迁移由应用管理，见下） |
 | `changes` | ProposalChange[] | ✅ 非空 | 变更条目（形状见下） |
-| `appliedIndexes` | number[] | ❔ | 已采纳条目索引；**唯一写入口 = 应用的 markSettled 记账**（缺失 = 尚无采纳） |
+| `appliedIndexes` | number[] | ❔ | 已采纳条目索引；**唯一写入口 = 应用的 markSettled 记账**（缺失 = 尚无采纳）。M4c-1 起 = `appliedCids` 对当前 changes 的**位置投影**（同一原子写双写，语义恒等，供旧读者） |
+| `appliedCids` | string[] | ❔ | 已采纳条目**键**记账（M4c-1，权威）：键 = `changeKey(change, index)`（`cid`，无 cid 条目回退 `idx:<index>` 位置键）。**唯一写入口 = markSettled 双写**（reject 同步收缩重算）。一旦存在即为「已采纳」判定的唯一权威；缺失 = 纯 legacy 文件（位置语义） |
 
-ProposalChange：`op`（create/update/delete）× `entity`（character/world/plotline/choice/
-foreshadow/summary/index）组合表钉死在 `ALLOWED_OPS`——**delete 仅限 plotline/choice/foreshadow**
-（AI 无权删角色/设定，分工铁律）；`targetId`（update/delete 必填）、`before`（展示用快照，可选）、
-`after`（create/update 必填，内容深校验发生在**采纳期**）、`source` `{chapterId: UUID, quote: 非空
-≤300 字}`（出处引文，必须逐字来自正文）、`overwritesHuman`（仅 update 有意义，见 §7.5）。
+ProposalChange：`cid`（❔ 稳定变更标识，M4c-1——见下「记账键域」）、`op`（create/update/delete）×
+`entity`（character/world/plotline/choice/foreshadow/summary/index）组合表钉死在 `ALLOWED_OPS`——
+**delete 仅限 plotline/choice/foreshadow**（AI 无权删角色/设定，分工铁律）；`targetId`
+（update/delete 必填）、`before`（展示用快照，可选）、`after`（create/update 必填，内容深校验发生在
+**采纳期**）、`source` `{chapterId: UUID, quote: 非空 ≤300 字}`（出处引文，必须逐字来自正文）、
+`overwritesHuman`（仅 update 有意义，见 §7.5）。
 
 示例 `.ai/proposals/prop-11111111-mvrlcc00.yaml`（pending 提案两条变更：新建角色 + 覆盖人写字段；
-`before` 仅为面板展示快照、可缺省；`createdAt` 为 `new Date().toISOString()` 形态）：
+`before` 仅为面板展示快照、可缺省；`createdAt` 为 `new Date().toISOString()` 形态；`cid` 为整理链
+盖章的 UUID——应用产出的提案每条恒有，手写文件可缺省）：
 
 ```yaml
 id: prop-11111111-mvrlcc00
@@ -384,7 +387,8 @@ createdAt: '2026-10-28T09:12:03.417Z'
 aiModel: claude-sonnet-4-5
 status: pending
 changes:
-  - op: create
+  - cid: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+    op: create
     entity: character
     after:
       name: 拾荒老周
@@ -394,7 +398,8 @@ changes:
     source:
       chapterId: 11111111-2222-4333-8444-555555555555
       quote: 老周把最后一块能源核心塞进阿明的背包，没说话。
-  - op: update
+  - cid: 550e8400-e29b-41d4-a716-446655440000
+    op: update
     entity: character
     targetId: aaaaaaaa-1111-4111-8111-111111111111
     overwritesHuman: true
@@ -407,11 +412,23 @@ changes:
       quote: 阿明说，等攒够钱，他要找到回家的航线。
 ```
 
+- **记账键域（M4c-1 稳定 change-id）**：`cid` 是每条变更的记账主键（应用整理链产出时盖章 UUID；
+  校验：出现即非空字符串、**同文件内唯一**——重复 cid = `PROPOSAL_INVALID` 文件级错误）。
+  键计算全应用单源 `changeKey(change, index) = cid ?? 'idx:<index>'`（无 cid 条目回退位置键，
+  与旧位置世界语义一致）。采纳记账**双写**：`appliedCids`（键域，权威）+ `appliedIndexes`
+  （位置投影，旧读者兼容），二者在**同一原子写**里更新、语义恒等；`appliedCids` 一经落盘，
+  应用即永久转键域权威（该字段存在时 `appliedIndexes` 不再参与判定）。从未双写过的纯 legacy
+  文件保持位置语义，照常可读、可采纳、可驳回。reject 删条目后应用对幸存条目重算两账（cid 键
+  天然稳定；位置回退键按新位置重算）。**第三方写入建议**：手写新提案请为每条带唯一 cid（推荐
+  UUID，避免 `idx:` 前缀——保留给位置回退键，混用会造成键域歧义）；自行维护记账时只写
+  `appliedIndexes` 也被接受（应用按位置语义翻译进键域，首次采纳起转双写）。
+
 - **谁写**：① 整理链（T4）经 `proposal:save` 通道落盘（主进程 validateProposal 双保险 + 出处章盖章
-  + 条目数上限 200（`PROPOSAL_TOO_LARGE`，通道级政策——存量超限文件仍可读可采纳））；
-  ② 采纳引擎（`bookStore/adopt.ts`）记账重写（appliedIndexes/status、驳回删条目——全部条目删空 =
-  整份文件删除）；③ **第三方 AI 工具可直接读写本目录**（提案即文件的本意）——写前必须过
-  `validateProposal`（返回空数组才许落盘）+ 原子写（§8 守则 1），文件名 = id。
+  + 条目数上限 200（`PROPOSAL_TOO_LARGE`，通道级政策——存量超限文件仍可读可采纳）），每条变更
+  盖章新鲜 `cid`；② 采纳引擎（`bookStore/adopt.ts`）记账重写（appliedCids+appliedIndexes 双写/
+  status、驳回按键删条目并同步收缩两账——全部条目删空 = 整份文件删除）；③ **第三方 AI 工具可
+  直接读写本目录**（提案即文件的本意）——写前必须过 `validateProposal`（返回空数组才许落盘）+
+  原子写（§8 守则 1），文件名 = id；无 cid/只写 appliedIndexes 的旧口径文件仍被接受（见上「记账键域」）。
 - **同章去重闸门**（T6 P2，通道级政策）：`proposal:save` 落盘前扫 `listProposals`——该章已有
   **未消化**提案（status 为 `pending`/`partial`）→ 抛 `PROPOSAL_DUPLICATE: <chapterId>` 拒落第二份。
   UI 侧「该章已有未消化提案则禁用整理按钮」只是防呆，这里是引擎侧唯一权威（双窗口各自在途也只会落一份）；
@@ -420,8 +437,9 @@ changes:
 - **谁读**：审阅面板（`proposal:getAll/get`）；坏文件列表侧 warn+跳过（面板永不崩），点读抛穿
   `PROPOSAL_INVALID`。采纳期对每条 change 重跑 `validateChange`（双保险——手改坏的条目按条拒绝，
   好条目照救）。
-- **status 迁移**（唯一口径）：`appliedIndexes` 覆盖全部条目 → `settled`；部分 → `partial`；
-  无 → `pending`。绝不允许手工改 status 而不同步 appliedIndexes（应用重写时以 appliedIndexes 重算）。
+- **status 迁移**（唯一口径）：已采纳记账（`appliedCids`，纯 legacy 文件为 `appliedIndexes`）
+  覆盖全部条目 → `settled`；部分 → `partial`；无 → `pending`。绝不允许手工改 status 而不同步
+  记账字段（应用重写时一律以记账重算）。
 
 ### 7.3 `summaries/chapters/<uuid>.yaml` — 章节摘要缓存
 

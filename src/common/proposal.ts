@@ -13,7 +13,12 @@
 // - file.chapterId 与 change.source.chapterId 是否一致、targetId 指向是否存在，均不校验
 //   （引用完整性归 repository/T3）；未知多余字段一律容忍（向前兼容）；
 // - ProposalFile.status 的 'pending'|'partial'|'settled' 迁移由 T3 管理，此处只查枚举归属；
-// - appliedIndexes（T3 裁定追加）：可选字段，出现即要求「有限 number 数组」，语义清洗归 markSettled。
+// - appliedIndexes（T3 裁定追加）：可选字段，出现即要求「有限 number 数组」，语义清洗归 markSettled；
+// - M4c-1 稳定变更标识：change.cid?（出现即非空字符串，文件内唯一）+ ProposalFile.appliedCids?
+//   （出现即非空字符串数组）。记账主键 = changeKey()（本模块导出，唯一来源——引擎/面板/
+//   markSettled/reject 全消费它，禁止第二处内联回退前缀字面量，grep 门钉在 proposal.test.ts）。
+//   权威链：appliedCids 存在 → 键域唯一权威；纯 legacy 文件（从未双写）→ appliedIndexes 位置语义
+//   （appliedKeySet() 单源翻译）。isUnsettled() = 未消化谓词单源（m4b 结转 d 项）。
 
 import { UUID_PATTERN } from './schema'
 
@@ -40,6 +45,12 @@ export interface ProposalSource {
 }
 
 export interface ProposalChange {
+  /**
+   * 稳定变更标识（M4c-1）：整理链盖章 randomUUID，记账主键——重排/收缩后不动（changeKey 单源）。
+   * 缺省合法（存量/第三方手写文件）：读者按 changeKey() 回退位置键。
+   * 校验宽容：出现即要求非空字符串（不强制 UUID 形状）；同文件内重复 = 文件级错误（键域记账歧义）。
+   */
+  cid?: string
   op: ProposalOp
   entity: ProposalEntity
   /** update/delete 必备；create 忽略（可有可无，不落错）。 */
@@ -65,19 +76,29 @@ export interface ProposalFile {
    * 已采纳条目索引（T3 裁定）：由主进程 markSettled 在采纳后重写维护，缺失 = 尚无采纳。
    * status 迁移的单一依据：全部条目已采纳 → 'settled'、部分 → 'partial'、无 → 'pending'。
    * 校验器宽容：出现即要求「有限 number 数组」，越界/重复的清洗归 markSettled（存储侧）。
+   * M4c-1 起 = appliedCids 对当前 changes 的位置投影（同一原子写双写，语义恒等，legacy 读者兼容）；
+   * 纯 legacy 文件（从未双写 appliedCids）保持位置语义。
    */
   appliedIndexes?: number[]
+  /**
+   * 已采纳条目键记账（M4c-1，权威）：键 = changeKey(change, index)（cid ?? 位置回退键）。
+   * 唯一写入口 = markSettled 双写（reject 同步收缩重算）。**一旦存在（含空数组）即成为
+   * 「已采纳」判定的唯一权威**（appliedKeySet 忽略 appliedIndexes）；缺失 = 纯 legacy 位置语义。
+   * 校验器宽容：出现即要求「非空字符串数组」，垃圾元素清洗归 loadProposalRaw（存储侧）。
+   */
+  appliedCids?: string[]
 }
 
 /** 采纳结果的拒绝条目（T3 adopt 引擎产出；reason 一律 `REFUSED: ` 前缀 + 中文/仓库错误码）。 */
 export interface ProposalAdoptRefusal {
-  index: number
+  /** changeKey 键域（M4c-1 起通道按键对账——位置漂移不再错配对号入座）。 */
+  key: string
   reason: string
 }
 
-/** proposal:adopt 通道返回形状（渲染层差异面板按 index 对号入座）。 */
+/** proposal:adopt 通道返回形状（渲染层差异面板按 key 对号入座）。 */
 export interface ProposalAdoptResult {
-  applied: number[]
+  applied: string[]
   refused: ProposalAdoptRefusal[]
 }
 
@@ -107,6 +128,52 @@ export const ALLOWED_OPS: Record<ProposalEntity, ProposalOp[]> = {
   foreshadow: ['create', 'update', 'delete'],
   summary: ['create', 'update'],
   index: ['update']
+}
+
+// ---------------------------------------------------------------------------
+// M4c-1：记账主键与权威链（单源——引擎/面板/markSettled/reject 全消费，勿在他处复制；
+// 回退前缀字面量全仓只许出现在本文件，grep 门钉在 proposal.test.ts）
+// ---------------------------------------------------------------------------
+
+/** 位置回退键前缀（仅 legacy/第三方无 cid 条目；回退键 = 前缀 + index）。 */
+const IDX_KEY_PREFIX = 'idx:'
+
+/**
+ * 记账主键（唯一来源）：cid 为非空字符串 → cid（重排/收缩不动——本次重构的存在理由）；
+ * 否则 → 位置回退键（legacy/第三方无 cid 条目，语义与旧位置世界一致）。
+ * 入参刻意宽容（unknown）：adopt/reject 引擎消费 loadProposalRaw 的 unknown[]，
+ * 退化形状（非对象 / cid 类型漂移 / 空串）一律回退位置键——绝不产出非 string 键，
+ * 此类条目随后会被 validateChange 逐条拒（对 plan 公式 `c.cid ?? 'idx:'+i` 的从严细化，
+ * 合法文件上二者语义全等）。
+ */
+export function changeKey(c: unknown, index: number): string {
+  const cid = isRecord(c) ? c.cid : undefined
+  return typeof cid === 'string' && cid !== '' ? cid : `${IDX_KEY_PREFIX}${index}`
+}
+
+/**
+ * 已采纳条目的键集合（权威链单源：引擎「已采纳」守卫 / 面板灰化 / 徽章计数共用）。
+ * - appliedCids 存在（含空数组）→ 键域唯一权威（appliedIndexes 忽略——双写一致性由
+ *   markSettled/reject 在同一原子写里保证；第三方只写 appliedCids 也被接受）；
+ * - 纯 legacy 文件（从未双写）→ appliedIndexes 按位置翻译成键域（有 cid 翻 cid、无 cid 翻
+ *   回退键；越界/非整数索引不投影——旧 appliedInRangeCount 的宽容口径）。
+ */
+export function appliedKeySet(file: {
+  changes: unknown[]
+  appliedCids?: string[]
+  appliedIndexes?: number[]
+}): Set<string> {
+  if (file.appliedCids !== undefined) return new Set(file.appliedCids)
+  const s = new Set<string>()
+  for (const i of file.appliedIndexes ?? []) {
+    if (Number.isInteger(i) && i >= 0 && i < file.changes.length) s.add(changeKey(file.changes[i], i))
+  }
+  return s
+}
+
+/** 「未消化」谓词单源（m4b 结转 d 项）：徽章计数 / 面板列表过滤 / PROPOSAL_DUPLICATE 闸门共用。 */
+export function isUnsettled(p: { status: string }): boolean {
+  return p.status !== 'settled'
 }
 
 // ---------------------------------------------------------------------------
@@ -213,6 +280,12 @@ export function validateChange(v: unknown): string[] {
     }
   }
 
+  // cid（M4c-1）：缺省合法（存量/第三方手写文件常态）；出现即非空字符串——不强制 UUID 形状
+  // （盖章产出恒 UUID，手写留自由度）。同文件唯一性归 validateProposal（文件级错误）。
+  if (v.cid !== undefined) {
+    expectString(v, 'cid', 'change.cid', errors, true)
+  }
+
   // source：必备对象，chapterId UUID 形状、quote 非空且 ≤ QUOTE_MAX_LENGTH
   const source = v.source
   if (!isRecord(source)) {
@@ -257,7 +330,19 @@ export function validateProposal(v: unknown): string[] {
     if (changes.length === 0) {
       errors.push('proposal.changes: expected non-empty array, got 0 items')
     }
-    changes.forEach((item, i) => errors.push(...childErrors(i, validateChange(item))))
+    const seenCids = new Set<string>()
+    changes.forEach((item, i) => {
+      errors.push(...childErrors(i, validateChange(item)))
+      // cid 文件内唯一（M4c-1）：重复 cid 让键域记账歧义（一键双条目 = 采纳/灰化全部错位），
+      // 文件级拒绝。cid 类型漂移已由 validateChange 逐条报——这里只收合法字符串。
+      if (isRecord(item) && typeof item.cid === 'string' && item.cid !== '') {
+        if (seenCids.has(item.cid)) {
+          errors.push(`proposal.changes: duplicate cid "${item.cid}" (cid must be unique within a file)`)
+        } else {
+          seenCids.add(item.cid)
+        }
+      }
+    })
   }
 
   // appliedIndexes：可选（T3 markSettled 维护）；出现即要求「有限 number 数组」——
@@ -268,6 +353,17 @@ export function validateProposal(v: unknown): string[] {
       errors.push(`proposal.appliedIndexes: expected array, got ${typeName(applied)}`)
     } else if (applied.some((x) => typeof x !== 'number' || !Number.isFinite(x))) {
       errors.push('proposal.appliedIndexes: expected array of finite numbers')
+    }
+  }
+
+  // appliedCids：可选（M4c-1 markSettled 双写）；出现即要求「非空字符串数组」——
+  // 键域垃圾（数字/空串）会混进权威账目，形状级拒掉；未知键/去重的清洗归存储侧
+  const appliedCids = v.appliedCids
+  if (appliedCids !== undefined) {
+    if (!Array.isArray(appliedCids)) {
+      errors.push(`proposal.appliedCids: expected array, got ${typeName(appliedCids)}`)
+    } else if (appliedCids.some((x) => typeof x !== 'string' || x === '')) {
+      errors.push('proposal.appliedCids: expected array of non-empty strings')
     }
   }
 

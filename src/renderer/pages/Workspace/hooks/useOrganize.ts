@@ -36,6 +36,7 @@ import { subscribeEntitiesChanged } from '../../../services/entityEvents'
 import { assembleAiContext } from '@/common/ai-context'
 import { budgetToMaxTokens, buildOrganizePrompt } from '@/common/organizePrompt'
 import { buildProposalFromAi } from '@/common/organizeResult'
+import { isUnsettled } from '@/common/proposal'
 import type { Chapter, ProjectConfig } from '@/common/ipc'
 import type { AiMessage, AiSettingsView } from '@/common/ai-types'
 import type { ForeshadowEntry } from '@/common/schema'
@@ -98,12 +99,12 @@ function isConfiguredView(view: AiSettingsView): boolean {
   return Boolean(view.protocol) && Boolean(view.baseUrl) && view.hasKey
 }
 
-/** 提案列表 → 徽章形状：未消化计数 + 章 id 集合。 */
+/** 提案列表 → 徽章形状：未消化计数 + 章 id 集合（谓词走 isUnsettled 单源——m4b 结转 d 项）。 */
 function pendingShape(proposals: { chapterId: string; status: string }[]): {
   count: number
   chapters: Set<string>
 } {
-  const unsettled = proposals.filter((p) => p.status !== 'settled')
+  const unsettled = proposals.filter((p) => isUnsettled(p))
   return { count: unsettled.length, chapters: new Set(unsettled.map((p) => p.chapterId)) }
 }
 

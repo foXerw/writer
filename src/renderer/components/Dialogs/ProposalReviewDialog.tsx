@@ -3,23 +3,30 @@
 // 无新通道（proposal:* 全复用）、无单测（纯展示 React，T6 CDP 冒烟兜底）。
 //
 // 勾选 → 通道参数映射（与 T3 引擎 assertOverwriteConfirmed 逐字对齐，走查表见 task-5-report）：
-//   未勾选                     → changeIndexes/confirmedOverwrite 都不含（引擎只见未上报 = 不动）
-//   勾选 × 非覆盖条目          → changeIndexes
-//   勾选 × overwritesHuman     → changeIndexes + confirmedOverwrite（两个数组同携，缺一引擎必拒
+//   未勾选                     → changeKeys/confirmedOverwrite 都不含（引擎只见未上报 = 不动）
+//   勾选 × 非覆盖条目          → changeKeys
+//   勾选 × overwritesHuman     → changeKeys + confirmedOverwrite（两个数组同携，缺一引擎必拒
 //                               「REFUSED: 未确认覆盖」——UI 的勾选态就是确认态，绝不代答）
-//   已采纳（index ∈ appliedIndexes）→ 灰化 ✓已采纳、复选框禁用、绝不进任何数组
+//   已采纳（key ∈ appliedKeySet）→ 灰化 ✓已采纳、复选框禁用、绝不进任何数组
+//
+// M4c-1 键域纪律：勾选集/通道参数/灰化判定全走 changeKey 键（cid ?? 位置回退键，单源
+// src/common/proposal.ts）——跨窗口 reject 重排后陈旧勾选不再错位（旧位置世界的错放/误拒
+// 判别测试见 adopt.test.ts）。旧「越界夹取」（M1）退役：键没有越界概念，checkedList 以
+// 当前 detail 的成员过滤兜底（保留为防御纵深——不在场的键静默不上送，等重读后再说），
+// 引擎侧对未知键另有 REFUSED 条目键未知 的第二道防线（已钉测试）。
 //
 // 通道 REJECT ≠ 逐条 REFUSED：adopt 引擎在 markSettled 记账失败时会抛穿而实体已落盘
 // （T3 顾虑 5 失败窗口）。所以通道错误绝不弹「重试」了事——先 proposal:get 重读真相、
-// 用 appliedIndexes 与刚发送的索引做差集，如实告知「N 条实际已生效」，再刷新列表/徽章。
-// reject 会给存活条目重排索引（appliedIndexes 同步重映射），故任何 reject 后必须整份重读，
-// 勾选集清零——旧索引指向的已不是旧条目（本文件最重要的状态纪律）。
+// 用 appliedKeySet（权威链单源）与刚发送的键做差集，如实告知「N 条实际已生效」，再刷新列表/徽章。
+// reject 仍会重排存活条目位置（legacy 回退键随位置漂移；cid 键天然稳定），故任何 reject 后
+// 必须整份重读、勾选集清零——状态纪律与位置时代一致，不回退。
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { App, Button, Checkbox, Empty, List, Modal, Spin, Tag, Tooltip, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useProposal } from '../../hooks/useIPC'
 import { notifyEntitiesChanged } from '../../services/entityEvents'
 import type { Chapter } from '@/common/ipc'
+import { appliedKeySet, changeKey, isUnsettled } from '@/common/proposal'
 import type {
   ProposalAdoptRefusal,
   ProposalChange,
@@ -83,10 +90,10 @@ function needsOverwriteConfirm(c: ProposalChange): boolean {
   return c.op === 'update' && c.overwritesHuman === true
 }
 
-/** 越界宽容：appliedIndexes 里指向不存在条目的索引不计入「已采纳」展示数（T1 校验只查形状）。 */
-function appliedInRangeCount(p: ProposalFile): number {
-  const s = new Set(p.appliedIndexes ?? [])
-  return p.changes.filter((_, i) => s.has(i)).length
+/** 已采纳数（M4c-1 键域，appliedKeySet 权威链单源）：陈旧账目（键不在条目上）自然不计入。 */
+function appliedChangeCount(p: ProposalFile): number {
+  const s = appliedKeySet(p)
+  return p.changes.filter((c, i) => s.has(changeKey(c, i))).length
 }
 
 type NavRow =
@@ -111,8 +118,9 @@ function ProposalReviewDialog({
   const [loadingList, setLoadingList] = useState(false)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [checked, setChecked] = useState<Set<number>>(new Set())
-  // 最近一次 adopt 的逐条拒绝（会话态，绝不落盘——提案文件只记 appliedIndexes 这一真相）
+  // 勾选集 = changeKey 键域（M4c-1）：跨窗口重排不再错位；legacy 无 cid 条目回退位置键（单源同引擎）
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  // 最近一次 adopt 的逐条拒绝（会话态，绝不落盘——提案文件只记 appliedCids/appliedIndexes 这一真相）
   const [refused, setRefused] = useState<ProposalAdoptRefusal[]>([])
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -122,12 +130,12 @@ function ProposalReviewDialog({
     message.error(`${context}：${msg}`, 8)
   }, [message])
 
-  /** 拉未消化提案列表（status==='settled' 不进面板——徽章同口径；返回过滤后列表供调用方判存活）。 */
+  /** 拉未消化提案列表（isUnsettled 单源口径——徽章/DUPLICATE 闸门同款；返回过滤后列表供调用方判存活）。 */
   const refreshList = useCallback(async (): Promise<ProposalFile[]> => {
     if (!projectPath) return []
     try {
       const all = await getAllProposals(projectPath)
-      const list = all.filter((p) => p.status !== 'settled')
+      const list = all.filter((p) => isUnsettled(p))
       setProposals(list)
       setSelectedId((prev) =>
         prev !== null && list.some((p) => p.id === prev) ? prev : (list[0]?.id ?? null)
@@ -184,17 +192,23 @@ function ProposalReviewDialog({
     }
   }, [open, selectedId, fetchDetail])
 
-  const appliedSet = useMemo(() => new Set(detail?.appliedIndexes ?? []), [detail])
-  // 只数「实际落在条目上」的采纳（越界索引在列表行里自然不可见，计数同样不计入）
+  // 行键（与引擎同口径：changeKey 单源——detail 快照的当前成员集）
+  const rowKeys = useMemo(
+    () => (detail ? detail.changes.map((c, i) => changeKey(c, i)) : []),
+    [detail]
+  )
+  const appliedKeys = useMemo(() => (detail ? appliedKeySet(detail) : new Set<string>()), [detail])
+  // 只数「实际落在条目上」的采纳（陈旧账目在列表行里自然不可见，计数同样不计入）
   const appliedCount = useMemo(
-    () => (detail ? detail.changes.filter((_, i) => appliedSet.has(i)).length : 0),
-    [detail, appliedSet]
+    () => rowKeys.filter((k) => appliedKeys.has(k)).length,
+    [rowKeys, appliedKeys]
   )
   const checkedList = useMemo(
-    // 双保险：已采纳索引即便因异常路径混进勾选集也绝不上送（引擎会报「条目已采纳」，
-    // 但 create 类条目重放=双胞胎实体，UI 侧先兜一道）
-    () => [...checked].filter((i) => !appliedSet.has(i)).sort((a, b) => a - b),
-    [checked, appliedSet]
+    // 双保险：已采纳键即便因异常路径混进勾选集也绝不上送（引擎会报「条目已采纳」，
+    // 但 create 类条目重放=双胞胎实体，UI 侧先兜一道）。成员过滤（M4c-1，接替旧越界夹取）：
+    // 只产出当前 detail 在场的键——跨窗口作废的勾选静默不发送，绝不错发；顺序 = 条目序（确定性）。
+    () => rowKeys.filter((k) => checked.has(k) && !appliedKeys.has(k)),
+    [rowKeys, checked, appliedKeys]
   )
 
   // 章分组导航：正文顺序排列的章在前，章已删的孤儿提案垫底；同章多份仅第三方直写时可能（BOOK_FORMAT 容忍），通道已 PROPOSAL_DUPLICATE 去重
@@ -224,11 +238,11 @@ function ProposalReviewDialog({
     return rows
   }, [proposals, chapters])
 
-  const toggleCheck = useCallback((index: number): void => {
+  const toggleCheck = useCallback((key: string): void => {
     setChecked((prev) => {
       const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }, [])
@@ -237,14 +251,17 @@ function ProposalReviewDialog({
   const handleAdopt = async (): Promise<void> => {
     if (!projectPath || !detail || busy) return
     const id = detail.id
-    // M1（评审折入）：夹取越界索引——detail 是上一次点读的快照，跨窗口他端 reject 会重排/缩短
-    // changes；若把越界索引喂给 needsOverwriteConfirm，detail.changes[i] 为 undefined、
-    // 读 .overwritesHuman 直接 TypeError → Promise 无人接住 → 采纳按钮静默死掉。
-    // 夹住后越界项不上送（它们指向的已不是用户勾选时的条目，宁可漏发等重读后再发，绝不错发）。
-    const sent = checkedList.filter((i) => i < detail.changes.length)
+    // M4c-1：checkedList 已是键域且只含当前 detail 在场条目（成员过滤接替旧 M1 越界夹取——
+    // 键没有越界概念；跨窗口作废的陈旧键静默不发送，宁可漏发等重读后再发，绝不错发。
+    // 引擎侧对未知键另有 REFUSED 第二道防线，adopt.test.ts 已钉）。
+    const sent = checkedList
     if (sent.length === 0) return
-    // overwritesHuman 勾选条目同时进两个数组（引擎通道门：confirmedOverwrite 缺席 = 必拒）
-    const confirmedOverwrite = sent.filter((i) => needsOverwriteConfirm(detail.changes[i]))
+    // overwritesHuman 勾选条目同时进两个数组（引擎通道门：confirmedOverwrite 缺席 = 必拒）——键域同携
+    const keyIndex = new Map(rowKeys.map((k, i) => [k, i]))
+    const confirmedOverwrite = sent.filter((k) => {
+      const i = keyIndex.get(k)
+      return i !== undefined && needsOverwriteConfirm(detail.changes[i])
+    })
     setBusy(true)
     setNotice(null)
     try {
@@ -252,7 +269,7 @@ function ProposalReviewDialog({
       setRefused(result.refused)
       setChecked((prev) => {
         const next = new Set(prev)
-        for (const i of result.applied) next.delete(i)
+        for (const k of result.applied) next.delete(k)
         return next
       })
       if (result.applied.length > 0) {
@@ -264,7 +281,7 @@ function ProposalReviewDialog({
       } else {
         message.info('没有条目被处理')
       }
-      // 重读真相：✓已采纳灰化以盘上 appliedIndexes 为准；整份消化后从列表退场（settled）
+      // 重读真相：✓已采纳灰化以盘上记账为准（appliedKeySet 权威链）；整份消化后从列表退场（settled）
       await fetchDetail(id).then((f) => setDetail(f ?? null))
       await refreshList()
     } catch (err) {
@@ -278,18 +295,19 @@ function ProposalReviewDialog({
         console.error('[ProposalReviewDialog] 采纳出错且提案文件已不存在:', msg)
         message.error(`采纳出错且提案文件已不存在（可能被他端消化/删除）：${msg}`, 8)
       } else {
-        const nowApplied = new Set(fresh.appliedIndexes ?? [])
-        const n = sent.filter((i) => nowApplied.has(i)).length
+        // 键域差集（M4c-1）：appliedKeySet 权威链——跨窗口重排后仍按用户勾选的原条目对账
+        const nowApplied = appliedKeySet(fresh)
+        const n = sent.filter((k) => nowApplied.has(k)).length
         setDetail(fresh)
         setChecked((prev) => {
           const next = new Set(prev)
-          for (const i of sent) if (nowApplied.has(i)) next.delete(i)
+          for (const k of sent) if (nowApplied.has(k)) next.delete(k)
           return next
         })
         const msg = err instanceof Error ? err.message : String(err)
         // M2（评审折入）：n===0 时「0 条实际已生效」在 markSettled 整窗失败期会说谎——实体
-        // 已落盘而 appliedIndexes 未记上，盘上读到的就是 0。n=0 走中性文案不宣告生效数；
-        // n>0 才有实证（appliedIndexes 记账存在），保留「实际已生效」口径。
+        // 已落盘而记账未写上（appliedCids 同样缺席——键域不改变该失败窗口的本质），盘上读到
+        // 的就是 0。n=0 走中性文案不宣告生效数；n>0 才有实证（记账存在），保留「实际已生效」口径。
         setNotice(
           n > 0
             ? `采纳状态未知，已重新同步：${n} 条实际已生效（通道报错：${msg}）`
@@ -303,7 +321,7 @@ function ProposalReviewDialog({
     }
   }
 
-  // —— 驳回勾选：删条目（全删空 = 整份提案删除）；索引重排 ⇒ 勾选清零 + 整份重读 ——
+  // —— 驳回勾选（键域上报）：删条目（全删空 = 整份提案删除）；位置重排 ⇒ 勾选清零 + 整份重读 ——
   const handleReject = async (): Promise<void> => {
     if (!projectPath || !detail || busy) return
     const id = detail.id
@@ -316,7 +334,8 @@ function ProposalReviewDialog({
       message.success(`已驳回 ${target.length} 条`)
       setChecked(new Set())
       setRefused([])
-      // reject 可能整份删文件/重排索引/重算 status——徽章与图谱一律重拉，条目索引作废
+      // reject 可能整份删文件/重排位置（legacy 回退键漂移）/重算 status——徽章与图谱一律重拉，
+      // 勾选集清零（cid 条目的键虽稳定，纪律不回退：重读后面板与盘上真相逐字对齐）
       notifyEntitiesChanged()
       const list = await refreshList()
       if (list.some((p) => p.id === id)) {
@@ -339,8 +358,9 @@ function ProposalReviewDialog({
   }
 
   const renderChange = (c: ProposalChange, i: number): React.ReactNode => {
-    const applied = appliedSet.has(i)
-    const refuseReason = refused.find((r) => r.index === i)?.reason
+    const key = changeKey(c, i) // 与引擎同口径（changeKey 单源）：勾选/灰化/拒绝对账全走键域
+    const applied = appliedKeys.has(key)
+    const refuseReason = refused.find((r) => r.key === key)?.reason
     const warnFields = needsOverwriteConfirm(c) ? afterKeys(c.after) : []
     return (
       <div className={`proposal-review-change${applied ? ' proposal-review-change--applied' : ''}`}>
@@ -349,9 +369,9 @@ function ProposalReviewDialog({
             <span className="proposal-review-applied">✓ 已采纳</span>
           ) : (
             <Checkbox
-              checked={checked.has(i)}
+              checked={checked.has(key)}
               disabled={busy}
-              onChange={() => toggleCheck(i)}
+              onChange={() => toggleCheck(key)}
               aria-label={`勾选变更条目 ${i + 1}`}
             />
           )}
@@ -401,7 +421,7 @@ function ProposalReviewDialog({
           {p.status === 'partial' ? <Tag color="orange">部分采纳</Tag> : null}
         </div>
         <div className="proposal-review-meta">
-          已采纳 {appliedInRangeCount(p)}/{p.changes.length} 条 · {p.aiModel}
+          已采纳 {appliedChangeCount(p)}/{p.changes.length} 条 · {p.aiModel}
         </div>
       </div>
     )

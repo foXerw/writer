@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
 import {
   ALLOWED_OPS,
@@ -6,6 +9,9 @@ import {
   PROPOSAL_ENTITIES,
   PROPOSAL_OPS,
   PROPOSAL_STATUSES,
+  appliedKeySet,
+  changeKey,
+  isUnsettled,
   newProposalId,
   proposalPath,
   validateChange,
@@ -403,6 +409,19 @@ describe('js-yaml 往返', () => {
     expect((loaded as Record<string, unknown>).createdAt).toBe('2026-10-28T12:00:00.000Z')
   })
 
+  it('cid/appliedCids 往返（M4c-1）：dump → load 后键域记账原样、校验仍过', () => {
+    const f = validFile()
+    ;(f.changes as Record<string, unknown>[])[0].cid = '6a1b2c3d-4e5f-4a7b-8c5d-1e6f7a8b9c0d'
+    f.appliedCids = ['6a1b2c3d-4e5f-4a7b-8c5d-1e6f7a8b9c0d']
+    f.appliedIndexes = [0]
+    const loaded = yaml.load(yaml.dump(f, { noRefs: true, lineWidth: 120 })) as Record<string, unknown>
+    expect(validateProposal(loaded)).toEqual([])
+    expect((loaded.changes as Record<string, unknown>[])[0].cid).toBe(
+      '6a1b2c3d-4e5f-4a7b-8c5d-1e6f7a8b9c0d'
+    )
+    expect(loaded.appliedCids).toEqual(['6a1b2c3d-4e5f-4a7b-8c5d-1e6f7a8b9c0d'])
+  })
+
   it('往返后与结构克隆深度相等（含嵌套 source 与 unknown after）', () => {
     const original = validFile()
     const loaded = yaml.load(yaml.dump(original, { noRefs: true, lineWidth: 120 }))
@@ -417,5 +436,167 @@ describe('js-yaml 往返', () => {
     }
     const loaded = yaml.load(yaml.dump(f, { noRefs: true, lineWidth: 120 }))
     expect(validateProposal(loaded)).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M4c-1：changeKey —— 记账主键唯一来源（引擎/面板/markSettled/reject 全消费）
+// 断言刻意用「派生值」表达回退键（不内联前缀字面量——grep 门在下方单独钉）
+// ---------------------------------------------------------------------------
+
+describe('changeKey（M4c-1 记账主键单源）', () => {
+  it('有 cid 的条目 → 键 = cid（与 index 位置无关——重排不动，本次重构的存在理由）', () => {
+    const c = { ...validChange(), cid: 'cid-aaa' }
+    expect(changeKey(c, 0)).toBe('cid-aaa')
+    expect(changeKey(c, 7)).toBe('cid-aaa')
+  })
+
+  it('无 cid → 位置回退键：同 index 稳定、不同 index 互异', () => {
+    const bare = validChange()
+    expect(changeKey(bare, 2)).toBe(changeKey(bare, 2))
+    expect(changeKey(bare, 2)).not.toBe(changeKey(bare, 3))
+  })
+
+  it('退化形状宽容：非对象 / cid 非字符串或空串 → 位置回退键（绝不产出非 string 键）', () => {
+    expect(changeKey(undefined, 1)).toBe(changeKey({}, 1))
+    expect(changeKey(null, 1)).toBe(changeKey({}, 1))
+    expect(changeKey({ cid: 42 }, 1)).toBe(changeKey({}, 1))
+    expect(changeKey({ cid: '' }, 1)).toBe(changeKey({}, 1))
+    expect(changeKey({ cid: null }, 1)).toBe(changeKey({}, 1))
+    expect(changeKey('不是对象', 3)).toBe(changeKey({}, 3))
+    expect(typeof changeKey({ cid: 42 }, 1)).toBe('string')
+  })
+
+  it('回退键互不冲突且非空（键域最小不变量）', () => {
+    const keys = [0, 1, 2].map((i) => changeKey({}, i))
+    expect(new Set(keys).size).toBe(3)
+    expect(keys.every((k) => k.length > 0)).toBe(true)
+  })
+})
+
+describe('appliedKeySet（M4c-1 权威链单源：引擎守卫/面板灰化/徽章共用）', () => {
+  const c0 = { cid: 'a' }
+  const c1 = { cid: 'b' }
+  const c2 = {} // legacy 无 cid
+
+  it('appliedCids 存在（含空数组）→ 键域唯一权威，appliedIndexes 被忽略', () => {
+    expect([...appliedKeySet({ changes: [c0, c1], appliedCids: ['b'], appliedIndexes: [0] })]).toEqual(['b'])
+    expect(appliedKeySet({ changes: [c0], appliedCids: [], appliedIndexes: [0] }).size).toBe(0)
+  })
+
+  it('纯 legacy（无 appliedCids）→ appliedIndexes 按位置翻译成键域（有 cid 翻 cid、无 cid 翻回退键）', () => {
+    const s = appliedKeySet({ changes: [c0, c1, c2], appliedIndexes: [0, 2] })
+    expect(s.has('a')).toBe(true)
+    expect(s.has(changeKey(c2, 2))).toBe(true)
+    expect(s.has('b')).toBe(false)
+  })
+
+  it('越界/非整数/负数索引不投影；两账皆缺 → 空集', () => {
+    expect(appliedKeySet({ changes: [c0], appliedIndexes: [5, -1, 1.5] }).size).toBe(0)
+    expect(appliedKeySet({ changes: [c0] }).size).toBe(0)
+  })
+})
+
+describe('isUnsettled（m4b 结转 d 项：未消化谓词单源，徽章/面板/DUPLICATE 闸门共用）', () => {
+  it('pending/partial → true；settled → false', () => {
+    expect(isUnsettled({ status: 'pending' })).toBe(true)
+    expect(isUnsettled({ status: 'partial' })).toBe(true)
+    expect(isUnsettled({ status: 'settled' })).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M4c-1：cid / appliedCids 校验（宽容分界：缺省合法——legacy/第三方文件不炸）
+// ---------------------------------------------------------------------------
+
+describe('validateChange × cid', () => {
+  it('cid 缺省合法（存量/第三方手写文件常态）', () => {
+    expect(validateChange(validChange())).toEqual([])
+  })
+
+  it('非空字符串 cid 合法（不要求 UUID 形状——盖章产出恒 UUID，手写留自由度）', () => {
+    const c = validChange()
+    c.cid = 'b3f1c2a4-0000-4000-8000-000000000000'
+    expect(validateChange(c)).toEqual([])
+    c.cid = 'any-non-empty-string'
+    expect(validateChange(c)).toEqual([])
+  })
+
+  it('出现即须非空字符串：空串/空白/数字/对象/数组报错含 cid', () => {
+    for (const bad of ['', '   ', 42, {}, []]) {
+      const c = validChange()
+      c.cid = bad
+      expect(validateChange(c).some((e) => e.includes('cid')), JSON.stringify(bad)).toBe(true)
+    }
+  })
+})
+
+describe('validateProposal × appliedCids', () => {
+  it('缺失合法；空数组与非空字符串数组合法', () => {
+    expect(validateProposal(validFile())).toEqual([])
+    const a = validFile()
+    a.appliedCids = []
+    expect(validateProposal(a)).toEqual([])
+    const b = validFile()
+    b.appliedCids = ['cid-a']
+    expect(validateProposal(b)).toEqual([])
+  })
+
+  it('非数组报错含 appliedCids；元素类型漂移（数字/空串/null）报错', () => {
+    const f = validFile()
+    f.appliedCids = 'oops'
+    expect(validateProposal(f).some((e) => e.includes('appliedCids'))).toBe(true)
+    for (const bad of [[1], [''], [null], ['ok', 42]]) {
+      const g = validFile()
+      g.appliedCids = bad
+      expect(validateProposal(g).some((e) => e.includes('appliedCids')), JSON.stringify(bad)).toBe(true)
+    }
+  })
+})
+
+describe('validateProposal × cid 唯一性（非 Negotiable #7：dup cid = 文件级错误）', () => {
+  it('两条同 cid → 文件级错误（重复 cid 让键域记账歧义）', () => {
+    const f = validFile()
+    f.changes = [{ ...validChange(), cid: 'same-cid' }, { ...changeFor('create', 'world'), cid: 'same-cid' }]
+    const errors = validateProposal(f)
+    expect(errors.some((e) => e.includes('duplicate') && e.includes('same-cid'))).toBe(true)
+  })
+
+  it('不同 cid 合法；多条皆缺 cid 合法（回退键按位置互不冲突）', () => {
+    const ok = validFile()
+    ok.changes = [{ ...validChange(), cid: 'a' }, { ...changeFor('create', 'world'), cid: 'b' }]
+    expect(validateProposal(ok)).toEqual([])
+    const legacy = validFile()
+    legacy.changes = [validChange(), validChange()]
+    expect(validateProposal(legacy)).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M4c-1 grep 门（非 Negotiable #2）：回退键前缀字面量只许存在于 proposal.ts 定义处——
+// 任何第二处内联都是键计算的私生子。本测试文件自身也受此约束（断言全用 changeKey 派生）。
+// ---------------------------------------------------------------------------
+
+describe('changeKey 单源 grep 门', () => {
+  it("全仓 ts/tsx 源码中，引号包裹的回退前缀字面量只出现在 src/common/proposal.ts", () => {
+    const root = fileURLToPath(new URL('../..', import.meta.url))
+    // 字符类 + 前缀拼接构造，避免本测试文件自命中（针尖 = 引号后紧跟回退前缀）
+    const needle = new RegExp(`['"\`]idx${':'}`)
+    const hits: string[] = []
+    const walk = (dir: string): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          if (e.name === 'node_modules' || e.name.startsWith('.')) continue
+          walk(join(dir, e.name))
+        } else if (/\.(ts|tsx)$/.test(e.name)) {
+          const abs = join(dir, e.name)
+          if (needle.test(readFileSync(abs, 'utf8'))) {
+            hits.push(relative(root, abs).split(sep).join('/'))
+          }
+        }
+      }
+    }
+    for (const d of ['src', 'electron', 'tests']) walk(join(root, d))
+    expect(hits.sort()).toEqual(['src/common/proposal.ts'])
   })
 })

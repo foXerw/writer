@@ -12,6 +12,11 @@
 // - 裁定 9（隐私）：'parse-failed' 分支不携带任何原文（可能引用书中内容），调用方需要留痕
 //   也只许记长度。
 //
+// M4c-1（稳定变更标识）：每条 change 在此盖章新鲜 `cid`（记账主键，adopt/markSettled/reject/
+// 面板勾选全走 changeKey 键域）。AI 违约自带 cid 与 chapterId 同立场——一律覆写，绝不采信
+// （伪造/碰撞 cid 会污染键域记账）。Web Crypto randomUUID（渲染进程恒安全上下文）；
+// 极端环境退化兜底仍保证非空字符串唯一（校验器不强制 UUID 形状）。
+//
 // 信封字段（id/createdAt/aiModel/status）由本函数构造（organizePrompt 规约文本已如实告知模型）。
 
 import { extractJsonLoose } from './jsonLoose'
@@ -61,18 +66,33 @@ export function buildProposalFromAi(raw: string, chapterId: string, aiModel: str
     // 裁定 1：先盖章、后校验。source 整体缺失时兜底成 {chapterId}（形状由 quote 检查拒下，
     // 而不是 spread undefined 崩在这里）。spread 源是经 JSON.parse 的 plain object，
     // __proto__ 键只是 own property，不会触发原型 setter。
-    changes: list.map(
-      (c) =>
-        ({
-          ...asRecord(c),
-          source: { ...asSourceRecord(c), chapterId }
-        }) as ProposalChange
-    )
+    // M4c-1：cid 盖章先删后赋——AI 违约自带的 cid 绝不采信（覆写成新鲜值），cid 置条目首位
+    // （YAML 落盘可读性：记账主键打头）。
+    changes: list.map((c) => {
+      const rec = asRecord(c)
+      delete rec.cid
+      return {
+        cid: newChangeId(),
+        ...rec,
+        source: { ...asSourceRecord(c), chapterId }
+      } as ProposalChange
+    })
   }
 
   const errors = validateProposal(file)
   if (errors.length > 0) return { kind: 'invalid', errors }
   return { kind: 'ok', file }
+}
+
+/**
+ * cid 生产（M4c-1）：Web Crypto randomUUID（Electron 渲染进程恒为安全上下文；vitest/node ≥19
+ * 自带 globalThis.crypto）。极端环境（无 crypto）退化兜底 = 时间戳+随机串——校验器只要求
+ * 非空字符串，唯一性由随机位宽保证（同 useAI.genRequestId 的兜底先例）。
+ */
+function newChangeId(): string {
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  return `cid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }
 
 /** 对象记录形状（非对象/数组 → 空记录，交由校验器报结构错）。 */

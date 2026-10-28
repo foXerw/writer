@@ -26,7 +26,8 @@ import { assembleAiContext } from '../../../src/common/ai-context'
 import { budgetToMaxTokens, buildOrganizePrompt } from '../../../src/common/organizePrompt'
 import { buildProposalFromAi } from '../../../src/common/organizeResult'
 import type { ProposalAdoptResult, ProposalFile } from '../../../src/common/proposal'
-import { proposalPath } from '../../../src/common/proposal'
+import { UUID_PATTERN } from '../../../src/common/schema'
+import { changeKey, proposalPath } from '../../../src/common/proposal'
 import type { AiMessage } from '../../../src/common/ai-types'
 import { adoptChanges } from './adopt'
 import { getProposal } from './proposals'
@@ -299,9 +300,11 @@ describe('e2e：整理本章全链（假 fetch → 提案落盘 → 采纳四路
     ).rejects.toThrow(`PROPOSAL_DUPLICATE: ${ch.id}`)
     expect(existsSync(proposalPath(p, dup.id))).toBe(false)
 
-    // —— 6. 采纳：3 条全收，confirmed=[]（剧本无人写覆盖条目） ——
-    const result = adoptChanges(p, file.id, [0, 1, 2], []) as ProposalAdoptResult
-    expect(result).toEqual({ applied: [0, 1, 2], refused: [] })
+    // —— 6. 采纳：3 条全收，confirmed=[]（剧本无人写覆盖条目）。M4c-1：键域 = 盖章 cid ——
+    const keys = file.changes.map((c, i) => changeKey(c, i))
+    expect(keys.every((k) => UUID_PATTERN.test(k))).toBe(true) // 整理链盖章的 cid 直接成为记账键（全链证明）
+    const result = adoptChanges(p, file.id, keys, []) as ProposalAdoptResult
+    expect(result).toEqual({ applied: keys, refused: [] })
 
     // —— 7. 四路落盘断言 ——
     const fresh = listCharacters(p).find((c) => c.name === '新配角')
@@ -326,6 +329,7 @@ describe('e2e：整理本章全链（假 fetch → 提案落盘 → 采纳四路
     const settled = getProposal(p, file.id)
     expect(settled?.status).toBe('settled')
     expect(settled?.appliedIndexes).toEqual([0, 1, 2])
+    expect(settled?.appliedCids).toEqual(keys) // M4c-1 双写：键域权威与位置投影同落一份原子写
 
     // —— 8. 闭环回流：readAiData 复读，下一轮整理能看见本轮产物 ——
     const after = readAiData(p)
@@ -348,7 +352,7 @@ describe('e2e：整理本章全链（假 fetch → 提案落盘 → 采纳四路
     await getHandler('proposal:reject')(null, {
       projectPath: p,
       proposalId: okAgain.id,
-      changeIndexes: [0, 1, 2]
+      changeKeys: okAgain.changes.map((c, i) => changeKey(c, i))
     })
     expect(existsSync(proposalPath(p, okAgain.id))).toBe(false)
   })

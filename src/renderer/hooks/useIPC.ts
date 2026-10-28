@@ -461,18 +461,18 @@ export function useProposal() {
   const adoptProposalChanges = useCallback(async (
     projectPath: string,
     proposalId: string,
-    changeIndexes: number[],
-    confirmedOverwrite: number[]
+    changeKeys: string[],
+    confirmedOverwrite: string[]
   ): Promise<ProposalAdoptResult> => {
-    return ipc.proposal.adopt({ projectPath, proposalId, changeIndexes, confirmedOverwrite })
+    return ipc.proposal.adopt({ projectPath, proposalId, changeKeys, confirmedOverwrite })
   }, [ipc])
 
   const rejectProposalChanges = useCallback(async (
     projectPath: string,
     proposalId: string,
-    changeIndexes: number[]
+    changeKeys: string[]
   ): Promise<void> => {
-    return ipc.proposal.reject({ projectPath, proposalId, changeIndexes })
+    return ipc.proposal.reject({ projectPath, proposalId, changeKeys })
   }, [ipc])
 
   return {

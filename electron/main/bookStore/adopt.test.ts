@@ -1,4 +1,4 @@
-// 采纳引擎测试（M4b T3，tmp 书目录 + 真 repository，零仓库 mock）：
+// 采纳引擎测试（M4b T3 + M4c-1 键域迁移，tmp 书目录 + 真 repository，零仓库 mock）：
 // - R1 origin 机制：aiTouched 语义（人写 = 非空 && 不在 aiTouched）；覆盖人写 → REFUSED: 覆盖人写内容 <field>；
 //   overwritesHuman:true 未经 UI 确认 → REFUSED: 未确认覆盖；确认后落盘 + aiTouched 追加 + updatedAt 刷新；
 //   create×character/world 播种 aiTouched = 所写非空字段名清单（裁定 A：AI 产字段不得伪装人写——
@@ -7,8 +7,11 @@
 // - R3 逐实体深校验：create×character/world/plotline/choice/foreshadow 全形状校验（注入新 id+时间戳）、
 //   update×foreshadow 仅 status/plannedPayoffNote/note、summary/index 落 .ai/ 的形狀与合并语义、
 //   delete 仅限 plotline/choice/foreshadow 且 targetId 必须存在（delete×character 由 validateChange 双保险拒）；
-// - 批次纪律：逐条 try/catch（一条坏不拖累整批）、applied/refused 对账、markSettled 记账、
-//   重复采纳拒绝、越界/非法索引拒绝、rejectChanges 删条目（空 → 整份删除）+ appliedIndexes 重排。
+// - 批次纪律：逐条 try/catch（一条坏不拖累整批）、applied/refused 对账、markSettled 键域双写记账、
+//   重复采纳拒绝、非法/未知键拒绝、rejectChanges 按键摘除（空 → 整份删除）+ 双账同步收缩；
+// - M4c-1 稳定键：通道参数 = changeKey 键集（cid ?? 位置回退键，单源 src/common/proposal.ts）。
+//   判别性测试 = 跨窗口 reject 重排后按 cid 采纳「不误拒、不错放」（旧位置世界两案都会错位，
+//   RED 证据见 task-1-report）；legacy 文件（无 cid 仅 appliedIndexes）三操作全链路位置语义兼容。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -31,7 +34,7 @@ import {
 } from './narrative'
 import { characterIds, worldIds } from './refs'
 import { aiIndexFile, chapterSummaryFile, foreshadowFile } from './paths'
-import { newProposalId, proposalPath } from '../../../src/common/proposal'
+import { changeKey, newProposalId, proposalPath } from '../../../src/common/proposal'
 import type { ProposalChange, ProposalFile } from '../../../src/common/proposal'
 import type { Chapter } from '../../../src/common/ipc'
 import type { ForeshadowEntry } from '../../../src/common/schema'
@@ -79,6 +82,14 @@ function plantBypass(p: string, file: unknown): void {
   const f = file as ProposalFile
   mkdirSync(join(p, '.ai', 'proposals'), { recursive: true })
   writeFileSync(proposalPath(p, f.id), yaml.dump(file, { noRefs: true, lineWidth: 120 }), 'utf8')
+}
+
+/** 键域（M4c-1）：file 第 i 条的记账键（cid ?? 位置回退键——changeKey 单源）。 */
+function keyOf(f: ProposalFile, i: number): string {
+  return changeKey(f.changes[i], i)
+}
+function keysOf(f: ProposalFile, idx: number[]): string[] {
+  return idx.map((i) => keyOf(f, i))
 }
 
 function fullCharacterAfter(over?: Record<string, unknown>): Record<string, unknown> {
@@ -161,11 +172,11 @@ describe('FIELD_ALLOWLIST', () => {
 // ---------------------------------------------------------------------------
 
 describe('create×character', () => {
-  it('全形状 after → listCharacters 出现；aiTouched 播种所写非空字段（裁定 A）；提案 settled', () => {
+  it('全形状 after → listCharacters 出现；aiTouched 播种所写非空字段（裁定 A）；提案 settled + 双账', () => {
     const { p, ch } = setup()
     const f = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter() })])
-    const r = adoptChanges(p, f.id, [0], [])
-    expect(r).toEqual({ applied: [0], refused: [] })
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
+    expect(r).toEqual({ applied: keysOf(f, [0]), refused: [] })
     const list = listCharacters(p)
     expect(list).toHaveLength(1)
     expect(list[0].name).toBe('阿明')
@@ -176,18 +187,20 @@ describe('create×character', () => {
     const stored = getProposal(p, f.id)
     expect(stored?.status).toBe('settled')
     expect(stored?.appliedIndexes).toEqual([0])
+    // M4c-1 双写：首次采纳起 appliedCids 落盘（键域从此为该文件权威）
+    expect(stored?.appliedCids).toEqual([keyOf(f, 0)])
   })
 
   it('裁定 A 连锁：后续整理改 AI 自建卡的记名字段，无需 overwritesHuman 直接应用', () => {
     const { p, ch } = setup()
     const f1 = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter() })])
-    adoptChanges(p, f1.id, [0], [])
+    adoptChanges(p, f1.id, keysOf(f1, [0]), [])
     const created = listCharacters(p)[0]
     const f2 = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'character', targetId: created.id, after: { personality: '二稿性格' } })
     ])
-    const r = adoptChanges(p, f2.id, [0], []) // 无旗标、无确认
-    expect(r).toEqual({ applied: [0], refused: [] })
+    const r = adoptChanges(p, f2.id, keysOf(f2, [0]), []) // 无旗标、无确认
+    expect(r).toEqual({ applied: keysOf(f2, [0]), refused: [] })
     const stored = getCharacter(p, created.id)!
     expect(stored.personality).toBe('二稿性格')
     expect(stored.aiTouched).toEqual(['name', 'gender', 'age', 'role', 'appearance', 'personality', 'background']) // 去重不加位
@@ -196,7 +209,7 @@ describe('create×character', () => {
   it('裁定 A 空值不入账：create 携空 personality → 不记名，人写后照常受保护', () => {
     const { p, ch } = setup()
     const f = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter({ personality: '' }) })])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const created = listCharacters(p)[0]
     expect(created.aiTouched).not.toContain('personality')
     // 人手填写后（repo 直写模拟）该字段 = 人写：AI 再改需旗标+确认
@@ -204,16 +217,16 @@ describe('create×character', () => {
     const f2 = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'character', targetId: created.id, after: { personality: 'AI 覆盖' } })
     ])
-    expect(adoptChanges(p, f2.id, [0], []).refused[0].reason).toBe('REFUSED: 覆盖人写内容 personality')
+    expect(adoptChanges(p, f2.id, keysOf(f2, [0]), []).refused[0].reason).toBe('REFUSED: 覆盖人写内容 personality')
   })
 
   it('after 缺必备字段 → 整条拒（错误串带字段路径）且零落盘，提案保持 pending', () => {
     const { p, ch } = setup()
     const f = plant(p, ch.id, [mkChange(ch.id, { after: { name: '残缺' } })])
-    const r = adoptChanges(p, f.id, [0], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
     expect(r.applied).toEqual([])
     expect(r.refused).toHaveLength(1)
-    expect(r.refused[0].index).toBe(0)
+    expect(r.refused[0].key).toBe(keyOf(f, 0))
     expect(r.refused[0].reason).toContain('REFUSED: 角色形状非法')
     expect(r.refused[0].reason).toContain('character.personality')
     expect(listCharacters(p)).toEqual([])
@@ -226,7 +239,7 @@ describe('create×character', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { after: fullCharacterAfter({ relationships: [{ targetId: ghost, kind: '宿敌' }] }) })
     ])
-    const r = adoptChanges(p, f.id, [0], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
     expect(r.refused[0].reason).toContain(`REF_BROKEN: ${ghost}`)
     expect(listCharacters(p)).toEqual([])
   })
@@ -245,7 +258,7 @@ describe('update×character origin 保护（R1）', () => {
     const { p, ch } = setup()
     const cid = seedHumanCharacter(p)
     const f = plant(p, ch.id, [updateChange(ch.id, cid, { personality: 'AI 覆盖' })])
-    const r = adoptChanges(p, f.id, [0], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
     expect(r.applied).toEqual([])
     expect(r.refused[0].reason).toBe('REFUSED: 覆盖人写内容 personality')
     expect(getCharacter(p, cid)?.personality).toBe('人写性格')
@@ -255,18 +268,18 @@ describe('update×character origin 保护（R1）', () => {
     const { p, ch } = setup()
     const cid = seedHumanCharacter(p)
     const f = plant(p, ch.id, [updateChange(ch.id, cid, { personality: 'AI 覆盖' }, { overwritesHuman: true })])
-    const r = adoptChanges(p, f.id, [0], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
     expect(r.refused[0].reason).toBe('REFUSED: 未确认覆盖')
     expect(getCharacter(p, cid)?.personality).toBe('人写性格')
   })
 
-  it('overwritesHuman:true + confirmed → 落盘、aiTouched 追加、updatedAt 刷新、createdAt 不动', () => {
+  it('overwritesHuman:true + confirmed（键域）→ 落盘、aiTouched 追加、updatedAt 刷新、createdAt 不动', () => {
     const { p, ch } = setup()
     const cid = seedHumanCharacter(p)
     const before = getCharacter(p, cid)!
     const f = plant(p, ch.id, [updateChange(ch.id, cid, { personality: 'AI 覆盖' }, { overwritesHuman: true })])
-    const r = adoptChanges(p, f.id, [0], [0])
-    expect(r).toEqual({ applied: [0], refused: [] })
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), keysOf(f, [0]))
+    expect(r).toEqual({ applied: keysOf(f, [0]), refused: [] })
     const after = getCharacter(p, cid)!
     expect(after.personality).toBe('AI 覆盖')
     expect(after.aiTouched).toEqual(['personality'])
@@ -274,14 +287,27 @@ describe('update×character origin 保护（R1）', () => {
     expect(after.name).toBe('旧名') // 未涉及字段不动
   })
 
+  it('确认集错位（confirmedOverwrite 带别的键）→ 仍拒未确认覆盖（键域逐字对齐，不代答）', () => {
+    const { p, ch } = setup()
+    const cid = seedHumanCharacter(p)
+    const f = plant(p, ch.id, [
+      updateChange(ch.id, cid, { personality: 'AI 覆盖' }, { overwritesHuman: true }),
+      mkChange(ch.id, { after: fullCharacterAfter() })
+    ])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), keysOf(f, [1])) // 确认了别的条目
+    expect(r.applied).toEqual([])
+    expect(r.refused[0].reason).toBe('REFUSED: 未确认覆盖')
+    expect(getCharacter(p, cid)?.personality).toBe('人写性格')
+  })
+
   it('AI 写过的字段（在 aiTouched）再更新无需 overwritesHuman；aiTouched 去重不重复', () => {
     const { p, ch } = setup()
     const cid = seedHumanCharacter(p)
     const f1 = plant(p, ch.id, [updateChange(ch.id, cid, { personality: 'AI 一稿' }, { overwritesHuman: true })])
-    adoptChanges(p, f1.id, [0], [0])
+    adoptChanges(p, f1.id, keysOf(f1, [0]), keysOf(f1, [0]))
     const f2 = plant(p, ch.id, [updateChange(ch.id, cid, { personality: 'AI 二稿', appearance: '新外貌' })])
-    const r = adoptChanges(p, f2.id, [0], [])
-    expect(r.applied).toEqual([0])
+    const r = adoptChanges(p, f2.id, keysOf(f2, [0]), [])
+    expect(r.applied).toEqual(keysOf(f2, [0]))
     const doc = getCharacter(p, cid)!
     expect(doc.personality).toBe('AI 二稿')
     expect(doc.appearance).toBe('新外貌')
@@ -293,8 +319,8 @@ describe('update×character origin 保护（R1）', () => {
     const doc = createCharacter(p, { name: '白纸', gender: 'female', role: 'minor' })
     expect(doc.personality).toBe('')
     const f = plant(p, ch.id, [updateChange(ch.id, doc.id, { personality: 'AI 补充', links: [] })])
-    const r = adoptChanges(p, f.id, [0], [])
-    expect(r.applied).toEqual([0])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
+    expect(r.applied).toEqual(keysOf(f, [0]))
     expect(getCharacter(p, doc.id)?.personality).toBe('AI 补充')
     expect(getCharacter(p, doc.id)?.aiTouched).toEqual(['personality', 'links'])
   })
@@ -303,10 +329,10 @@ describe('update×character origin 保护（R1）', () => {
     const { p, ch } = setup()
     const doc = createCharacter(p, { name: '无龄', gender: 'other', role: 'minor' })
     const f1 = plant(p, ch.id, [updateChange(ch.id, doc.id, { age: 24 })])
-    expect(adoptChanges(p, f1.id, [0], []).applied).toEqual([0]) // 0 → 24 放行（0 = 仓库默认空值）
+    expect(adoptChanges(p, f1.id, keysOf(f1, [0]), []).applied).toEqual(keysOf(f1, [0])) // 0 → 24 放行（0 = 仓库默认空值）
     const human = createCharacter(p, { name: '有龄', gender: 'male', role: 'minor' }, { age: 40 })
     const f2 = plant(p, ch.id, [updateChange(ch.id, human.id, { age: 41 })])
-    const r = adoptChanges(p, f2.id, [0], [])
+    const r = adoptChanges(p, f2.id, keysOf(f2, [0]), [])
     expect(r.refused[0].reason).toBe('REFUSED: 覆盖人写内容 age')
     expect(getCharacter(p, human.id)?.age).toBe(40)
   })
@@ -324,8 +350,8 @@ describe('update×character origin 保护（R1）', () => {
         personality: 'AI 值'
       })
     ])
-    const r = adoptChanges(p, f.id, [0], [])
-    expect(r.applied).toEqual([0])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
+    expect(r.applied).toEqual(keysOf(f, [0]))
     const stored = getCharacter(p, doc.id)!
     expect(stored.id).toBe(doc.id)
     expect(stored.createdAt).toBe(doc.createdAt)
@@ -339,11 +365,11 @@ describe('update×character origin 保护（R1）', () => {
     const f = plant(p, ch.id, [
       updateChange(ch.id, doc.id, { personality: 'AI 值', origin: 'human' }) // 合法+未知混合
     ])
-    const r = adoptChanges(p, f.id, [0], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
     expect(r.applied).toEqual([])
     expect(r.refused[0].reason).toBe('REFUSED: 未知字段 origin')
     const stored = getCharacter(p, doc.id)!
-    expect(stored.personality).toBe('') // 合法字段也没落盘（appliedIndexes 绝不说谎）
+    expect(stored.personality).toBe('') // 合法字段也没落盘（applied 记账绝不说谎）
     expect(stored.aiTouched).toBeUndefined()
     expect(loadProposalRaw(p, f.id).proposal.status).toBe('pending')
   })
@@ -356,7 +382,7 @@ describe('update×character origin 保护（R1）', () => {
       updateChange(ch.id, cid, { id: 'x' }),
       mkChange(ch.id, { op: 'update', entity: 'character', targetId: cid, after: '不是对象' })
     ])
-    const r = adoptChanges(p, f.id, [0, 1, 2], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0, 1, 2]), [])
     expect(r.applied).toEqual([])
     expect(r.refused.map((x) => x.reason)).toEqual([
       'REFUSED: 无可应用字段',
@@ -372,7 +398,7 @@ describe('update×character origin 保护（R1）', () => {
       updateChange(ch.id, ghost, { personality: 'x' }),
       updateChange(ch.id, '../../evil', { personality: 'x' })
     ])
-    const r = adoptChanges(p, f.id, [0, 1], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0, 1]), [])
     expect(r.refused[0].reason).toContain(`CHARACTER_MISSING: ${ghost}`)
     expect(r.refused[1].reason).toContain('BAD_CHARACTER_ID')
   })
@@ -393,8 +419,8 @@ describe('__proto__ 加固（R2）', () => {
     expect(Object.prototype.hasOwnProperty.call(after, '__proto__')).toBe(true)
     const f = mkProposal(ch.id, [mkChange(ch.id, { op: 'update', entity: 'character', targetId: doc.id, after })])
     writeProposal(p, f) // dump 保留 own __proto__ 键（实验证实）
-    const r = adoptChanges(p, f.id, [0], [])
-    expect(r).toEqual({ applied: [0], refused: [] })
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
+    expect(r).toEqual({ applied: keysOf(f, [0]), refused: [] })
     // name 应用成功
     const stored = getCharacter(p, doc.id)!
     expect(stored.name).toBe('新名')
@@ -415,8 +441,8 @@ describe('__proto__ 加固（R2）', () => {
     )
     const f = mkProposal(ch.id, [mkChange(ch.id, { after })])
     writeProposal(p, f)
-    const r = adoptChanges(p, f.id, [0], [])
-    expect(r.applied).toEqual([0]) // allowlist 拷贝天然不含 __proto__ → 正常建卡
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
+    expect(r.applied).toEqual(keysOf(f, [0])) // allowlist 拷贝天然不含 __proto__ → 正常建卡
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
     const stored = listCharacters(p)[0]
     expect(Object.getPrototypeOf(stored)).toBe(Object.prototype)
@@ -437,7 +463,7 @@ describe('world create/update', () => {
         after: { title: '青云山', category: 'location', content: '云雾缭绕', parentId: null, order: 1, tags: ['地理'], links: [] }
       })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const list = listWorldEntries(p)
     expect(list).toHaveLength(1)
     expect(list[0].title).toBe('青云山')
@@ -452,14 +478,14 @@ describe('world create/update', () => {
     const deny = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'world', targetId: entry.id, after: { content: 'AI 正文' } })
     ])
-    const r1 = adoptChanges(p, deny.id, [0], [])
+    const r1 = adoptChanges(p, deny.id, keysOf(deny, [0]), [])
     expect(r1.refused[0].reason).toBe('REFUSED: 覆盖人写内容 content')
     expect(getWorldEntry(p, entry.id)?.content).toBe('人写正文')
     const ok = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'world', targetId: entry.id, after: { content: 'AI 正文' }, overwritesHuman: true })
     ])
-    const r2 = adoptChanges(p, ok.id, [0], [0])
-    expect(r2.applied).toEqual([0])
+    const r2 = adoptChanges(p, ok.id, keysOf(ok, [0]), keysOf(ok, [0]))
+    expect(r2.applied).toEqual(keysOf(ok, [0]))
     const stored = getWorldEntry(p, entry.id)!
     expect(stored.content).toBe('AI 正文')
     expect(stored.aiTouched).toEqual(['content'])
@@ -476,10 +502,10 @@ describe('plotline / choice', () => {
     const good = plant(p, ch.id, [
       mkChange(ch.id, { entity: 'plotline', after: { title: '主线', summary: '复仇', status: 'active', stages: [] } })
     ])
-    expect(adoptChanges(p, good.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, good.id, keysOf(good, [0]), []).applied).toEqual(keysOf(good, [0]))
     expect(listPlotlines(p).map((x) => x.title)).toEqual(['主线'])
     const bad = plant(p, ch.id, [mkChange(ch.id, { entity: 'plotline', after: { title: '残线' } })])
-    const r = adoptChanges(p, bad.id, [0], [])
+    const r = adoptChanges(p, bad.id, keysOf(bad, [0]), [])
     expect(r.refused[0].reason).toContain('剧情线形状非法')
     expect(r.refused[0].reason).toContain('plotline.summary')
     expect(listPlotlines(p)).toHaveLength(1)
@@ -491,20 +517,20 @@ describe('plotline / choice', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'plotline', targetId: pl.id, after: { summary: '新纲', status: 'done' } })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const stored = listPlotlines(p).find((x) => x.id === pl.id)!
     expect(stored.summary).toBe('新纲')
     expect(stored.status).toBe('active') // status 保留：AI 不得改剧情线生命周期
     const only = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'plotline', targetId: pl.id, after: { status: 'done' } })
     ])
-    const r = adoptChanges(p, only.id, [0], [])
+    const r = adoptChanges(p, only.id, keysOf(only, [0]), [])
     expect(r.refused[0].reason).toBe('REFUSED: 无可应用字段')
     // 评审 I2 同纪律覆盖 mergePlain 路径：未知字段整条拒，合法字段也不落盘
     const unknown = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'plotline', targetId: pl.id, after: { summary: '再改', color: '红' } })
     ])
-    const r2 = adoptChanges(p, unknown.id, [0], [])
+    const r2 = adoptChanges(p, unknown.id, keysOf(unknown, [0]), [])
     expect(r2.refused[0].reason).toBe('REFUSED: 未知字段 color')
     expect(listPlotlines(p).find((x) => x.id === pl.id)!.summary).toBe('新纲')
   })
@@ -514,13 +540,13 @@ describe('plotline / choice', () => {
     const good = plant(p, ch.id, [
       mkChange(ch.id, { entity: 'choice', after: { title: '岔路', chapterId: ch.id, options: [{ label: '左', consequence: '遇伏' }] } })
     ])
-    expect(adoptChanges(p, good.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, good.id, keysOf(good, [0]), []).applied).toEqual(keysOf(good, [0]))
     expect(listChoices(p)).toHaveLength(1)
     const ghost = randomUUID()
     const bad = plant(p, ch.id, [
       mkChange(ch.id, { entity: 'choice', after: { title: '幻影', chapterId: ghost, options: [] } })
     ])
-    const r = adoptChanges(p, bad.id, [0], [])
+    const r = adoptChanges(p, bad.id, keysOf(bad, [0]), [])
     expect(r.refused[0].reason).toContain(`REF_BROKEN: ${ghost}`)
     expect(listChoices(p)).toHaveLength(1)
   })
@@ -531,7 +557,7 @@ describe('plotline / choice', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'choice', targetId: c.id, after: { options: [{ label: '战', consequence: '胜' }] } })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     expect(listChoices(p).find((x) => x.id === c.id)?.options).toEqual([{ label: '战', consequence: '胜' }])
   })
 
@@ -544,11 +570,11 @@ describe('plotline / choice', () => {
       mkChange(ch.id, { op: 'delete', entity: 'choice', targetId: c.id }),
       mkChange(ch.id, { op: 'delete', entity: 'plotline', targetId: randomUUID() })
     ])
-    const r = adoptChanges(p, f.id, [0, 1, 2], [])
-    expect(r.applied).toEqual([0, 1])
+    const r = adoptChanges(p, f.id, keysOf(f, [0, 1, 2]), [])
+    expect(r.applied).toEqual(keysOf(f, [0, 1]))
     expect(listPlotlines(p)).toEqual([])
     expect(listChoices(p)).toEqual([])
-    expect(r.refused[0].index).toBe(2)
+    expect(r.refused[0].key).toBe(keyOf(f, 2))
     expect(r.refused[0].reason).toContain('PLOTLINE_MISSING')
   })
 
@@ -557,7 +583,7 @@ describe('plotline / choice', () => {
     const cid = seedHumanCharacter(p)
     const evil = mkProposal(ch.id, [mkChange(ch.id, { op: 'delete', entity: 'character', targetId: cid })])
     plantBypass(p, evil) // 文件级校验会被拒——刻意绕过，模拟手改文件
-    const r = adoptChanges(p, evil.id, [0], [])
+    const r = adoptChanges(p, evil.id, keysOf(evil, [0]), [])
     expect(r.applied).toEqual([])
     expect(r.refused[0].reason).toContain('is not allowed for entity "character"')
     expect(getCharacter(p, cid)).not.toBeNull() // 角色完好
@@ -578,7 +604,7 @@ describe('foreshadow', () => {
         after: { id: forgedId, title: '断剑', plantedChapterId: ch.id, plannedPayoffNote: '后文回收', resolvedChapterId: null, status: 'open' }
       })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const entries = readLedger(p).entries
     expect(entries).toHaveLength(1)
     expect(entries[0].title).toBe('断剑')
@@ -591,7 +617,7 @@ describe('foreshadow', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { entity: 'foreshadow', after: { title: '残缺', plantedChapterId: ch.id, plannedPayoffNote: '' } })
     ])
-    const r = adoptChanges(p, f.id, [0], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
     expect(r.refused[0].reason).toContain('伏笔形状非法')
     expect(readLedger(p).entries).toEqual([])
   })
@@ -603,7 +629,7 @@ describe('foreshadow', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { status: 'resolved' } })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const stored = readLedger(p).entries.find((x) => x.id === e.id)!
     expect(stored.status).toBe('resolved')
     expect(stored.resolvedChapterId).toBe(ch.id)
@@ -617,12 +643,12 @@ describe('foreshadow', () => {
     const bad = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { status: 'abandoned' } })
     ])
-    const r = adoptChanges(p, bad.id, [0], [])
+    const r = adoptChanges(p, bad.id, keysOf(bad, [0]), [])
     expect(r.refused[0].reason).toContain('FORESHADOW_TRANSITION')
     const noop = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { status: 'resolved' } })
     ])
-    expect(adoptChanges(p, noop.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, noop.id, keysOf(noop, [0]), []).applied).toEqual(keysOf(noop, [0]))
     expect(readLedger(p).entries.find((x) => x.id === e.id)?.status).toBe('resolved')
   })
 
@@ -634,7 +660,7 @@ describe('foreshadow', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { status: 'open' } })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const stored = readLedger(p).entries.find((x) => x.id === e.id)!
     expect(stored.status).toBe('open')
     expect(stored.resolvedChapterId).toBeNull()
@@ -648,7 +674,7 @@ describe('foreshadow', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { status: 'resolved', plannedPayoffNote: 123 } })
     ])
-    const r = adoptChanges(p, f.id, [0], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
     expect(r.applied).toEqual([])
     expect(r.refused[0].reason).toContain('伏笔形状非法')
     expect(r.refused[0].reason).toContain('foreshadowEntry.plannedPayoffNote')
@@ -664,7 +690,7 @@ describe('foreshadow', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { status: 'resolved', plannedPayoffNote: '新计划' } })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const stored = readLedger(p).entries.find((x) => x.id === e.id)!
     expect(stored.status).toBe('resolved')
     expect(stored.resolvedChapterId).toBe(ch.id)
@@ -678,7 +704,7 @@ describe('foreshadow', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { plannedPayoffNote: '新计划', note: '补注', title: '改名' } })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const stored = readLedger(p).entries.find((x) => x.id === e.id)!
     expect(stored.plannedPayoffNote).toBe('新计划')
     expect(stored.note).toBe('补注')
@@ -687,7 +713,7 @@ describe('foreshadow', () => {
     const none = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { title: '只改表外' } })
     ])
-    expect(adoptChanges(p, none.id, [0], []).refused[0].reason).toContain('无可应用字段')
+    expect(adoptChanges(p, none.id, keysOf(none, [0]), []).refused[0].reason).toContain('无可应用字段')
   })
 
   it('update/delete×foreshadow 幻影 targetId → FORESHADOW_MISSING 拒', () => {
@@ -697,7 +723,7 @@ describe('foreshadow', () => {
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: ghost, after: { status: 'resolved' } }),
       mkChange(ch.id, { op: 'delete', entity: 'foreshadow', targetId: ghost })
     ])
-    const r = adoptChanges(p, f.id, [0, 1], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0, 1]), [])
     expect(r.applied).toEqual([])
     expect(r.refused.every((x) => x.reason.includes('FORESHADOW_MISSING'))).toBe(true)
   })
@@ -709,7 +735,7 @@ describe('foreshadow', () => {
     upsertForeshadow(p, a)
     upsertForeshadow(p, b)
     const f = plant(p, ch.id, [mkChange(ch.id, { op: 'delete', entity: 'foreshadow', targetId: a.id })])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     expect(readLedger(p).entries.map((x) => x.title)).toEqual(['乙'])
   })
 })
@@ -724,7 +750,7 @@ describe('summary', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'summary', targetId: ch.id, after: { text: '本章摘要：少年离乡。' } })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const abs = chapterSummaryFile(p, ch.id)
     expect(existsSync(abs)).toBe(true)
     const doc = yaml.load(readFileSync(abs, 'utf8')) as Record<string, unknown>
@@ -737,7 +763,7 @@ describe('summary', () => {
   it('create×summary 无 targetId → 缺省 = 整理章（proposal.chapterId）', () => {
     const { p, ch } = setup()
     const f = plant(p, ch.id, [mkChange(ch.id, { entity: 'summary', after: { text: '新摘要' } })])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     expect(existsSync(chapterSummaryFile(p, ch.id))).toBe(true)
   })
 
@@ -749,7 +775,7 @@ describe('summary', () => {
       mkChange(ch.id, { op: 'update', entity: 'summary', targetId: ch.id, after: { text: '   ' } }),
       mkChange(ch.id, { op: 'update', entity: 'summary', targetId: ch.id, after: {} })
     ])
-    const r = adoptChanges(p, f.id, [0, 1, 2], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0, 1, 2]), [])
     expect(r.applied).toEqual([])
     expect(r.refused[0].reason).toContain(`CHAPTER_MISSING: ${ghost}`)
     expect(r.refused[1].reason).toContain('after.text 必须是非空字符串')
@@ -788,7 +814,7 @@ describe('index', () => {
         }
       })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const idx = JSON.parse(readFileSync(aiIndexFile(p), 'utf8')) as Record<string, string[]>
     expect(idx[car.id]).toEqual([ch1.id, ch2.id, ch3.id]) // 章序 1,2,3
     expect(idx[we.id]).toEqual([ch1.id])
@@ -805,7 +831,7 @@ describe('index', () => {
       mkChange(ch.id, { op: 'update', entity: 'index', targetId: ch.id, after: { adds: [{ entityId: car.id, chapterId: ghost }] } }),
       mkChange(ch.id, { op: 'update', entity: 'index', targetId: ch.id, after: { adds: [] } })
     ])
-    const r = adoptChanges(p, f.id, [0, 1, 2, 3], [])
+    const r = adoptChanges(p, f.id, keysOf(f, [0, 1, 2, 3]), [])
     expect(r.applied).toEqual([])
     expect(r.refused[0].reason).toContain(`REF_BROKEN: ${ghost}`)
     expect(r.refused[1].reason).toContain('形状非法')
@@ -821,7 +847,7 @@ describe('index', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'index', targetId: ch.id, after: { adds: [{ entityId: e.id, chapterId: ch.id }] } })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const idx = JSON.parse(readFileSync(aiIndexFile(p), 'utf8')) as Record<string, string[]>
     expect(idx[e.id]).toEqual([ch.id])
   })
@@ -834,7 +860,7 @@ describe('index', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'index', targetId: ch.id, after: { adds: [{ entityId: car.id, chapterId: ch.id }] } })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     expect(console.warn).toHaveBeenCalled()
     const idx = JSON.parse(readFileSync(aiIndexFile(p), 'utf8')) as Record<string, string[]>
     expect(idx).toEqual({ [car.id]: [ch.id] })
@@ -850,7 +876,7 @@ describe('index', () => {
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'index', targetId: ch.id, after: { adds: [{ entityId: car.id, chapterId: ch.id }] } })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const text = readFileSync(aiIndexFile(p), 'utf8')
     expect(text).not.toContain('__proto__')
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
@@ -860,7 +886,7 @@ describe('index', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 批次语义
+// 批次语义（M4c-1 起按 changeKey 键集上报）
 // ---------------------------------------------------------------------------
 
 describe('批次语义', () => {
@@ -875,13 +901,13 @@ describe('批次语义', () => {
         after: { title: '新地点', category: 'location', content: '', parentId: null, order: 0, tags: [], links: [] }
       })
     ])
-    const r = adoptChanges(p, f.id, [0, 1, 2], [])
-    expect(r.applied).toEqual([0, 2])
-    expect(r.refused).toEqual([{ index: 1, reason: 'REFUSED: 覆盖人写内容 personality' }])
+    const r = adoptChanges(p, f.id, keysOf(f, [0, 1, 2]), [])
+    expect(r.applied).toEqual(keysOf(f, [0, 2]))
+    expect(r.refused).toEqual([{ key: keyOf(f, 1), reason: 'REFUSED: 覆盖人写内容 personality' }])
     expect(loadProposalRaw(p, f.id).proposal.status).toBe('partial')
     expect(loadProposalRaw(p, f.id).proposal.appliedIndexes).toEqual([0, 2])
     // 重采纳：1 照拒（人写保护是状态性的），0 拒「已采纳」（防双写）
-    const r2 = adoptChanges(p, f.id, [0, 1], [])
+    const r2 = adoptChanges(p, f.id, keysOf(f, [0, 1]), [])
     expect(r2.applied).toEqual([])
     expect(r2.refused.map((x) => x.reason)).toEqual(['REFUSED: 条目已采纳', 'REFUSED: 覆盖人写内容 personality'])
     expect(listCharacters(p)).toHaveLength(2) // 新建甲没有二次落盘
@@ -894,38 +920,41 @@ describe('批次语义', () => {
       mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) }),
       mkChange(ch.id, { op: 'update', entity: 'character', targetId: human, after: { personality: 'AI 覆盖' }, overwritesHuman: true })
     ])
-    expect(adoptChanges(p, f.id, [0], []).applied).toEqual([0])
+    expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     expect(loadProposalRaw(p, f.id).proposal.status).toBe('partial')
-    expect(adoptChanges(p, f.id, [1], [1]).applied).toEqual([1])
+    expect(adoptChanges(p, f.id, keysOf(f, [1]), keysOf(f, [1])).applied).toEqual(keysOf(f, [1]))
     expect(loadProposalRaw(p, f.id).proposal.status).toBe('settled')
   })
 
-  it('越界/非法索引/重复索引：越界与非法按条拒，重复只处理一次', () => {
+  it('非法/未知/重复键：非法与未知按条拒，重复键只处理一次', () => {
     const { p, ch } = setup()
     const f = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter() })])
-    const r = adoptChanges(p, f.id, [5, -1, 1.5, 0, 0], [])
-    expect(r.applied).toEqual([0])
-    expect(r.refused.map((x) => [x.index, x.reason])).toEqual([
-      [5, 'REFUSED: 条目索引越界'],
-      [-1, 'REFUSED: 条目索引越界'],
-      [1.5, 'REFUSED: 条目索引非法: 1.5']
+    const k0 = keyOf(f, 0)
+    const r = adoptChanges(p, f.id, [5, 'no-such-key', k0, k0, 1.5] as unknown as string[], [])
+    expect(r.applied).toEqual([k0])
+    expect(r.refused.map((x) => [x.key, x.reason])).toEqual([
+      ['5', 'REFUSED: 条目键非法: 5'],
+      ['no-such-key', 'REFUSED: 条目键未知: no-such-key'],
+      ['1.5', 'REFUSED: 条目键非法: 1.5']
     ])
     expect(listCharacters(p)).toHaveLength(1)
   })
 
-  it('提案缺失 → PROPOSAL_MISSING 抛穿（通道级错误，不是逐条拒）', () => {
-    const { p } = setup()
-    expect(() => adoptChanges(p, 'prop-nope-1', [0], [])).toThrow(/PROPOSAL_MISSING/)
+  it('changeKeys 非数组 → PROPOSAL_BAD_PARAMS 抛穿；提案缺失 → PROPOSAL_MISSING 抛穿（通道级错误，不是逐条拒）', () => {
+    const { p, ch } = setup()
+    const f = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter() })])
+    expect(() => adoptChanges(p, f.id, 'oops' as unknown as string[], [])).toThrow(/PROPOSAL_BAD_PARAMS/)
+    expect(() => adoptChanges(p, 'prop-nope-1', ['x'], [])).toThrow(/PROPOSAL_MISSING/)
   })
 
-  it('全拒批次零写盘：status/appliedIndexes 不变（不做无意义重写）', () => {
+  it('全拒批次零写盘：status/双账不变（不做无意义重写）', () => {
     const { p, ch } = setup()
     const human = seedHumanCharacter(p)
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'character', targetId: human, after: { personality: 'AI' } })
     ])
     const before = readFileSync(proposalPath(p, f.id), 'utf8')
-    adoptChanges(p, f.id, [0], [])
+    adoptChanges(p, f.id, keysOf(f, [0]), [])
     expect(readFileSync(proposalPath(p, f.id), 'utf8')).toBe(before)
   })
 })
@@ -935,41 +964,46 @@ describe('批次语义', () => {
 // ---------------------------------------------------------------------------
 
 describe('rejectChanges', () => {
-  it('删中间条目：其余保序、appliedIndexes 重排、status 重算', () => {
+  it('删中间条目：其余保序、双账同步收缩（回退键按新位置重算）、status 重算', () => {
     const { p, ch } = setup()
     const f = plant(p, ch.id, [
       mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) }),
       mkChange(ch.id, { after: fullCharacterAfter({ name: '乙' }) }),
       mkChange(ch.id, { after: fullCharacterAfter({ name: '丙' }) })
     ])
-    expect(adoptChanges(p, f.id, [1], []).applied).toEqual([1]) // 采纳「乙」
-    rejectChanges(p, f.id, [0]) // 驳回「甲」→ 乙 前移到索引 0
+    expect(adoptChanges(p, f.id, keysOf(f, [1]), []).applied).toEqual(keysOf(f, [1])) // 采纳「乙」
+    rejectChanges(p, f.id, keysOf(f, [0])) // 驳回「甲」→ 乙 前移到索引 0
     const raw = loadProposalRaw(p, f.id)
     expect(raw.proposal.changes).toHaveLength(2)
     expect((raw.proposal.changes[0] as ProposalChange).after).toEqual(fullCharacterAfter({ name: '乙' }))
     expect(raw.proposal.appliedIndexes).toEqual([0]) // 旧 1 → 新 0
+    // M4c-1：adopt 已双写过 appliedCids → reject 必须同步重算（legacy 回退键按新位置，防陈旧键错位）
+    expect(raw.proposal.appliedCids).toEqual([changeKey(raw.proposal.changes[0], 0)])
     expect(raw.proposal.status).toBe('partial')
-    // 重排后索引 0 已采纳 → 再采纳被拒（防双写），索引 1（丙）可正常采纳
-    const r = adoptChanges(p, f.id, [0, 1], [])
-    expect(r.applied).toEqual([1])
+    // 重排后位置 0 已采纳 → 再采纳被拒（防双写），位置 1（丙）可正常采纳
+    const r = adoptChanges(p, f.id, [changeKey(raw.proposal.changes[0], 0), changeKey(raw.proposal.changes[1], 1)], [])
+    expect(r.applied).toEqual([changeKey(raw.proposal.changes[1], 1)])
     expect(r.refused[0].reason).toBe('REFUSED: 条目已采纳')
     expect(loadProposalRaw(p, f.id).proposal.status).toBe('settled')
     expect(listCharacters(p).map((c) => c.name).sort()).toEqual(['乙', '丙'].sort())
   })
 
-  it('驳回已采纳条目：applied 出账，status 回落', () => {
+  it('驳回已采纳条目：applied 出账（双账皆空不携键），status 回落', () => {
     const { p, ch } = setup()
     const f = plant(p, ch.id, [
       mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) }),
       mkChange(ch.id, { after: fullCharacterAfter({ name: '乙' }) })
     ])
-    adoptChanges(p, f.id, [0], [])
-    rejectChanges(p, f.id, [0])
+    adoptChanges(p, f.id, keysOf(f, [0]), [])
+    rejectChanges(p, f.id, keysOf(f, [0]))
     const raw = loadProposalRaw(p, f.id)
     expect(raw.proposal.appliedIndexes).toEqual([])
+    // 空账不携键 → 文件回落纯 legacy 形态（两账皆空时键域/位置语义全等，权威链判别无歧义）
+    expect(raw.proposal.appliedCids).toBeUndefined()
     expect(raw.proposal.status).toBe('pending')
     const onDisk = yaml.load(readFileSync(proposalPath(p, f.id), 'utf8')) as Record<string, unknown>
     expect('appliedIndexes' in onDisk).toBe(false) // 空账不携键（与存量文件同形）
+    expect('appliedCids' in onDisk).toBe(false)
   })
 
   it('驳回全部剩余条目 → 整份提案删除（文件消失）', () => {
@@ -978,20 +1012,21 @@ describe('rejectChanges', () => {
       mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) }),
       mkChange(ch.id, { after: fullCharacterAfter({ name: '乙' }) })
     ])
-    rejectChanges(p, f.id, [0, 1])
+    rejectChanges(p, f.id, keysOf(f, [0, 1]))
     expect(existsSync(proposalPath(p, f.id))).toBe(false)
     expect(getProposal(p, f.id)).toBeNull()
     expect(listCharacters(p)).toEqual([])
   })
 
-  it('幂等：空数组/越界索引 → 零写盘不抛；缺失提案 → PROPOSAL_MISSING', () => {
+  it('幂等：空数组/未知键 → 零写盘不抛；缺失提案 → PROPOSAL_MISSING', () => {
     const { p, ch } = setup()
     const f = plant(p, ch.id, [mkChange(ch.id, { after: fullCharacterAfter() })])
     const before = readFileSync(proposalPath(p, f.id), 'utf8')
     rejectChanges(p, f.id, [])
-    rejectChanges(p, f.id, [9])
+    rejectChanges(p, f.id, ['no-such-key'])
     expect(readFileSync(proposalPath(p, f.id), 'utf8')).toBe(before)
-    expect(() => rejectChanges(p, 'prop-nope-1', [0])).toThrow(/PROPOSAL_MISSING/)
+    expect(() => rejectChanges(p, 'prop-nope-1', ['x'])).toThrow(/PROPOSAL_MISSING/)
+    expect(() => rejectChanges(p, f.id, 'oops' as unknown as string[])).toThrow(/PROPOSAL_BAD_PARAMS/)
   })
 
   it('重写后的文件仍过文件级校验（getProposal 可读，面板不裂）', () => {
@@ -1000,11 +1035,212 @@ describe('rejectChanges', () => {
       mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) }),
       mkChange(ch.id, { after: fullCharacterAfter({ name: '乙' }) })
     ])
-    adoptChanges(p, f.id, [0], [])
-    rejectChanges(p, f.id, [1])
+    adoptChanges(p, f.id, keysOf(f, [0]), [])
+    rejectChanges(p, f.id, keysOf(f, [1]))
     const doc = getProposal(p, f.id)
     expect(doc?.status).toBe('settled')
     expect(doc?.changes).toHaveLength(1)
     expect(doc?.appliedIndexes).toEqual([0])
+    expect(doc?.appliedCids).toEqual([changeKey(doc?.changes[0], 0)])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M4c-1：cid 稳定键（判别性测试——旧位置世界的跨窗口错位在这里全部收敛）
+// ---------------------------------------------------------------------------
+
+describe('cid 稳定键（M4c-1：跨窗口重排判别 / 重放幂等 / 未知键拒）', () => {
+  /** 带 cid 的三条 create（甲/乙/丙）：键域判别场景的标准盘面。 */
+  function plantWithCids(p: string, chId: string): { f: ProposalFile; cidA: string; cidB: string; cidC: string } {
+    const cidA = randomUUID()
+    const cidB = randomUUID()
+    const cidC = randomUUID()
+    const f = plant(p, chId, [
+      mkChange(chId, { cid: cidA, after: fullCharacterAfter({ name: '甲' }) }),
+      mkChange(chId, { cid: cidB, after: fullCharacterAfter({ name: '乙' }) }),
+      mkChange(chId, { cid: cidC, after: fullCharacterAfter({ name: '丙' }) })
+    ])
+    return { f, cidA, cidB, cidC }
+  }
+
+  it('判别测试（plan 1(a) 场景）：采纳乙 → 外部 reject 甲重排 → 按 cid 采丙：不误拒、不错放、账目稳', () => {
+    const { p, ch } = setup()
+    const { f, cidA, cidB, cidC } = plantWithCids(p, ch.id)
+    // 窗口1：采纳第 2 条（乙）
+    expect(adoptChanges(p, f.id, [cidB], [])).toEqual({ applied: [cidB], refused: [] })
+    // 窗口2（外部）：驳回第 1 条（甲）→ changes 收缩为 [乙,丙]（旧位置世界所有 index 左移）
+    rejectChanges(p, f.id, [cidA])
+    const raw = loadProposalRaw(p, f.id)
+    expect(raw.proposal.changes).toHaveLength(2)
+    expect(raw.proposal.appliedIndexes).toEqual([0]) // 位置投影同步收缩（legacy 读者兼容面）
+    expect(raw.proposal.appliedCids).toEqual([cidB]) // 键域纹丝不动——appliedCids 即权威
+    // 窗口1 的陈旧勾选「第 3 条丙」（旧 index 2 已越界 = 旧世界的误拒点）按 cid 到达
+    const r = adoptChanges(p, f.id, [cidC], [])
+    expect(r).toEqual({ applied: [cidC], refused: [] })
+    expect(loadProposalRaw(p, f.id).proposal.status).toBe('settled')
+    // 不错放：落盘的正是被勾选的 乙+丙；甲 没有复活
+    expect(listCharacters(p).map((c) => c.name).sort()).toEqual(['乙', '丙'].sort())
+  })
+
+  it('跨窗口错放判别：窗口1勾选乙、窗口2先驳回甲 → 按 cid 落盘的是乙（旧位置世界 index 1 会错写成丙）', () => {
+    const { p, ch } = setup()
+    const { f, cidA, cidB } = plantWithCids(p, ch.id)
+    rejectChanges(p, f.id, [cidA]) // 窗口2 抢先：changes → [乙,丙]，旧 index 1 现在指向丙
+    const r = adoptChanges(p, f.id, [cidB], []) // 窗口1 的陈旧勾选此后到达
+    expect(r).toEqual({ applied: [cidB], refused: [] })
+    expect(listCharacters(p).map((c) => c.name)).toEqual(['乙']) // 用户勾谁落谁——绝不错放
+  })
+
+  it('markSettled 成功后的重放：reject 收缩后按同 cid 重放 → REFUSED 条目已采纳（create 不双胞胎）', () => {
+    const { p, ch } = setup()
+    const { f, cidA, cidB } = plantWithCids(p, ch.id)
+    expect(adoptChanges(p, f.id, [cidB], []).applied).toEqual([cidB])
+    rejectChanges(p, f.id, [cidA]) // 重排 + 收缩（旧位置世界 appliedIndexes 靠 remap 幸存，键域天然稳定）
+    const replay = adoptChanges(p, f.id, [cidB], [])
+    expect(replay.applied).toEqual([])
+    expect(replay.refused).toEqual([{ key: cidB, reason: 'REFUSED: 条目已采纳' }])
+    expect(listCharacters(p)).toHaveLength(1) // 乙只有一份——重试双胞胎被键域账目挡住
+  })
+
+  it('未知键拒（面板越界夹取退役后的引擎侧兜底）：键不在当前 changes → REFUSED + 零写盘', () => {
+    const { p, ch } = setup()
+    const { f, cidA, cidB } = plantWithCids(p, ch.id)
+    rejectChanges(p, f.id, [cidA])
+    const before = readFileSync(proposalPath(p, f.id), 'utf8')
+    const r = adoptChanges(p, f.id, [cidA, 'ghost-key'], []) // 跨窗口陈旧勾选：cidA 已被他端驳回
+    expect(r.applied).toEqual([])
+    expect(r.refused.map((x) => [x.key, x.reason])).toEqual([
+      [cidA, `REFUSED: 条目键未知: ${cidA}`],
+      ['ghost-key', 'REFUSED: 条目键未知: ghost-key']
+    ])
+    expect(readFileSync(proposalPath(p, f.id), 'utf8')).toBe(before) // 全拒 → 提案文件字节不动
+    expect(listCharacters(p)).toEqual([])
+    // 盘面一致性：乙 仍未采纳，后续按同键可正常采（未知键拒不误伤活条目）
+    expect(adoptChanges(p, f.id, [cidB], []).applied).toEqual([cidB])
+  })
+
+  it('confirmedOverwrite 同走键域：跨窗口重排后确认键仍命中用户确认过的条目（旧位置世界会误拒「未确认覆盖」）', () => {
+    const { p, ch } = setup()
+    const human = seedHumanCharacter(p)
+    const cidA = randomUUID()
+    const cidB = randomUUID()
+    const f = plant(p, ch.id, [
+      mkChange(ch.id, { cid: cidA, after: fullCharacterAfter({ name: '甲' }) }),
+      mkChange(ch.id, {
+        cid: cidB,
+        op: 'update',
+        entity: 'character',
+        targetId: human,
+        after: { personality: 'AI 覆盖' },
+        overwritesHuman: true
+      })
+    ])
+    // 窗口1：勾选 B 并确认覆盖 → 窗口2 抢先驳回 A（B 前移到 index 0，旧位置确认集 [1] 作废）
+    rejectChanges(p, f.id, [cidA])
+    const r = adoptChanges(p, f.id, [cidB], [cidB])
+    expect(r).toEqual({ applied: [cidB], refused: [] })
+    expect(getCharacter(p, human)?.personality).toBe('AI 覆盖')
+  })
+
+  it('混合权威翻译：带 cid 但只有 appliedIndexes（第三方按旧口径写账）→ 位置记账正确翻译进键域，重放照拒', () => {
+    const { p, ch } = setup()
+    const cidA = randomUUID()
+    const cidB = randomUUID()
+    const f = mkProposal(
+      ch.id,
+      [
+        mkChange(ch.id, { cid: cidA, after: fullCharacterAfter({ name: '甲' }) }),
+        mkChange(ch.id, { cid: cidB, after: fullCharacterAfter({ name: '乙' }) })
+      ],
+      { appliedIndexes: [0] } // 第三方旧口径：只有位置账
+    )
+    writeProposal(p, f)
+    const r = adoptChanges(p, f.id, [cidA, cidB], [])
+    expect(r.applied).toEqual([cidB])
+    expect(r.refused).toEqual([{ key: cidA, reason: 'REFUSED: 条目已采纳' }])
+    const raw = loadProposalRaw(p, f.id)
+    expect(raw.proposal.appliedCids).toEqual([cidA, cidB]) // 首次双写后 → 键域永久权威
+    expect(raw.proposal.appliedIndexes).toEqual([0, 1])
+    expect(raw.proposal.status).toBe('settled')
+    expect(listCharacters(p).map((c) => c.name)).toEqual(['乙']) // 甲是记账条目：不复活、不双胞胎
+  })
+
+  it('legacy 文件全链路（无 cid、手写 appliedIndexes）：采纳/驳回/重放全按位置回退键照常', () => {
+    const { p, ch } = setup()
+    const f = mkProposal(ch.id, [
+      mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) }),
+      mkChange(ch.id, { after: fullCharacterAfter({ name: '乙' }) }),
+      mkChange(ch.id, { after: fullCharacterAfter({ name: '丙' }) })
+    ], { appliedIndexes: [1] }) // 手写/存量形态：乙已记账（实体未真实落盘）
+    writeProposal(p, f)
+    const [k0, k1] = keysOf(f, [0, 1])
+    const r = adoptChanges(p, f.id, [k1, k0], [])
+    expect(r.applied).toEqual([k0])
+    expect(r.refused).toEqual([{ key: k1, reason: 'REFUSED: 条目已采纳' }])
+    // 首次采纳 → 双写：键域从此为该文件权威（纯 legacy 时代结束）
+    let raw = loadProposalRaw(p, f.id)
+    expect(raw.proposal.appliedCids).toEqual([k1, k0]) // 既有（位置投影翻译）在前、批次在后
+    expect(raw.proposal.appliedIndexes).toEqual([0, 1])
+    expect(raw.proposal.status).toBe('partial')
+    // reject 摘甲（已采纳）→ 幸存者回退键按新位置重算，账目同步收缩
+    rejectChanges(p, f.id, [k0])
+    raw = loadProposalRaw(p, f.id)
+    expect(raw.proposal.changes).toHaveLength(2) // [乙, 丙]
+    expect(raw.proposal.appliedIndexes).toEqual([0]) // 乙 前移
+    expect(raw.proposal.appliedCids).toEqual([changeKey(raw.proposal.changes[0], 0)])
+    // 丙按新位置回退键正常采纳 → settled（甲实体在采纳时已落盘——reject 不撤销实体，既有语义）
+    const kBing = changeKey(raw.proposal.changes[1], 1)
+    const r2 = adoptChanges(p, f.id, [kBing], [])
+    expect(r2.applied).toEqual([kBing])
+    expect(loadProposalRaw(p, f.id).proposal.status).toBe('settled')
+    expect(listCharacters(p).map((c) => c.name).sort()).toEqual(['甲', '丙'].sort())
+  })
+
+  it('纯 legacy 文件（从未双写）reject 保持位置语义：不写 appliedCids，权威不静默切换', () => {
+    const { p, ch } = setup()
+    const f = mkProposal(ch.id, [
+      mkChange(ch.id, { after: fullCharacterAfter({ name: '甲' }) }),
+      mkChange(ch.id, { after: fullCharacterAfter({ name: '乙' }) }),
+      mkChange(ch.id, { after: fullCharacterAfter({ name: '丙' }) })
+    ], { appliedIndexes: [2] }) // 丙已记账
+    writeProposal(p, f)
+    rejectChanges(p, f.id, keysOf(f, [0])) // 驳回甲 → [乙,丙]
+    const onDisk = yaml.load(readFileSync(proposalPath(p, f.id), 'utf8')) as Record<string, unknown>
+    expect('appliedCids' in onDisk).toBe(false) // 从未双写 → 位置语义保持（BOOK_FORMAT 兼容承诺）
+    expect(onDisk.appliedIndexes).toEqual([1]) // 丙 旧2 → 新1
+    const raw = loadProposalRaw(p, f.id)
+    expect(raw.proposal.appliedCids).toBeUndefined()
+    expect(raw.proposal.status).toBe('partial')
+    // 首次采纳 → 双写落地，键域从此接管
+    const kYi = changeKey(raw.proposal.changes[0], 0)
+    expect(adoptChanges(p, f.id, [kYi], []).applied).toEqual([kYi])
+    const raw2 = loadProposalRaw(p, f.id)
+    expect(raw2.proposal.appliedCids).toEqual([
+      changeKey(raw2.proposal.changes[1], 1), // 既有丙账（位置翻译）在前
+      kYi // 批次乙在后
+    ])
+    expect(raw2.proposal.appliedIndexes).toEqual([0, 1])
+    expect(raw2.proposal.status).toBe('settled')
+  })
+
+  it('markSettled 失败窗口的诚实边界：记账丢失 → 重试双胞胎（cid 不关闭该窗口，面板 resync 兜底——见 task-1-report 关注项）', () => {
+    const { p, ch } = setup()
+    const { f, cidB } = plantWithCids(p, ch.id)
+    adoptChanges(p, f.id, [cidB], [])
+    expect(listCharacters(p)).toHaveLength(1)
+    // 模拟 markSettled 写盘失败（T3 顾虑 5 失败窗口）：实体已落盘而盘上账目回滚成未记账形态
+    const { proposal: raw } = loadProposalRaw(p, f.id)
+    writeProposal(p, {
+      id: raw.id,
+      chapterId: raw.chapterId,
+      createdAt: raw.createdAt,
+      aiModel: raw.aiModel,
+      status: 'pending',
+      changes: raw.changes as ProposalChange[]
+    })
+    // 重试同批（同 cid）→ 账目已丢 → 引擎放行 → 双胞胎（新旧世界一致的残留窗口，诚实钉死：
+    // 稳定键解决的是「账在而位置漂移」，解决不了「账根本没写上」——后者靠面板 resync 文案兜底）
+    adoptChanges(p, f.id, [cidB], [])
+    expect(listCharacters(p)).toHaveLength(2)
   })
 })

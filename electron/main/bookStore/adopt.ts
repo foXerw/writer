@@ -34,9 +34,11 @@
 //   （伏笔无独立删除函数——readLedger+writeLedger 即台账的正典读写咽喉，writeLedger 自带校验闸门）。
 //
 // 批次纪律：逐条 try/catch——一条坏不拖累整批；拒绝原因一律 `REFUSED: ` 前缀 + 中文/仓库错误码
-// （PROPOSAL_* 通道级错误除外：提案缺失/坏 id 直接抛穿）。批内有采纳 → markSettled 记账
-// （appliedIndexes 并集 + status 重算）；全拒 → 提案文件零字节改动。重复索引只处理一次；
-// 已采纳索引再报 → `REFUSED: 条目已采纳`（防双写：create 重复会造出双胞胎实体）。
+// （PROPOSAL_* 通道级错误除外：提案缺失/坏 id 直接抛穿）。M4c-1 起通道以 changeKey 键集说话
+// （cid ?? 位置回退键，单源 src/common/proposal.ts——跨窗口 reject 重排后陈旧勾选不再错位：
+// 在场键按当前 changes 解析、不在场键 REFUSED 条目键未知）。批内有采纳 → markSettled 记账
+// （appliedCids∪appliedIndexes 双写 + status 重算）；全拒 → 提案文件零字节改动。重复键只处理
+// 一次；已采纳键再报 → `REFUSED: 条目已采纳`（防双写：create 重复会造出双胞胎实体）。
 // 双保险：每条在采纳现场重跑 validateChange（ALLOWED_OPS 复查）——手改文件绕过 writeProposal
 // 前置校验时，delete×character 之流仍在这里被逐条拒。
 import { existsSync, readFileSync } from 'node:fs'
@@ -63,14 +65,13 @@ import type {
   ProposalChange,
   ProposalEntity
 } from '../../../src/common/proposal'
-import { validateChange } from '../../../src/common/proposal'
+import { appliedKeySet, changeKey, validateChange } from '../../../src/common/proposal'
 import type { RawProposal } from './proposals'
 import {
   computeProposalStatus,
   deleteProposal,
   loadProposalRaw,
   markSettled,
-  sanitizeAppliedIndexes,
   saveProposalRaw
 } from './proposals'
 import { createCharacter, getCharacter, updateCharacter } from './characters'
@@ -157,11 +158,24 @@ function touchedFields(doc: Record<string, unknown>): string[] {
   return Array.isArray(t) ? t.filter((x): x is string => typeof x === 'string') : []
 }
 
-/** R1 通道门：overwritesHuman:true 的条目必须出现在 confirmedOverwrite（UI 已确认）。 */
-function assertOverwriteConfirmed(change: ProposalChange, index: number, confirmed: Set<number>): void {
-  if (change.overwritesHuman === true && !confirmed.has(index)) {
+/** R1 通道门：overwritesHuman:true 的条目必须出现在 confirmedOverwrite（UI 已确认；M4c-1 键域）。 */
+function assertOverwriteConfirmed(change: ProposalChange, key: string, confirmed: Set<string>): void {
+  if (change.overwritesHuman === true && !confirmed.has(key)) {
     throw new Error('未确认覆盖')
   }
+}
+
+/**
+ * 键 → 当前位置（M4c-1）：引擎按自己刚装载的盘上现状解析键——跨窗口重排后依然命中用户
+ * 勾选的那一条。退化重复键（dup cid 文件——严格读者整份拒）first-win 确定性收敛。
+ */
+function keyIndexOfChanges(changes: unknown[]): Map<string, number> {
+  const m = new Map<string, number>()
+  changes.forEach((c, i) => {
+    const k = changeKey(c, i)
+    if (!m.has(k)) m.set(k, i)
+  })
+  return m
 }
 
 // ---------------------------------------------------------------------------
@@ -326,8 +340,8 @@ function adoptCreateForeshadow(p: string, change: ProposalChange): void {
 // update
 // ---------------------------------------------------------------------------
 
-function adoptUpdateCharacter(p: string, index: number, change: ProposalChange, confirmed: Set<number>): void {
-  assertOverwriteConfirmed(change, index, confirmed) // 先查确认（宁拒不猜——旗标过期/未勾一律拦）
+function adoptUpdateCharacter(p: string, key: string, change: ProposalChange, confirmed: Set<string>): void {
+  assertOverwriteConfirmed(change, key, confirmed) // 先查确认（宁拒不猜——旗标过期/未勾一律拦）
   const after = requireAfterRecord(change)
   const stored = getCharacter(p, change.targetId as string) // 非 UUID → BAD_CHARACTER_ID 抛穿（逐条拒）
   if (!stored) throw new Error(`CHARACTER_MISSING: ${change.targetId}`)
@@ -335,8 +349,8 @@ function adoptUpdateCharacter(p: string, index: number, change: ProposalChange, 
   updateCharacter(p, merged as unknown as CharacterV2) // 仓库侧整卡校验 + 引用检查 + updatedAt 刷新（R1）
 }
 
-function adoptUpdateWorld(p: string, index: number, change: ProposalChange, confirmed: Set<number>): void {
-  assertOverwriteConfirmed(change, index, confirmed)
+function adoptUpdateWorld(p: string, key: string, change: ProposalChange, confirmed: Set<string>): void {
+  assertOverwriteConfirmed(change, key, confirmed)
   const after = requireAfterRecord(change)
   const stored = getWorldEntry(p, change.targetId as string)
   if (!stored) throw new Error(`WORLD_MISSING: ${change.targetId}`)
@@ -536,9 +550,9 @@ function adoptDelete(p: string, change: ProposalChange): void {
 function applyChange(
   p: string,
   proposal: RawProposal,
-  index: number,
+  key: string,
   change: ProposalChange,
-  confirmed: Set<number>
+  confirmed: Set<string>
 ): void {
   const entity = change.entity
   if (change.op === 'create') {
@@ -554,8 +568,8 @@ function applyChange(
   }
   if (change.op === 'update') {
     switch (entity) {
-      case 'character': return adoptUpdateCharacter(p, index, change, confirmed)
-      case 'world': return adoptUpdateWorld(p, index, change, confirmed)
+      case 'character': return adoptUpdateCharacter(p, key, change, confirmed)
+      case 'world': return adoptUpdateWorld(p, key, change, confirmed)
       case 'plotline': return adoptUpdatePlotline(p, change)
       case 'choice': return adoptUpdateChoice(p, change)
       case 'foreshadow': return adoptUpdateForeshadow(p, proposal, change)
@@ -567,58 +581,66 @@ function applyChange(
 }
 
 /**
- * 采纳批次（proposal:adopt 通道的引擎本体）：
- * 逐条「重读现状 → 双保险 validateChange → origin 守卫（R1）→ allowlist 应用（R2/R3）→ repository 落盘」，
- * 单条失败按条拒（`REFUSED: ` 前缀 reason），批内有成功 → markSettled 记账（失败抛穿——
- * 静默丢 applied 追踪会导致重采纳双写，必须响亮）。提案缺失/坏 id → PROPOSAL_MISSING/BAD_PROPOSAL_ID
- * 抛穿（通道级错误，非逐条拒）。
+ * 采纳批次（proposal:adopt 通道的引擎本体；M4c-1 键域）：
+ * 逐键「解析当前位置（keyIndexOfChanges——引擎按自己刚装载的盘上现状解析，跨窗口重排后依然
+ * 命中用户勾选的那一条）→ 双保险 validateChange → origin 守卫（R1）→ allowlist 应用（R2/R3）
+ * → repository 落盘」，单条失败按条拒（`REFUSED: ` 前缀 reason，key 域对账），批内有成功 →
+ * markSettled 键域双写记账（失败抛穿——静默丢 applied 追踪会导致重采纳双写，必须响亮）。
+ * 已采纳守卫走 appliedKeySet 权威链（appliedCids 存在 → 键域；纯 legacy → 位置投影翻译）。
+ * 未知键（不在当前 changes——跨窗口陈旧勾选/第三方垃圾）→ REFUSED 条目键未知，零副作用。
+ * 提案缺失/坏 id → PROPOSAL_MISSING/BAD_PROPOSAL_ID 抛穿（通道级错误，非逐条拒）。
  */
 export function adoptChanges(
   p: string,
   proposalId: string,
-  changeIndexes: number[],
-  confirmedOverwrite: number[]
+  changeKeys: string[],
+  confirmedOverwrite: string[]
 ): ProposalAdoptResult {
-  if (!Array.isArray(changeIndexes)) {
-    throw new Error('PROPOSAL_BAD_PARAMS: changeIndexes 必须是数组')
+  if (!Array.isArray(changeKeys)) {
+    throw new Error('PROPOSAL_BAD_PARAMS: changeKeys 必须是数组')
   }
   const confirmed = new Set(
-    Array.isArray(confirmedOverwrite) ? confirmedOverwrite.filter((x) => Number.isInteger(x)) : []
+    Array.isArray(confirmedOverwrite)
+      ? confirmedOverwrite.filter((x): x is string => typeof x === 'string')
+      : []
   )
   const { proposal } = loadProposalRaw(p, proposalId) // 宽容装载：坏条目留给逐条双保险
-  const appliedSet = new Set(proposal.appliedIndexes)
-  const applied: number[] = []
+  const appliedKeys = appliedKeySet(proposal) // 权威链单源（appliedCids ∥ 位置投影翻译）
+  const keyIndex = keyIndexOfChanges(proposal.changes)
+  const applied: string[] = []
   const refused: ProposalAdoptRefusal[] = []
-  const seen = new Set<number>()
-  for (const index of changeIndexes) {
-    if (!Number.isInteger(index)) {
-      refused.push({ index, reason: `REFUSED: 条目索引非法: ${String(index)}` })
+  const seen = new Set<string>()
+  for (const key of changeKeys) {
+    if (typeof key !== 'string' || key.trim() === '') {
+      refused.push({ key: String(key), reason: `REFUSED: 条目键非法: ${String(key)}` })
       continue
     }
-    if (index < 0 || index >= proposal.changes.length) {
-      refused.push({ index, reason: 'REFUSED: 条目索引越界' })
+    const index = keyIndex.get(key)
+    if (index === undefined) {
+      // 未知键拒（M4c-1）：条目已不在场（他端 reject）或从未在场（垃圾键）——显式拒，绝不错放
+      refused.push({ key, reason: `REFUSED: 条目键未知: ${key}` })
       continue
     }
-    if (seen.has(index)) continue // 重复上报只处理一次（不算拒绝——同一意图的幂等收敛）
-    seen.add(index)
-    if (appliedSet.has(index)) {
-      refused.push({ index, reason: 'REFUSED: 条目已采纳' }) // 防双写：create 重复会造双胞胎实体
+    if (seen.has(key)) continue // 重复上报只处理一次（不算拒绝——同一意图的幂等收敛）
+    seen.add(key)
+    if (appliedKeys.has(key)) {
+      refused.push({ key, reason: 'REFUSED: 条目已采纳' }) // 防双写：create 重复会造双胞胎实体
       continue
     }
     const raw = proposal.changes[index]
     const errors = validateChange(raw) // 双保险：ALLOWED_OPS/必备字段在采纳现场复查（手改文件也逃不掉）
     if (errors.length > 0) {
-      refused.push({ index, reason: `REFUSED: ${errors.join('; ')}` })
+      refused.push({ key, reason: `REFUSED: ${errors.join('; ')}` })
       continue
     }
     try {
-      applyChange(p, proposal, index, raw as ProposalChange, confirmed)
-      applied.push(index)
-      appliedSet.add(index)
+      applyChange(p, proposal, key, raw as ProposalChange, confirmed)
+      applied.push(key)
+      appliedKeys.add(key)
     } catch (err) {
       // 逐条 try/catch：repository 守卫（REF_BROKEN/*_INVALID/*_MISSING）与本引擎的 origin/形状拒绝
       // 同槽收敛——一条坏不拖累整批
-      refused.push({ index, reason: `REFUSED: ${err instanceof Error ? err.message : String(err)}` })
+      refused.push({ key, reason: `REFUSED: ${err instanceof Error ? err.message : String(err)}` })
     }
   }
   if (applied.length > 0) markSettled(p, proposalId, applied) // 全拒批次零写盘（提案文件字节不动）
@@ -626,18 +648,23 @@ export function adoptChanges(
 }
 
 /**
- * 驳回批次（proposal:reject 通道的引擎本体）：删除指定条目并重写提案；
- * 全部删空 → 整份提案删除（deleteProposal）。appliedIndexes 随删除重排（被删条目的 applied
- * 记账出账；存活条目索引前移）；status 由剩余条目重算。空/越界索引幂等忽略（零写盘）。
+ * 驳回批次（proposal:reject 通道的引擎本体；M4c-1 键域）：按键删除指定条目并重写提案；
+ * 全部删空 → 整份提案删除（deleteProposal）。双账同步收缩：被删条目出账；幸存者的位置回退键
+ * 按新位置重算（cid 键天然稳定），appliedIndexes 重算投影。纯 legacy 文件（从未双写）只维护
+ * appliedIndexes——权威不静默切换，位置语义保持到首次 markSettled 双写为止。status 由剩余
+ * 条目重算。空/未知键幂等忽略（零写盘——跨窗口陈旧勾选的安全 no-op）。
  */
-export function rejectChanges(p: string, proposalId: string, changeIndexes: number[]): void {
-  if (!Array.isArray(changeIndexes)) {
-    throw new Error('PROPOSAL_BAD_PARAMS: changeIndexes 必须是数组')
+export function rejectChanges(p: string, proposalId: string, changeKeys: string[]): void {
+  if (!Array.isArray(changeKeys)) {
+    throw new Error('PROPOSAL_BAD_PARAMS: changeKeys 必须是数组')
   }
   const { proposal } = loadProposalRaw(p, proposalId)
+  const keyIndex = keyIndexOfChanges(proposal.changes)
   const remove = new Set<number>()
-  for (const i of changeIndexes) {
-    if (Number.isInteger(i) && i >= 0 && i < proposal.changes.length) remove.add(i)
+  for (const k of changeKeys) {
+    if (typeof k !== 'string') continue
+    const i = keyIndex.get(k)
+    if (i !== undefined) remove.add(i) // 未知键幂等忽略（条目已不在场 = 无可删）
   }
   if (remove.size === 0) return // 无可删 → 零写盘（幂等）
   const kept = proposal.changes.filter((_, i) => !remove.has(i))
@@ -645,24 +672,28 @@ export function rejectChanges(p: string, proposalId: string, changeIndexes: numb
     deleteProposal(p, proposalId)
     return
   }
-  // 旧索引 → 新索引重排表；已采纳但被驳回的条目出账
-  const remap = new Map<number, number>()
-  proposal.changes.forEach((_, i) => {
-    if (!remove.has(i)) remap.set(i, remap.size)
-  })
-  const applied = sanitizeAppliedIndexes(
-    proposal.appliedIndexes
-      .map((i) => remap.get(i))
-      .filter((x): x is number => x !== undefined),
-    kept.length
-  )
+  // 双账同步收缩：已采纳判定走 appliedKeySet 权威链（旧键 = changeKey(changes[i], i)）；
+  // 幸存已采纳条目的新键 = changeKey(kept[j], j)（legacy 回退键随新位置重算，cid 恒定）
+  const appliedKeys = appliedKeySet(proposal)
+  const appliedIndexes: number[] = []
+  const appliedCids: string[] = []
+  let j = 0
+  for (let i = 0; i < proposal.changes.length; i++) {
+    if (remove.has(i)) continue
+    if (appliedKeys.has(changeKey(proposal.changes[i], i))) {
+      appliedIndexes.push(j)
+      appliedCids.push(changeKey(kept[j], j))
+    }
+    j += 1
+  }
   saveProposalRaw(p, {
     id: proposal.id,
     chapterId: proposal.chapterId,
     createdAt: proposal.createdAt,
     aiModel: proposal.aiModel,
-    status: computeProposalStatus(kept.length, applied.length),
+    status: computeProposalStatus(kept.length, appliedIndexes.length),
     changes: kept,
-    appliedIndexes: applied
+    appliedIndexes,
+    appliedCids: proposal.appliedCids !== undefined ? appliedCids : undefined
   })
 }

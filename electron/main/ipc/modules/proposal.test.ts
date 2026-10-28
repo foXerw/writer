@@ -7,7 +7,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { mkTmpBook } from '../../../../tests/tmp'
-import { newProposalId, proposalPath } from '../../../../src/common/proposal'
+import { changeKey, newProposalId, proposalPath } from '../../../../src/common/proposal'
 import type { ProposalAdoptResult, ProposalFile } from '../../../../src/common/proposal'
 import { createChapter } from '../../bookStore/chapters'
 import { listCharacters } from '../../bookStore/characters'
@@ -129,7 +129,7 @@ describe('proposal:save 双保险 + 盖章', () => {
     await getHandler('proposal:adopt')(null, {
       projectPath: p,
       proposalId: first.id,
-      changeIndexes: [0],
+      changeKeys: [changeKey(first.changes[0], 0)],
       confirmedOverwrite: []
     })
     const third = mkFile(ch.id)
@@ -160,22 +160,25 @@ describe('proposal:getAll / get', () => {
   })
 })
 
-describe('proposal:adopt / reject 委托', () => {
-  it('adopt {projectPath, proposalId, changeIndexes, confirmedOverwrite} → 引擎结果对象', async () => {
+describe('proposal:adopt / reject 委托（M4c-1 键域参数）', () => {
+  it('adopt {projectPath, proposalId, changeKeys, confirmedOverwrite} → 引擎结果对象（键域对账）', async () => {
     const p = mkTmpBook()
     const ch = createChapter(p, '第一章')
     const file = mkFile(ch.id)
     await getHandler('proposal:save')(null, { projectPath: p, file })
+    const k0 = changeKey(file.changes[0], 0)
     const r = (await getHandler('proposal:adopt')(null, {
       projectPath: p,
       proposalId: file.id,
-      changeIndexes: [0],
+      changeKeys: [k0],
       confirmedOverwrite: []
     })) as ProposalAdoptResult
-    expect(r).toEqual({ applied: [0], refused: [] })
+    expect(r).toEqual({ applied: [k0], refused: [] })
     expect(listCharacters(p).map((c) => c.name)).toEqual(['阿明'])
     const stored = (await getHandler('proposal:get')(null, { projectPath: p, id: file.id })) as ProposalFile | null
     expect(stored?.status).toBe('settled')
+    expect(stored?.appliedCids).toEqual([k0]) // 双写：键域权威 + 位置投影
+    expect(stored?.appliedIndexes).toEqual([0])
   })
 
   it('reject 全部条目 → 整份提案删除（文件消失，getAll 归零）', async () => {
@@ -183,7 +186,11 @@ describe('proposal:adopt / reject 委托', () => {
     const ch = createChapter(p, '第一章')
     const file = mkFile(ch.id)
     await getHandler('proposal:save')(null, { projectPath: p, file })
-    await getHandler('proposal:reject')(null, { projectPath: p, proposalId: file.id, changeIndexes: [0] })
+    await getHandler('proposal:reject')(null, {
+      projectPath: p,
+      proposalId: file.id,
+      changeKeys: [changeKey(file.changes[0], 0)]
+    })
     expect(existsSync(proposalPath(p, file.id))).toBe(false)
     expect(await getHandler('proposal:getAll')(null, { projectPath: p })).toEqual([])
   })

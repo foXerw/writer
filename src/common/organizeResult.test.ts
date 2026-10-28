@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildProposalFromAi } from './organizeResult'
 import { validateProposal } from './proposal'
 import type { ProposalFile } from './proposal'
+import { UUID_PATTERN } from './schema'
 
 const CHAPTER_ID = '2f8a9c1e-7b3d-4e6f-9a1c-5d8e2f0b7a63'
 const OTHER_CHAPTER = '11111111-2222-4333-8444-555555555555'
@@ -157,5 +158,50 @@ describe('buildProposalFromAi：parse-failed 与 invalid 分路', () => {
     expect(out.kind).toBe('invalid')
     if (out.kind !== 'invalid') return
     expect(out.errors.join('\n')).toContain('UUID')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M4c-1：cid 盖章——记账主键自出生即稳定（adopt/markSettled/reject 键域的源头）
+// ---------------------------------------------------------------------------
+
+describe('buildProposalFromAi × cid 盖章（M4c-1）', () => {
+  it('每条 change 注入唯一 cid（UUID 形状），整份过校验', () => {
+    const raw = JSON.stringify({
+      changes: [
+        goodChange(),
+        { ...goodChange(), after: { name: '老周' }, source: { quote: '老周敲了敲门。' } }
+      ]
+    })
+    const out = buildProposalFromAi(raw, CHAPTER_ID, 'm')
+    if (out.kind !== 'ok') return expect.unreachable()
+    const cids = out.file.changes.map((c) => c.cid)
+    expect(cids).toHaveLength(2)
+    expect(cids.every((x) => typeof x === 'string' && UUID_PATTERN.test(x as string))).toBe(true)
+    expect(new Set(cids).size).toBe(2) // 同批互异
+    expect(validateProposal(out.file)).toEqual([])
+  })
+
+  it('AI 违约自带 cid → 一律新鲜盖章覆写，绝不采信（与 chapterId 盖章同立场）', () => {
+    const c = { ...goodChange(), cid: 'hijacked-cid' } as Record<string, unknown>
+    const out = buildProposalFromAi(JSON.stringify({ changes: [c] }), CHAPTER_ID, 'm')
+    if (out.kind !== 'ok') return expect.unreachable()
+    const cid = out.file.changes[0].cid
+    expect(cid).not.toBe('hijacked-cid')
+    expect(UUID_PATTERN.test(cid as string)).toBe(true)
+  })
+
+  it('两次 build 的 cid 互不相同（每条新鲜随机，跨提案也不复用）', () => {
+    const a = buildProposalFromAi(JSON.stringify({ changes: [goodChange()] }), CHAPTER_ID, 'm')
+    const b = buildProposalFromAi(JSON.stringify({ changes: [goodChange()] }), CHAPTER_ID, 'm')
+    if (a.kind !== 'ok' || b.kind !== 'ok') return expect.unreachable()
+    expect(a.file.changes[0].cid).not.toBe(b.file.changes[0].cid)
+  })
+
+  it('cid 排在条目首位（盖章字段前置，YAML 落盘可读性；source 盖章纪律不受影响）', () => {
+    const out = buildProposalFromAi(JSON.stringify({ changes: [goodChange()] }), CHAPTER_ID, 'm')
+    if (out.kind !== 'ok') return expect.unreachable()
+    expect(Object.keys(out.file.changes[0])[0]).toBe('cid')
+    expect(out.file.changes[0].source.chapterId).toBe(CHAPTER_ID)
   })
 })

@@ -15,10 +15,11 @@ import {
   listProposals,
   loadProposalRaw,
   markSettled,
+  sanitizeAppliedCids,
   sanitizeAppliedIndexes,
   writeProposal
 } from './proposals'
-import { newProposalId, proposalPath } from '../../../src/common/proposal'
+import { changeKey, newProposalId, proposalPath } from '../../../src/common/proposal'
 import type { ProposalChange, ProposalFile } from '../../../src/common/proposal'
 
 const CH1 = '3f2b6c1a-9d4e-4a7b-8c5d-1e6f7a8b9c0d'
@@ -54,6 +55,11 @@ function plantRaw(p: string, file: unknown): string {
   mkdirSync(join(p, '.ai', 'proposals'), { recursive: true })
   writeFileSync(abs, yaml.dump(file, { noRefs: true, lineWidth: 120 }), 'utf8')
   return abs
+}
+
+/** 键域（M4c-1 起 markSettled 收 changeKey 键集）：file 第 i 条的记账键。 */
+function keyOf(f: ProposalFile, i: number): string {
+  return changeKey(f.changes[i], i)
 }
 
 beforeEach(() => {
@@ -129,6 +135,28 @@ describe('writeProposal / getProposal', () => {
     const b = mkFile({ appliedIndexes: [0] })
     writeProposal(p, b)
     expect(getProposal(p, b.id)?.appliedIndexes).toEqual([0])
+  })
+
+  it('appliedCids 往返（M4c-1）：缺失不携键；存在原样返回；形状漂移 write 前拒', () => {
+    const p = mkTmpBook()
+    const a = mkFile()
+    writeProposal(p, a)
+    expect('appliedCids' in (getProposal(p, a.id) as object)).toBe(false)
+    const b = mkFile({ appliedCids: ['cid-a'] })
+    writeProposal(p, b)
+    expect(getProposal(p, b.id)?.appliedCids).toEqual(['cid-a'])
+    const bad = mkFile({ appliedCids: 'oops' as unknown as string[] })
+    expect(() => writeProposal(p, bad)).toThrow(/PROPOSAL_INVALID/)
+    expect(existsSync(proposalPath(p, bad.id))).toBe(false)
+  })
+
+  it('cid 往返（M4c-1）：changes 内 cid 原样保留；同文件重复 cid → write 拒（文件级唯一性）', () => {
+    const p = mkTmpBook()
+    const ok = mkFile({ changes: [mkChange({ cid: 'cid-x' }), mkChange({ cid: 'cid-y' })] })
+    writeProposal(p, ok)
+    expect(getProposal(p, ok.id)?.changes.map((c) => c.cid)).toEqual(['cid-x', 'cid-y'])
+    const dup = mkFile({ changes: [mkChange({ cid: 'same' }), mkChange({ cid: 'same' })] })
+    expect(() => writeProposal(p, dup)).toThrow(/PROPOSAL_INVALID/)
   })
 })
 
@@ -210,49 +238,99 @@ describe('sanitizeAppliedIndexes（纯函数）', () => {
   })
 })
 
-describe('markSettled', () => {
-  function threeChanges(p: string): ProposalFile {
-    const f = mkFile({ changes: [mkChange(), mkChange(), mkChange()] })
+describe('sanitizeAppliedCids（纯函数，M4c-1）', () => {
+  it('非数组 → undefined（纯 legacy 文件不携键，权威链不静默切换）', () => {
+    expect(sanitizeAppliedCids(undefined)).toBeUndefined()
+    expect(sanitizeAppliedCids('x')).toBeUndefined()
+    expect(sanitizeAppliedCids({ 0: 'a' })).toBeUndefined()
+  })
+
+  it('只留非空字符串、去重保序；空数组 → 空数组（键域权威、零采纳）', () => {
+    expect(sanitizeAppliedCids(['a', 42, 'a', '', null, 'b'])).toEqual(['a', 'b'])
+    expect(sanitizeAppliedCids([])).toEqual([])
+  })
+})
+
+describe('markSettled（M4c-1 键域 + 双写）', () => {
+  function threeChanges(p: string, withCids = false): ProposalFile {
+    const f = mkFile({
+      changes: [0, 1, 2].map((i) => mkChange(withCids ? { cid: `cid-${i}-stable` } : undefined))
+    })
     writeProposal(p, f)
     return f
   }
 
-  it('采纳 2/3 → partial 且 appliedIndexes 落进文件；补最后一条 → settled', () => {
+  it('采纳 2/3 → partial 且双账落进文件（appliedCids 并集 + appliedIndexes 位置投影）；补最后一条 → settled', () => {
     const p = mkTmpBook()
     const f = threeChanges(p)
-    expect(markSettled(p, f.id, [1, 0])).toBe('partial')
+    const [k0, k1, k2] = [0, 1, 2].map((i) => keyOf(f, i))
+    expect(markSettled(p, f.id, [k1, k0])).toBe('partial')
     const raw = loadProposalRaw(p, f.id)
-    expect(raw.proposal.appliedIndexes).toEqual([0, 1]) // 去重升序
+    expect(raw.proposal.appliedIndexes).toEqual([0, 1]) // 投影升序
+    expect(raw.proposal.appliedCids).toEqual([k1, k0]) // 并集序：既有在前、批次在后
     expect(raw.proposal.status).toBe('partial')
-    expect(markSettled(p, f.id, [2])).toBe('settled')
-    expect(loadProposalRaw(p, f.id).proposal.appliedIndexes).toEqual([0, 1, 2])
+    expect(markSettled(p, f.id, [k2])).toBe('settled')
+    const raw2 = loadProposalRaw(p, f.id)
+    expect(raw2.proposal.appliedIndexes).toEqual([0, 1, 2])
+    expect(raw2.proposal.appliedCids).toEqual([k1, k0, k2])
   })
 
-  it('重复上报同一索引幂等（并集去重）', () => {
+  it('双写等价（非 Negotiable #3）：appliedIndexes ≡ appliedCids 对当前 changes 的位置投影（cid 文件，同一原子写）', () => {
+    const p = mkTmpBook()
+    const f = threeChanges(p, true)
+    markSettled(p, f.id, ['cid-1-stable'])
+    const onDisk = yaml.load(readFileSync(proposalPath(p, f.id), 'utf8')) as Record<string, unknown>
+    expect(onDisk.appliedCids).toEqual(['cid-1-stable'])
+    expect(onDisk.appliedIndexes).toEqual([1])
+    markSettled(p, f.id, ['cid-0-stable'])
+    const disk2 = yaml.load(readFileSync(proposalPath(p, f.id), 'utf8')) as Record<string, unknown>
+    expect(disk2.appliedCids).toEqual(['cid-1-stable', 'cid-0-stable'])
+    expect(disk2.appliedIndexes).toEqual([0, 1]) // 投影与键域语义恒等（旧读者兼容面）
+  })
+
+  it('重复上报同一键幂等（并集去重）', () => {
     const p = mkTmpBook()
     const f = threeChanges(p)
-    markSettled(p, f.id, [0])
-    expect(markSettled(p, f.id, [0])).toBe('partial')
+    const k0 = keyOf(f, 0)
+    markSettled(p, f.id, [k0])
+    expect(markSettled(p, f.id, [k0])).toBe('partial')
     expect(loadProposalRaw(p, f.id).proposal.appliedIndexes).toEqual([0])
+    expect(loadProposalRaw(p, f.id).proposal.appliedCids).toEqual([k0])
   })
 
-  it('无采纳重写不携 appliedIndexes 键、status 回到 pending 计算（空上报 → pending）', () => {
+  it('空上报 → pending 且双账键都不携（与存量文件同形）', () => {
     const p = mkTmpBook()
     const f = threeChanges(p)
     expect(markSettled(p, f.id, [])).toBe('pending')
     const onDisk = yaml.load(readFileSync(proposalPath(p, f.id), 'utf8')) as Record<string, unknown>
     expect('appliedIndexes' in onDisk).toBe(false)
+    expect('appliedCids' in onDisk).toBe(false)
   })
 
-  it('越界索引被清洗（不进 appliedIndexes）', () => {
+  it('未知/非法键被清洗（不在当前 changes 键域 → 不入账；旧「越界索引清洗」的键域等价物）', () => {
     const p = mkTmpBook()
     const f = threeChanges(p)
-    expect(markSettled(p, f.id, [0, 7, -2])).toBe('partial')
+    const k0 = keyOf(f, 0)
+    expect(markSettled(p, f.id, [k0, 'ghost-key', ''])).toBe('partial')
     expect(loadProposalRaw(p, f.id).proposal.appliedIndexes).toEqual([0])
+    expect(loadProposalRaw(p, f.id).proposal.appliedCids).toEqual([k0])
+  })
+
+  it('既有 appliedCids 里的漂移键（不在当前 changes）在重写时出账——账目恒指向活条目', () => {
+    const p = mkTmpBook()
+    const f = mkFile({
+      changes: [mkChange({ cid: 'cid-0-stable' }), mkChange({ cid: 'cid-1-stable' })],
+      appliedCids: ['cid-1-stable', 'cid-of-a-change-long-gone'] // 第三方改写留下的幽灵账
+    })
+    writeProposal(p, f)
+    expect(markSettled(p, f.id, ['cid-0-stable'])).toBe('settled')
+    const raw = loadProposalRaw(p, f.id)
+    expect(raw.proposal.appliedCids).toEqual(['cid-1-stable', 'cid-0-stable']) // 幽灵键被清洗
+    expect(raw.proposal.appliedIndexes).toEqual([0, 1])
   })
 
   it('缺失文件 → PROPOSAL_MISSING 抛', () => {
-    expect(() => markSettled(mkTmpBook(), 'prop-nope-1', [0])).toThrow(/PROPOSAL_MISSING/)
+    expect(() => markSettled(mkTmpBook(), 'prop-nope-1', ['x'])).toThrow(/PROPOSAL_MISSING/)
   })
 })
 
@@ -285,5 +363,19 @@ describe('loadProposalRaw', () => {
     expect(() => loadProposalRaw(p, 'prop-bad-2')).toThrow(/PROPOSAL_INVALID/)
     expect(() => loadProposalRaw(p, 'prop-nope-9')).toThrow(/PROPOSAL_MISSING/)
     expect(() => loadProposalRaw(p, '../evil')).toThrow(/BAD_PROPOSAL_ID/)
+  })
+
+  it('appliedCids 宽容装载（M4c-1）：垃圾元素清洗去重；缺失 → undefined（纯 legacy 保持位置语义）', () => {
+    const p = mkTmpBook()
+    const f = mkFile({ changes: [mkChange(), mkChange()] })
+    plantRaw(p, { ...f, appliedCids: ['a', 42, 'a', '', null] })
+    expect(loadProposalRaw(p, f.id).proposal.appliedCids).toEqual(['a'])
+    const g = mkFile()
+    plantRaw(p, g)
+    expect(loadProposalRaw(p, g.id).proposal.appliedCids).toBeUndefined()
+    // 空数组 = 键域权威、零采纳（第三方写过 appliedCids: [] 的文件不回落位置语义）
+    const h = mkFile({ changes: [mkChange()] })
+    plantRaw(p, { ...h, appliedCids: [], appliedIndexes: [0] })
+    expect(loadProposalRaw(p, h.id).proposal.appliedCids).toEqual([])
   })
 })
