@@ -13,6 +13,8 @@
 //  - generationRef 防竞态：projectPath 快速切换/StrictMode 双挂载时，只有最后一次
 //    refresh 的结果允许落地，旧响应静默丢弃；
 //  - 拉取失败保留上一次好数据（console.error 留痕），绝不清空画布；
+//    例外：台账（六路中唯一会抛穿的一路，R1）在 ledgerFallback 内就地降级为空台账，
+//    坏 foreshadow.yaml 只缺席伏笔跳章引用，不再让五张图全白/刷新冻结；
 //  - 刷新幂等无害：重拉后值相同则下游 useMemo 命中同引用，画布无闪。
 // 已知窄口：.ai/index.json 不属于任何 watcher 域（domainOf → null，事件被过滤），
 // 故外部直改索引不触发 book:changed；应用内整理/采纳收尾会 notifyEntitiesChanged()
@@ -22,6 +24,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAiData, useCharacter, useNarrative, useSetting } from '../../../hooks/useIPC'
 import { useBookEvents } from '../../../hooks/useBookEvents'
 import { subscribeEntitiesChanged } from '../../../services/entityEvents'
+import { EMPTY_LEDGER, withLedgerFallback } from './ledgerFallback'
 import type {
   CharacterV2,
   ChoiceNodeV2,
@@ -46,8 +49,6 @@ export interface GraphData {
   loading: boolean
   refresh: () => void
 }
-
-const EMPTY_LEDGER: ForeshadowLedger = { entries: [] }
 
 export function useGraphData(projectPath: string | undefined): GraphData {
   const { getAllCharacters } = useCharacter()
@@ -101,7 +102,9 @@ export function useGraphData(projectPath: string | undefined): GraphData {
           getAllSettings(projectPath),
           getAllPlotlines(projectPath),
           getAllChoices(projectPath),
-          getForeshadowLedger(projectPath),
+          // R1（Task 4 评审）：六路中唯一会 reject 的一路单独隔离——损坏 foreshadow.yaml
+          // 只降级空台账（warn 留痕见 ledgerFallback.ts），不再连坐其余五路 → 四张图照常。
+          withLedgerFallback(() => getForeshadowLedger(projectPath)),
           readAiData(projectPath)
         ])
         payload = { chars, world, plot, choi, ledg, index: ai.entityIndex }
