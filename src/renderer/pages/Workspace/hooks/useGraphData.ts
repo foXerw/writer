@@ -103,7 +103,8 @@ export function useGraphData(projectPath: string | undefined): GraphData {
           getAllPlotlines(projectPath),
           getAllChoices(projectPath),
           // R1（Task 4 评审）：六路中唯一会 reject 的一路单独隔离——损坏 foreshadow.yaml
-          // 只降级空台账（warn 留痕见 ledgerFallback.ts），不再连坐其余五路 → 四张图照常。
+          // 只降级空台账（warn 留痕见 ledgerFallback.ts），不再连坐其余五路 → 五张图照常
+          //（T4 修复复审订正：无 builder 消费台账，arc 视图同样渲染）。
           withLedgerFallback(() => getForeshadowLedger(projectPath)),
           readAiData(projectPath)
         ])

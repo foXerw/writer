@@ -93,6 +93,13 @@ interface MonacoEditorProps {
 
 export interface MonacoEditorHandle {
   revealLineInCenter: (lineNumber: number) => void
+  /** 视图态快照（光标/滚动/选区，monaco saveViewState 原样透传；编辑器未就绪 → null）。 */
+  saveViewState: () => unknown | null
+  /**
+   * 恢复视图态。monaco 是异步动态导入创建——组件刚挂载、编辑器尚未就绪时暂存到 pendingRef，
+   * 创建完成即应用（同一提交内不丢光标；跨视图切换的恢复语义见 Workspace 裁定 3）。
+   */
+  restoreViewState: (viewState: unknown) => void
 }
 
 // Monaco Editor 容器组件
@@ -112,6 +119,8 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+  // 未就绪期的恢复暂存（restoreViewState 的异步补丁通道；应用一次即清）
+  const pendingViewStateRef = useRef<editor.ICodeEditorViewState | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   // 底部状态条字数（countWords 口径），从初始 value 起算，编辑/切章时更新
   const [currentWordCount, setCurrentWordCount] = useState(() => countWords(value))
@@ -120,6 +129,12 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   useImperativeHandle(ref, () => ({
     revealLineInCenter: (lineNumber: number) => {
       editorRef.current?.revealLineInCenter(lineNumber)
+    },
+    saveViewState: () => editorRef.current?.saveViewState() ?? null,
+    restoreViewState: (viewState: unknown) => {
+      const vs = viewState as editor.ICodeEditorViewState
+      if (editorRef.current) editorRef.current.restoreViewState(vs)
+      else pendingViewStateRef.current = vs
     }
   }), [])
 
@@ -203,6 +218,12 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
         })
 
         editorRef.current = editor
+
+        // 跨视图切换的延迟恢复：挂载完成前 restoreViewState 暂存的视图态，创建即应用（一次即清）
+        if (pendingViewStateRef.current) {
+          editor.restoreViewState(pendingViewStateRef.current)
+          pendingViewStateRef.current = null
+        }
 
         // 快捷键：保存
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {

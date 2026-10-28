@@ -10,7 +10,8 @@ import {
   EyeOutlined,
   EditOutlined,
   DownloadOutlined,
-  ScanOutlined
+  ScanOutlined,
+  StopOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import ThemeToggle from '../ThemeToggle'
@@ -31,11 +32,13 @@ interface EditorToolbarProps {
   wordCount?: number
   chapterTitle?: string
   onTitleChange?: (title: string) => void
-  // 整理本章（M4b Task 4）：AI 读本章 → 生成设定提案；organizing 期间按钮转 loading，
-  // organizeDisabled = 无当前章/已有未消化提案（并发门与徽章禁用面由 Workspace 汇总传入）
+  // 整理本章（M4b Task 4）：AI 读本章 → 生成设定提案；organizeDisabled = 无当前章/已有未消化
+  // 提案（并发门与徽章禁用面由 Workspace 汇总传入）。
+  // M4c-2 Task 6（裁定 4）：organizing 期间按钮位改渲染「取消」→ onCancelOrganize（ai:cancel 通道）
   onOrganize?: () => void
   organizing?: boolean
   organizeDisabled?: boolean
+  onCancelOrganize?: () => void
 }
 
 function EditorToolbar({
@@ -56,7 +59,8 @@ function EditorToolbar({
   onTitleChange,
   onOrganize,
   organizing = false,
-  organizeDisabled = false
+  organizeDisabled = false,
+  onCancelOrganize
 }: EditorToolbarProps) {
   // 标题级别菜单
   const headingItems: MenuProps['items'] = [
@@ -201,25 +205,34 @@ function EditorToolbar({
         <div style={{ width: 1, height: 20, background: 'var(--color-border-secondary)', margin: '0 8px' }} />
 
         {/* 整理本章按钮（M4b Task 4）：提案生成入口，disabled 汇总自 Workspace
-            （无当前章 / 已有未消化提案；并发在途由 organizing loading 态呈现） */}
-        <Tooltip
-          title={
-            organizeDisabled && !organizing
-              ? '整理本章暂不可用：需有当前章节，且本章没有待处理的提案'
-              : '整理本章（AI 通读本章，生成可逐条采纳的设定提案）'
-          }
-        >
-          <Button
-            type="text"
-            icon={<ScanOutlined />}
-            onClick={onOrganize}
-            loading={organizing}
-            disabled={organizeDisabled}
-            style={{ color: 'var(--color-text)' }}
+            （无当前章 / 已有未消化提案）。M4c-2 Task 6（裁定 4）：在途期间原位改渲染「取消」，
+            点击 → useOrganize.cancel() → ai:cancel(requestId)；ai:cancel 返回 false（已自行收尾）
+            时不打断正常完成路径，本按钮随终态自然回到「整理本章」。 */}
+        {organizing ? (
+          <Tooltip title="停止本次整理（中止在途 AI 请求；已结束的请求无法撤回）">
+            <Button type="text" danger icon={<StopOutlined />} onClick={onCancelOrganize}>
+              取消
+            </Button>
+          </Tooltip>
+        ) : (
+          <Tooltip
+            title={
+              organizeDisabled
+                ? '整理本章暂不可用：需有当前章节，且本章没有待处理的提案'
+                : '整理本章（AI 通读本章，生成可逐条采纳的设定提案）'
+            }
           >
-            整理本章
-          </Button>
-        </Tooltip>
+            <Button
+              type="text"
+              icon={<ScanOutlined />}
+              onClick={onOrganize}
+              disabled={organizeDisabled}
+              style={{ color: 'var(--color-text)' }}
+            >
+              整理本章
+            </Button>
+          </Tooltip>
+        )}
 
         {/* 导出按钮 */}
         <Tooltip title="导出 (Ctrl+E)">

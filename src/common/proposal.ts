@@ -145,10 +145,13 @@ const IDX_KEY_PREFIX = 'idx:'
  * 退化形状（非对象 / cid 类型漂移 / 空串）一律回退位置键——绝不产出非 string 键，
  * 此类条目随后会被 validateChange 逐条拒（对 plan 公式 `c.cid ?? 'idx:'+i` 的从严细化，
  * 合法文件上二者语义全等）。
+ * M4c-2 T6 结转：cid 先 trim 再入键域——首尾空白（YAML 手改/第三方导出常见）不再制造
+ * 「同一账目身份的两个键」；全空白视同空串 → 位置回退（与 validateChange 的 trim 判定同口径）。
  */
 export function changeKey(c: unknown, index: number): string {
   const cid = isRecord(c) ? c.cid : undefined
-  return typeof cid === 'string' && cid !== '' ? cid : `${IDX_KEY_PREFIX}${index}`
+  const trimmed = typeof cid === 'string' ? cid.trim() : ''
+  return trimmed !== '' ? trimmed : `${IDX_KEY_PREFIX}${index}`
 }
 
 /**
@@ -284,6 +287,12 @@ export function validateChange(v: unknown): string[] {
   // （盖章产出恒 UUID，手写留自由度）。同文件唯一性归 validateProposal（文件级错误）。
   if (v.cid !== undefined) {
     expectString(v, 'cid', 'change.cid', errors, true)
+    // M4c-2 T6 结转：以位置回退键前缀开头的 cid（trim 后判定——changeKey 同口径）一律拒——
+    // `idx:〈n〉` 是回退读者的私有身份，允许入存就出现「伪 cid 与真回退键同键双条目」的
+    // 记账歧义（采纳/灰化/徽章全错位）。盖章产出恒 UUID，天然不受影响。
+    if (typeof v.cid === 'string' && v.cid.trim().startsWith(IDX_KEY_PREFIX)) {
+      errors.push(`change.cid: must not start with "${IDX_KEY_PREFIX}" (reserved positional fallback prefix)`)
+    }
   }
 
   // source：必备对象，chapterId UUID 形状、quote 非空且 ≤ QUOTE_MAX_LENGTH
@@ -335,11 +344,14 @@ export function validateProposal(v: unknown): string[] {
       errors.push(...childErrors(i, validateChange(item)))
       // cid 文件内唯一（M4c-1）：重复 cid 让键域记账歧义（一键双条目 = 采纳/灰化全部错位），
       // 文件级拒绝。cid 类型漂移已由 validateChange 逐条报——这里只收合法字符串。
-      if (isRecord(item) && typeof item.cid === 'string' && item.cid !== '') {
-        if (seenCids.has(item.cid)) {
-          errors.push(`proposal.changes: duplicate cid "${item.cid}" (cid must be unique within a file)`)
+      // M4c-2 T6 结转：判重按 trim 后值（changeKey 归一同款口径）——仅空白之差的两个 cid
+      // 归一后即同键，必须在这里就拒，不能放进盘上。
+      if (isRecord(item) && typeof item.cid === 'string' && item.cid.trim() !== '') {
+        const cidKey = item.cid.trim()
+        if (seenCids.has(cidKey)) {
+          errors.push(`proposal.changes: duplicate cid "${cidKey}" (cid must be unique within a file)`)
         } else {
-          seenCids.add(item.cid)
+          seenCids.add(cidKey)
         }
       }
     })

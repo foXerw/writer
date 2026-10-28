@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Tree, Button, Dropdown, message, Modal, Input, Typography } from 'antd'
+import { App, Tree, Button, Dropdown, Input, Typography } from 'antd'
 import type { MenuProps, TreeProps } from 'antd'
 import {
   PlusOutlined,
@@ -38,8 +38,11 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
 }) => {
   const { createChapter, deleteChapter, renameChapter } = useChapter()
   const { getAllVolumes, moveChapterToVolume } = useVolume()
-  const [messageApi, contextHolder] = message.useMessage()
-  const [modal, contextModalHolder] = Modal.useModal()
+  // m4b 结转（T6 统一）：message/modal 走 App.useApp() 上下文实例（与 NarrativePanel/Home 同款惯用法）；
+  // 旧 useMessage/useModal + contextHolder 组合功能等价但全仓已收敛到前者。
+  // showRenameModal 原有【静态 Modal.confirm】——antd dev 下触发 console.error 告警（T6 冒烟零错误红线），
+  // 一并改走上下文 modal 实例。
+  const { message: messageApi, modal } = App.useApp()
 
   // 卷列表自持（Task 5）：卷的增删改重排不进 Workspace 会话状态，树内闭环；
   // 删卷/移章会改章的 volumeId。评审整改后的双保险：
@@ -142,7 +145,7 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
   // 重命名弹窗
   const showRenameModal = (chapter: Chapter) => {
     let newTitle = chapter.title
-    Modal.confirm({
+    modal.confirm({
       title: '重命名章节',
       content: (
         <Input
@@ -329,8 +332,6 @@ const ChapterTree: React.FC<ChapterTreeProps> = ({
 
   return (
     <>
-      {contextHolder}
-      {contextModalHolder}
       <div className="chapter-tree">
         {/* 头部工具栏 */}
         <div className="chapter-tree-header">

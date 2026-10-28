@@ -104,6 +104,22 @@ function Workspace() {
   // 人物关系 | 世界观 | 剧情走向 | 关键选项 | 角色成长）
   const [viewMode, setViewMode] = useState<'write' | 'graph'>('write')
   const [graphKind, setGraphKind] = useState<GraphKind>('character')
+  // viewState 跨切换（M4c-2 Task 6，裁定 3）：写作→图谱离开编辑器前把视图态（光标/滚动）存入 ref；
+  // 切回后编辑器重挂载——脏 CONTENT 已有 useEditorSession 保证，这里只补视图态。restore 走
+  // MonacoEditor handle：monaco 异步创建未就绪时由 handle 暂存、创建完成即应用（同一帧不丢光标）。
+  const viewStateRef = useRef<unknown | null>(null)
+  useEffect(() => {
+    if (viewMode !== 'write') return
+    const st = viewStateRef.current
+    if (st === null) return
+    viewStateRef.current = null
+    editorRef.current?.restoreViewState(st)
+  }, [viewMode])
+  const switchViewMode = (next: 'write' | 'graph') => {
+    if (next === viewMode) return
+    if (next === 'graph') viewStateRef.current = editorRef.current?.saveViewState() ?? null
+    setViewMode(next)
+  }
   // 命令面板 / 大纲 / 导出对话框
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [outlineVisible, setOutlineVisible] = useState(false)
@@ -433,6 +449,8 @@ function Workspace() {
       return
     }
     openChapter(target)
+    // 刻意跳章 = 目标章新定位：丢弃先前视图态，绝不把旧章光标恢复到另一章内容上（T6 viewState 边界）
+    viewStateRef.current = null
     setViewMode('write')
   }
 
@@ -480,6 +498,7 @@ function Workspace() {
             onToggleFocus={setFocusMode} onToggleTypewriter={setTypewriterMode}
             onOrganize={() => { if (currentChapter) void organize.organize(currentChapter.id) }}
             organizing={organize.organizing} organizeDisabled={organizeDisabled}
+            onCancelOrganize={() => void organize.cancel()}
           />
         )}
       </Header>
@@ -558,7 +577,7 @@ function Workspace() {
           >
             <Segmented
               value={viewMode}
-              onChange={(v) => setViewMode(v as 'write' | 'graph')}
+              onChange={(v) => switchViewMode(v as 'write' | 'graph')}
               options={[
                 { label: '写作', value: 'write' },
                 {

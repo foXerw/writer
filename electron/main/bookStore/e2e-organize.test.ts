@@ -6,8 +6,9 @@
 //   → 假 SSE 流（openai 协议帧，逐片段吐提案 JSON）→ ai:chunk 累加 → ai:done
 //   → extractJsonLoose + buildProposalFromAi（src/common 纯函数，盖章+校验）
 //   → proposal:save handler（真 IPC 层：双保险校验 + 盖章 + PROPOSAL_DUPLICATE 闸门）
-//   → adoptChanges（引擎直驱，confirmed=[]——本剧本无 overwritesHuman 条目）
-//   → 断言四路落盘：characters 新卡（aiTouched 播种）/ .ai/summaries 摘要 /
+//   → adoptChanges（引擎直驱，confirmedOverwrite 携 overwritesHuman 条目的键——M4c-2 T6 结转
+//     起剧本含一条覆盖人写字段的变更，全链证明 UI 确认门在离线端到端也走通）
+//   → 断言四路落盘：characters 新卡（aiTouched 播种）+ 人写卡覆盖记账 / .ai/summaries 摘要 /
 //     .ai/index.json 合并 / 提案 settled；最后 readAiData 复读证明闭环回流。
 // mock 面刻意最小：electron 只替 ipcMain.handle 捕获表 + app.getPath('userData')
 // （settings 落假 ai-settings.json，走真实 loadSettings 解析链——镜像 proposal.test.ts 套路）；
@@ -143,7 +144,7 @@ beforeEach(() => {
 })
 
 describe('e2e：整理本章全链（假 fetch → 提案落盘 → 采纳四路 → settled）', () => {
-  it('chatService+proposal:save+adoptChanges 一条龙：3 变更（create 角色 / update 摘要 / update 索引）全部真实落盘', async () => {
+  it('chatService+proposal:save+adoptChanges 一条龙：4 变更（create 角色 / update 摘要 / update 索引 / update 角色覆盖人写）全部真实落盘', async () => {
     // —— 0. 真 v2 书 seed ——
     const p = mkTmpBook()
     writeFileSync(
@@ -200,6 +201,16 @@ describe('e2e：整理本章全链（假 fetch → 提案落盘 → 采纳四路
           entity: 'index',
           targetId: ch.id,
           after: { adds: [{ entityId: oldCat.id, chapterId: ch.id }] },
+          source: { quote: '老周回头瞪了他一眼，示意噤声。' }
+        },
+        // M4c-2 T6 结转：覆盖人写字段（老周卡由 seed 直写、无 aiTouched → personality 是人写），
+        // 引擎必须吃「UI 确认」（confirmedOverwrite 键集）才放行——全链证明 R1 origin 门。
+        {
+          op: 'update',
+          entity: 'character',
+          targetId: oldCat.id,
+          after: { personality: '毒舌却热心的引路人' },
+          overwritesHuman: true,
           source: { quote: '老周回头瞪了他一眼，示意噤声。' }
         }
       ]
@@ -300,10 +311,13 @@ describe('e2e：整理本章全链（假 fetch → 提案落盘 → 采纳四路
     ).rejects.toThrow(`PROPOSAL_DUPLICATE: ${ch.id}`)
     expect(existsSync(proposalPath(p, dup.id))).toBe(false)
 
-    // —— 6. 采纳：3 条全收，confirmed=[]（剧本无人写覆盖条目）。M4c-1：键域 = 盖章 cid ——
+    // —— 6. 采纳：4 条全收；overwritesHuman 条目走 UI 确认门（confirmedOverwrite 携该键，
+    //     同 T5 面板勾选语义——不携则该条必拒「REFUSED: 未确认覆盖」，逐条纪律见 adopt.test.ts）。
+    //     M4c-1：键域 = 盖章 cid ——
     const keys = file.changes.map((c, i) => changeKey(c, i))
     expect(keys.every((k) => UUID_PATTERN.test(k))).toBe(true) // 整理链盖章的 cid 直接成为记账键（全链证明）
-    const result = adoptChanges(p, file.id, keys, []) as ProposalAdoptResult
+    expect(file.changes[3].overwritesHuman).toBe(true)
+    const result = adoptChanges(p, file.id, keys, [keys[3]]) as ProposalAdoptResult
     expect(result).toEqual({ applied: keys, refused: [] })
 
     // —— 7. 四路落盘断言 ——
@@ -312,6 +326,10 @@ describe('e2e：整理本章全链（假 fetch → 提案落盘 → 采纳四路
     expect(fresh?.aiTouched).toEqual(['name', 'gender', 'age', 'role', 'appearance', 'personality'])
     // 裁定 A：AI 产字段入册记名——background 空串 / relationships 空数组不入账
     expect(fresh?.background).toBe('')
+    // overwritesHuman 条目（确认门放行）：人写 personality 被覆盖并记名（origin 账目全链闭环）
+    const laoZhou = listCharacters(p).find((c) => c.name === '老周')
+    expect(laoZhou?.personality).toBe('毒舌却热心的引路人')
+    expect(laoZhou?.aiTouched).toEqual(['personality'])
 
     const summary = readYamlFile<Record<string, unknown>>(chapterSummaryFile(p, ch.id))
     expect(summary).toMatchObject({
@@ -328,7 +346,7 @@ describe('e2e：整理本章全链（假 fetch → 提案落盘 → 采纳四路
 
     const settled = getProposal(p, file.id)
     expect(settled?.status).toBe('settled')
-    expect(settled?.appliedIndexes).toEqual([0, 1, 2])
+    expect(settled?.appliedIndexes).toEqual([0, 1, 2, 3])
     expect(settled?.appliedCids).toEqual(keys) // M4c-1 双写：键域权威与位置投影同落一份原子写
 
     // —— 8. 闭环回流：readAiData 复读，下一轮整理能看见本轮产物 ——

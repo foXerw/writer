@@ -16,7 +16,9 @@
 //   连 merged[key] 形式都禁止，只能 continue。
 //   update 侧未知字段（既不在 allowlist 也不在保留回显集）→ 整条拒 `REFUSED: 未知字段 <key>`
 //   （评审 I2 裁定：静默丢弃会让 appliedIndexes 说谎——提案要求了 X、什么都没应用、却显示已采纳；
-//   保留键回显照旧静默丢弃——信封回显是 T2 规约容忍的正常噪音）。
+//   保留键回显照旧静默丢弃——信封回显是 T2 规约容忍的正常噪音。M4c-2 T6 起此门全覆盖全部 update
+//   路径：character/world 经 mergeGuarded/mergePlain 逐键判定，foreshadow/summary/index 经
+//   assertNoUnknownUpdateKeys 专门——create 路径维持 allowlist 过滤的既有宽容口径不变）。
 // - R3 采纳期深校验：create×character/world/plotline/choice → after 过对应 schema 校验器
 //   （注入新鲜 randomUUID + now ISO 后全形状校验）；create×foreshadow → after 即 ForeshadowEntry
 //   （validateForeshadowEntry；id 一律注入新 UUID——防 AI 伪造/幻觉 id 撞上既有条目被 upsert 归并，
@@ -119,7 +121,8 @@ export const FIELD_ALLOWLIST: Record<ProposalEntity, string[]> = {
   index: ['adds']
 }
 
-/** update×foreshadow 的窄门（裁定 R3）：机对 status 走状态机 + 两个说明字段；其余键忽略。 */
+/** update×foreshadow 的窄门（裁定 R3）：机对 status 走状态机 + 两个说明字段；表外兄弟键整条拒
+ *（M4c-2 T6 结转，assertNoUnknownUpdateKeys——与 character/world 口径统一，保留键回显仍静默丢弃）。 */
 const FORESHADOW_UPDATE_FIELDS = ['status', 'plannedPayoffNote', 'note']
 
 /**
@@ -170,6 +173,22 @@ function touchedFields(doc: Record<string, unknown>): string[] {
 function assertOverwriteConfirmed(change: ProposalChange, key: string, confirmed: Set<string>): void {
   if (change.overwritesHuman === true && !confirmed.has(key)) {
     throw new Error('未确认覆盖')
+  }
+}
+
+/**
+ * update 侧未知字段门（M4c-2 T6 结转：foreshadow/summary/index 的窄门与 character/world 口径
+ * 统一——静默丢弃会让 applied 账说谎是评审 I2 的同一事实，不该因实体而异）。判定次序镜像
+ * mergeGuarded/mergePlain：白名单成员放行；'__proto__' 安全跳过（绝不按未知字段拒——对该键
+ * 的赋值会触发原型 setter，本门只判拒与否、不消费值，读取侧仍逐键显式拷贝）；保留回显键
+ * （信封回显容忍噪音）静默丢弃；其余键整条拒 `未知字段 <key>`（首个肇事键入 reason）。
+ */
+function assertNoUnknownUpdateKeys(after: Record<string, unknown>, allowlist: string[]): void {
+  for (const key of Object.keys(after)) {
+    if (allowlist.includes(key)) continue
+    if (key === '__proto__') continue
+    if (RESERVED_UPDATE.has(key)) continue
+    throw new Error(`未知字段 ${key}`)
   }
 }
 
@@ -414,6 +433,7 @@ function adoptUpdateChoice(p: string, change: ProposalChange): void {
 
 function adoptUpdateForeshadow(p: string, proposal: RawProposal, change: ProposalChange): void {
   const after = requireAfterRecord(change)
+  assertNoUnknownUpdateKeys(after, FORESHADOW_UPDATE_FIELDS) // M4c-2 T6 结转：窄门口径统一
   const id = change.targetId as string
   const entry = readLedger(p).entries.find((e) => e.id === id) // 坏台账抛穿 → 逐条拒（绝不整写覆盖）
   if (!entry) throw new Error(`FORESHADOW_MISSING: ${id}`)
@@ -456,6 +476,9 @@ function adoptUpdateForeshadow(p: string, proposal: RawProposal, change: Proposa
 
 function adoptSummary(p: string, proposal: RawProposal, change: ProposalChange): void {
   const after = requireAfterRecord(change)
+  // M4c-2 T6 结转：update 载荷只许 text（与 character/world 口径统一）；create 走既有
+  // allowlist 过滤口径（buildCandidate 同款：多余键天然不落盘、不整条拒），不在本门范围。
+  if (change.op === 'update') assertNoUnknownUpdateKeys(after, FIELD_ALLOWLIST.summary)
   // update 的 targetId 已由 validateChange 保证非空；create 缺省 = 整理章（proposal.chapterId）
   const target =
     typeof change.targetId === 'string' && change.targetId.trim() !== ''
@@ -481,6 +504,7 @@ function adoptIndex(p: string, change: ProposalChange): void {
   // targetId：validateChange 对 update 一律要求非空（T1 把 index 的指向语义留给 T3）——
   // 裁定：index 是全书单一派生总目录，targetId 无语义（占位=整理章），引擎忽略其值。
   const after = requireAfterRecord(change)
+  assertNoUnknownUpdateKeys(after, FIELD_ALLOWLIST.index) // M4c-2 T6 结转：index 只可能 update，窄门即全门
   const adds = hasOwn(after, 'adds') ? after.adds : undefined
   if (!Array.isArray(adds) || adds.length === 0) {
     throw new Error('after.adds 必须是非空数组')

@@ -472,6 +472,13 @@ describe('changeKey（M4c-1 记账主键单源）', () => {
     expect(new Set(keys).size).toBe(3)
     expect(keys.every((k) => k.length > 0)).toBe(true)
   })
+
+  it('M4c-2 T6 结转：cid trim 归一——首尾空白不进键域（「abc」与「 abc 」是同一账目身份）', () => {
+    expect(changeKey({ cid: '  cid-aaa  ' }, 0)).toBe(changeKey({ cid: 'cid-aaa' }, 0))
+    expect(changeKey({ cid: '\tcid-bbb\n' }, 5)).toBe('cid-bbb')
+    // 全空白 cid → 与空串同口径回退位置键（validateChange 的 nonEmpty 判定本就按 trim）
+    expect(changeKey({ cid: '   ' }, 1)).toBe(changeKey({}, 1))
+  })
 })
 
 describe('appliedKeySet（M4c-1 权威链单源：引擎守卫/面板灰化/徽章共用）', () => {
@@ -529,6 +536,20 @@ describe('validateChange × cid', () => {
       expect(validateChange(c).some((e) => e.includes('cid')), JSON.stringify(bad)).toBe(true)
     }
   })
+
+  it('位置回退键前缀的 cid 一律拒绝（M4c-2 T6 结转：idx:〈n〉是回退读者的私有身份，不得入存）', () => {
+    // 针尖（前缀字面量）由 changeKey 派生——grep 门（单源纪律）不允许本文件内联
+    const fallback = changeKey({}, 3)
+    for (const bad of [fallback, fallback.slice(0, 4), fallback.replace('3', 'x'), ` ${fallback} `]) {
+      const c = validChange()
+      c.cid = bad
+      expect(validateChange(c).some((e) => e.includes('cid')), JSON.stringify(bad)).toBe(true)
+    }
+    // 只拒「以回退前缀开头」——含 idx 字样的普通 cid 不误伤（trim 后判定，与键域归一同款口径）
+    const ok = validChange()
+    ok.cid = `a${fallback.slice(0, 4)}x`
+    expect(validateChange(ok).some((e) => e.includes('cid'))).toBe(false)
+  })
 })
 
 describe('validateProposal × appliedCids', () => {
@@ -560,6 +581,12 @@ describe('validateProposal × cid 唯一性（非 Negotiable #7：dup cid = 文�
     f.changes = [{ ...validChange(), cid: 'same-cid' }, { ...changeFor('create', 'world'), cid: 'same-cid' }]
     const errors = validateProposal(f)
     expect(errors.some((e) => e.includes('duplicate') && e.includes('same-cid'))).toBe(true)
+  })
+
+  it('M4c-2 T6 结转：仅首尾空白之差的 cid 也判重（changeKey trim 归一后二者是同一键）', () => {
+    const f = validFile()
+    f.changes = [{ ...validChange(), cid: 'same-cid' }, { ...changeFor('create', 'world'), cid: ' same-cid ' }]
+    expect(validateProposal(f).some((e) => e.includes('duplicate'))).toBe(true)
   })
 
   it('不同 cid 合法；多条皆缺 cid 合法（回退键按位置互不冲突）', () => {

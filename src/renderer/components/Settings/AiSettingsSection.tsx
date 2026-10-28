@@ -5,7 +5,7 @@
 // 测试连接错误分类（T4 契约）：必须经 parseKindTaggedError 解包 `[kind] ` 前缀再展示中文文案，
 // 绝不裸匹配 message 文本——Electron 会把 handler reject 裹成 `Error invoking remote method …`。
 import React, { useCallback, useEffect, useState } from 'react'
-import { Button, Collapse, Divider, Form, Input, Popconfirm, Select, Space, Typography, message } from 'antd'
+import { App, Button, Collapse, Divider, Form, Input, Popconfirm, Select, Space, Typography } from 'antd'
 import { RobotOutlined } from '@ant-design/icons'
 import type { AiProtocol, AiSettingsView } from '@/common/ai-types'
 import { AI_FEATURE_LABELS } from '@/common/ai-types'
@@ -37,6 +37,9 @@ const BASE_URL_PLACEHOLDER: Record<AiProtocol, string> = {
 }
 
 const AiSettingsSection: React.FC = () => {
+  // m4b 结转：静态 message.* 触发 antd dev 告警（console.error，T6 冒烟零错误红线）——
+  // 改 App.useApp() 上下文实例（渲染根 <AntdApp> 包裹全部路由；与 Home/Workspace 同款惯例）
+  const { message } = App.useApp()
   const [form] = Form.useForm<AiFormValues>()
   const { getAISettings, setAISettings, testAIConnection } = useAISettings()
   const [view, setView] = useState<AiSettingsView | null>(null)
@@ -68,7 +71,7 @@ const AiSettingsSection: React.FC = () => {
     return () => {
       cancelled = true
     }
-  }, [getAISettings, form])
+  }, [getAISettings, form, message])
 
   const handleSave = useCallback(async () => {
     const values = await form.validateFields().catch(() => null)
@@ -95,7 +98,7 @@ const AiSettingsSection: React.FC = () => {
     } finally {
       setSaving(false)
     }
-  }, [form, setAISettings])
+  }, [form, setAISettings, message])
 
   const handleTest = useCallback(async () => {
     setTesting(true)
@@ -110,7 +113,7 @@ const AiSettingsSection: React.FC = () => {
     } finally {
       setTesting(false)
     }
-  }, [testAIConnection])
+  }, [testAIConnection, message])
 
   const handleClearKey = useCallback(async () => {
     setClearing(true)
@@ -124,7 +127,7 @@ const AiSettingsSection: React.FC = () => {
     } finally {
       setClearing(false)
     }
-  }, [form, setAISettings])
+  }, [form, setAISettings, message])
 
   const keyPlaceholder = view?.hasKey
     ? `${view.maskedKey}（已设置，留空则不修改）`

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Dropdown, Modal, Input, message, Typography } from 'antd'
+import { App, Dropdown, Input, Typography } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   FolderOutlined,
@@ -49,8 +49,8 @@ export const VolumeManager: React.FC<VolumeManagerProps> = ({
   onChaptersChanged
 }) => {
   const { createVolume, renameVolume, deleteVolume, reorderVolumes } = useVolume()
-  const [messageApi, contextHolder] = message.useMessage()
-  const [modal, modalHolder] = Modal.useModal()
+  // m4b 结转（T6 统一）：message/modal 走 App.useApp() 上下文实例（与 ChapterTree 同款）
+  const { message: messageApi, modal } = App.useApp()
 
   const run = async (
     fn: () => Promise<unknown>,
@@ -146,8 +146,6 @@ export const VolumeManager: React.FC<VolumeManagerProps> = ({
 
   return (
     <>
-      {contextHolder}
-      {modalHolder}
       <Dropdown menu={menu} trigger={['contextMenu']}>
         <span
           className="volume-tree-title"

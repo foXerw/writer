@@ -702,23 +702,36 @@ describe('foreshadow', () => {
     expect(stored.plannedPayoffNote).toBe('新计划')
   })
 
-  it('update×foreshadow 仅 note 类字段：plannedPayoffNote/note 落盘、机对状态不动；表外字段拒', () => {
+  it('update×foreshadow 仅 note 类字段：plannedPayoffNote/note 落盘、机对状态不动；表外字段整条拒（M4c-2 T6 结转，与 character/world 口径统一）', () => {
     const { p, ch } = setup()
     const e = mkForeshadow()
     upsertForeshadow(p, e)
     const f = plant(p, ch.id, [
-      mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { plannedPayoffNote: '新计划', note: '补注', title: '改名' } })
+      mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { plannedPayoffNote: '新计划', note: '补注' } })
     ])
     expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     const stored = readLedger(p).entries.find((x) => x.id === e.id)!
     expect(stored.plannedPayoffNote).toBe('新计划')
     expect(stored.note).toBe('补注')
-    expect(stored.title).toBe('旧钟') // title 不在 update 白名单 → 忽略
+    expect(stored.title).toBe('旧钟')
     expect(stored.status).toBe('open')
+    // 评审 I2 口径（mergeGuarded 同款）：表外兄弟键不再静默忽略——静默丢弃会让 applied 账说谎。
+    // 合法字段也一并零写盘（整条拒，先于任何状态机/写盘动作）。
+    const stray = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { plannedPayoffNote: '不该落', title: '改名' } })
+    ])
+    expect(adoptChanges(p, stray.id, keysOf(stray, [0]), []).refused[0].reason).toBe('REFUSED: 未知字段 title')
+    expect(readLedger(p).entries.find((x) => x.id === e.id)!.plannedPayoffNote).toBe('新计划')
+    // 仅表外字段 → 先拒未知字段（旧世界到不了这一关：死在「无可应用字段」）
     const none = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { title: '只改表外' } })
     ])
-    expect(adoptChanges(p, none.id, keysOf(none, [0]), []).refused[0].reason).toContain('无可应用字段')
+    expect(adoptChanges(p, none.id, keysOf(none, [0]), []).refused[0].reason).toBe('REFUSED: 未知字段 title')
+    // 保留键回显仍静默丢弃（信封回显是 T2 规约容忍的正常噪音，同 mergeGuarded）：合法字段照常应用
+    const echo = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: e.id, after: { note: '回显测试', id: e.id, createdAt: 'x', aiSource: { proposalId: '伪造', cid: '伪造' } } })
+    ])
+    expect(adoptChanges(p, echo.id, keysOf(echo, [0]), []).applied).toEqual(keysOf(echo, [0]))
   })
 
   it('update/delete×foreshadow 幻影 targetId → FORESHADOW_MISSING 拒', () => {
@@ -770,6 +783,27 @@ describe('summary', () => {
     const f = plant(p, ch.id, [mkChange(ch.id, { entity: 'summary', after: { text: '新摘要' } })])
     expect(adoptChanges(p, f.id, keysOf(f, [0]), []).applied).toEqual(keysOf(f, [0]))
     expect(existsSync(chapterSummaryFile(p, ch.id))).toBe(true)
+  })
+
+  it('update×summary 表外兄弟键 → 整条拒（M4c-2 T6 结转，与 character/world 口径统一）；保留键回显仍容忍；create 路径口径不变', () => {
+    const { p, ch } = setup()
+    const f = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'update', entity: 'summary', targetId: ch.id, after: { text: '摘要', origin: 'AI 臆造' } })
+    ])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
+    expect(r.refused[0].reason).toBe('REFUSED: 未知字段 origin')
+    expect(existsSync(chapterSummaryFile(p, ch.id))).toBe(false) // 整条拒 = 零写盘
+    // 保留键回显照常静默丢弃（信封回显容忍噪音，mergeGuarded 同款）
+    const g = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'update', entity: 'summary', targetId: ch.id, after: { text: '回显版', id: ch.id, updatedAt: 'x' } })
+    ])
+    expect(adoptChanges(p, g.id, keysOf(g, [0]), []).applied).toEqual(keysOf(g, [0]))
+    // create×summary 不在本窄门范围：create 路径的 allowlist 过滤是既有 buildCandidate 口径
+    const h = plant(p, ch.id, [mkChange(ch.id, { entity: 'summary', after: { text: '创作版', 兄弟: 1 } })])
+    expect(adoptChanges(p, h.id, keysOf(h, [0]), []).applied).toEqual(keysOf(h, [0]))
+    const doc = yaml.load(readFileSync(chapterSummaryFile(p, ch.id), 'utf8')) as Record<string, unknown>
+    expect(doc.text).toBe('创作版')
+    expect('兄弟' in doc).toBe(false) // 落盘文档形状仍由引擎独占
   })
 
   it('幻影 targetId / 空 text / after 缺 text → 拒且零落盘', () => {
@@ -824,6 +858,22 @@ describe('index', () => {
     expect(idx[car.id]).toEqual([ch1.id, ch2.id, ch3.id]) // 章序 1,2,3
     expect(idx[we.id]).toEqual([ch1.id])
     expect(listChapters(p).map((c) => c.id)).toEqual([ch1.id, ch2.id, ch3.id]) // 顺序前提自检
+  })
+
+  it('update×index 表外兄弟键 → 整条拒（M4c-2 T6 结转），index.json 零写盘', () => {
+    const { p, ch } = setup()
+    const car = createCharacter(p, { name: '目标', gender: 'male', role: 'minor' })
+    const f = plant(p, ch.id, [
+      mkChange(ch.id, {
+        op: 'update',
+        entity: 'index',
+        targetId: ch.id,
+        after: { adds: [{ entityId: car.id, chapterId: ch.id }], purge: true }
+      })
+    ])
+    const r = adoptChanges(p, f.id, keysOf(f, [0]), [])
+    expect(r.refused[0].reason).toBe('REFUSED: 未知字段 purge')
+    expect(existsSync(aiIndexFile(p))).toBe(false) // 合法 adds 也不半应用
   })
 
   it('entityId 必须存在于 角色∪词条∪伏笔；幻影/非 UUID/幻影章 → 拒（整条不落）', () => {

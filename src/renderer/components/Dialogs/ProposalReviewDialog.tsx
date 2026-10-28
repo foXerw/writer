@@ -25,6 +25,7 @@ import { App, Button, Checkbox, Empty, List, Modal, Spin, Tag, Tooltip, Typograp
 import dayjs from 'dayjs'
 import { useProposal } from '../../hooks/useIPC'
 import { notifyEntitiesChanged } from '../../services/entityEvents'
+import { proposalErrorText } from '../../services/proposalErrors'
 import type { Chapter } from '@/common/ipc'
 import { appliedKeySet, changeKey, isUnsettled } from '@/common/proposal'
 import type {
@@ -73,10 +74,10 @@ function summarizeAfter(c: ProposalChange): string {
 }
 
 /**
- * 窄门口径差异（BOOK_FORMAT §7.5；T3 复审 Minor 2）：update×foreshadow/summary/index 的引擎
- * 会静默丢弃未知兄弟键（vs character/world 整条拒「未知字段」），而提案文件里 after 原样存在。
- * M4b 裁定：面板按 after 的键【原样】渲染（键列表与摘要都吃同一数据源），不做修复——
- * 作者看到的就是文件里写的，引擎的静默窄门属采纳期语义，留 M4c 收口。
+ * 面板按 after 的键【原样】渲染（键列表与摘要都吃同一数据源——M4b 裁定保留）：作者看到的
+ * 就是文件里写的。窄门差异已于 M4c-2 Task 6 收口：update×foreshadow/summary/index 的未知
+ * 兄弟键与 character/world 同款整条拒「REFUSED: 未知字段〈键〉」（adopt.ts
+ * assertNoUnknownUpdateKeys），拒因在条目内红字如实浮现，面板不再需要口径说明。
  */
 function afterKeys(after: unknown): string[] {
   if (typeof after === 'object' && after !== null && !Array.isArray(after)) {
@@ -124,10 +125,12 @@ function ProposalReviewDialog({
   const [refused, setRefused] = useState<ProposalAdoptRefusal[]>([])
   const [notice, setNotice] = useState<string | null>(null)
 
+  // 展示面走 proposalErrorText（M4c-2 T6 结转：PROPOSAL_* 中文映射表单源，同 aiErrorText 先例）；
+  // console 仍记原文（诊断链不丢信息）
   const showChannelError = useCallback((context: string, err: unknown): void => {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[ProposalReviewDialog] ${context}:`, msg)
-    message.error(`${context}：${msg}`, 8)
+    message.error(`${context}：${proposalErrorText(msg)}`, 8)
   }, [message])
 
   /** 拉未消化提案列表（isUnsettled 单源口径——徽章/DUPLICATE 闸门同款；返回过滤后列表供调用方判存活）。 */
@@ -147,7 +150,7 @@ function ProposalReviewDialog({
     }
   }, [projectPath, getAllProposals, showChannelError])
 
-  /** 点读单份（坏档 PROPOSAL_INVALID 抛穿 → 原样展示；缺失 null 由调用方分流）。 */
+  /** 点读单份（坏档 PROPOSAL_INVALID 抛穿 → showChannelError 归一中文；缺失 null 由调用方分流）。 */
   const fetchDetail = useCallback(
     async (id: string): Promise<ProposalFile | null | undefined> => {
       if (!projectPath) return undefined
@@ -293,7 +296,7 @@ function ProposalReviewDialog({
       } else if (fresh === null) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error('[ProposalReviewDialog] 采纳出错且提案文件已不存在:', msg)
-        message.error(`采纳出错且提案文件已不存在（可能被他端消化/删除）：${msg}`, 8)
+        message.error(`采纳出错且提案文件已不存在（可能被他端消化/删除）：${proposalErrorText(msg)}`, 8)
       } else {
         // 键域差集（M4c-1）：appliedKeySet 权威链——跨窗口重排后仍按用户勾选的原条目对账
         const nowApplied = appliedKeySet(fresh)
@@ -305,13 +308,14 @@ function ProposalReviewDialog({
           return next
         })
         const msg = err instanceof Error ? err.message : String(err)
+        console.error('[ProposalReviewDialog] 采纳通道拒绝，重读对账:', msg)
         // M2（评审折入）：n===0 时「0 条实际已生效」在 markSettled 整窗失败期会说谎——实体
         // 已落盘而记账未写上（appliedCids 同样缺席——键域不改变该失败窗口的本质），盘上读到
         // 的就是 0。n=0 走中性文案不宣告生效数；n>0 才有实证（记账存在），保留「实际已生效」口径。
         setNotice(
           n > 0
-            ? `采纳状态未知，已重新同步：${n} 条实际已生效（通道报错：${msg}）`
-            : `采纳状态未知（盘上记录已生效 0 条，请以列表为准；通道报错：${msg}）`
+            ? `采纳状态未知，已重新同步：${n} 条实际已生效（通道报错：${proposalErrorText(msg)}）`
+            : `采纳状态未知（盘上记录已生效 0 条，请以列表为准；通道报错：${proposalErrorText(msg)}）`
         )
         if (n > 0) notifyEntitiesChanged()
       }
@@ -456,9 +460,11 @@ function ProposalReviewDialog({
         </div>
       }
     >
-      {/* origin 机制诚实文案（T3 顾虑 1：应用内手动编辑不撤销 aiTouched 旗标——不过度承诺，M4c 改进） */}
+      {/* origin 机制诚实文案（T3 顾虑 1：应用内手动编辑不撤销 aiTouched 旗标——不过度承诺，M4c 改进）。
+          T6 结转措辞裁定：aiTouched/覆盖确认只存在于角色/设定两类实体（剧情线/选项/伏笔/摘要/索引
+          无此机制），断言必须限定主语，否则面板对其他条目类型做出了它兜不住的承诺。 */}
       <div className="proposal-review-note">
-        AI 只会改动它此前写过的字段；你手写的字段被改动时条目会标橙并要求确认。
+        对角色/设定，AI 只会改动它此前写过的字段；你手写的字段被改动时条目会标橙并要求确认。
         你在应用内手动编辑不会撤销这一标记（M4c 计划改进）。
       </div>
       <div className="proposal-review">

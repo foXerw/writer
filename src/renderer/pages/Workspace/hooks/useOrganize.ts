@@ -16,7 +16,8 @@
 // 错误面（裁定 9）：
 // - ai 失败按 kind 路由中文 toast（文案表 services/aiErrorText 单一权威）；
 // - 解析失败 → 固定文案 + console 只记原文长度（原文可能逐字引用正文，隐私红线绝不落日志）；
-// - 提案校验不过 → 平文展示 validateProposal 错误串（同 proposal 通道「原样展示」口径）；
+// - 提案校验不过 → 平文展示 validateProposal 错误串（本地纯函数错误，无前缀可归一）；
+// - proposal:save 通道拒绝 → services/proposalErrors 中文归一（T6 结转，PROPOSAL_* 词表单源）；
 // - changes 为空 → message.info 不算错（裁定 2：不落盘、无文件）。
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { App } from 'antd'
@@ -32,6 +33,7 @@ import {
   useAISettings
 } from '../../../hooks/useIPC'
 import { aiErrorToast } from '../../../services/aiErrorText'
+import { proposalErrorText } from '../../../services/proposalErrors'
 import { subscribeEntitiesChanged } from '../../../services/entityEvents'
 import { assembleAiContext } from '@/common/ai-context'
 import { budgetToMaxTokens, buildOrganizePrompt } from '@/common/organizePrompt'
@@ -77,6 +79,12 @@ export interface OrganizeController {
   pendingChapterIds: Set<string>
   /** 跑一次本章整理（并发门内单次；所有失败只 toast，本函数不 reject）。 */
   organize: (chapterId: string) => Promise<void>
+  /**
+   * 取消在途整理（M4c-2 Task 6，裁定 4）：ai:cancel(requestId)——true 触发 abort →
+   * toast「已取消整理」；false = 请求已自行收尾，正常完成路径照常赢（不另造状态机）。
+   * 上下文装配窗口（chat 受理前，毫秒级）无 requestId 可取消，点击静默 no-op。
+   */
+  cancel: () => Promise<void>
   /** 重拉 proposal:getAll 更新徽章（挂载 / 成功落盘 / entityEvents 三处触发，裁定 7）。 */
   refreshPending: () => Promise<void>
 }
@@ -112,7 +120,7 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
   // T6 CDP 冒烟修复：静态 message.* 触发 antd dev 告警（console.error）——改走 App.useApp()
   // 上下文实例（本 hook 恒在 <App> 树内的 Workspace 中调用；与 Home/面板同款惯例）
   const { message } = App.useApp()
-  const { chat } = useAI()
+  const { chat, cancel: cancelAI } = useAI()
   const { getAllChapters } = useChapter()
   const { getAllVolumes } = useVolume()
   const { getAllCharacters } = useCharacter()
@@ -129,6 +137,9 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
   })
 
   const organizingRef = useRef(false)
+  // 在途 chat 的 requestId（取消按钮的唯一句柄）：runChat 受理后写入，终态/收尾即清空。
+  // 刻意只存「最新一个」——并发门保证同时在途至多一个整理（裁定 8）。
+  const activeRequestIdRef = useRef<string | null>(null)
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
@@ -190,20 +201,41 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
             },
             onDone: () => {
               terminal = 'done'
+              activeRequestIdRef.current = null
               resolve()
             },
             onError: (kind, detail) => {
               terminal = 'error'
-              message.error(aiErrorToast(kind, detail), 8)
+              activeRequestIdRef.current = null
+              // 'cancelled' 只可能来自本页面的取消按钮（cancelOrganize 已 toast「已取消整理」），
+              // 不二次报错；其余 kind 走 aiErrorText 单一权威文案表
+              if (kind !== 'cancelled') message.error(aiErrorToast(kind, detail), 8)
               resolve()
             }
           }
-        )
+        ).then((requestId) => {
+          // chat() 在受理（或受理前失败）后才 resolve 出 id：已终态则不再存（陈旧 id 无取消语义）
+          if (terminal === null) activeRequestIdRef.current = requestId
+        })
       })
       return terminal === 'done' ? { ok: true, text } : { ok: false }
     },
     [chat, message]
   )
+
+  /** 取消在途整理（裁定 4）：仅取消已受理的 AI 请求；abort 后的 'cancelled' 终态由 runChat 静默收敛。 */
+  const cancelOrganize = useCallback(async (): Promise<void> => {
+    const requestId = activeRequestIdRef.current
+    if (!organizingRef.current || !requestId) return // 不在途 / 上下文装配窗口（毫秒级）尚无 requestId：无可取消，no-op
+    try {
+      const ok = await cancelAI(requestId)
+      // false = 请求已自行收尾（成功/失败照常回报，正常完成路径赢）；true = 本次点击触发 abort
+      if (ok && mountedRef.current) message.success('已取消整理')
+    } catch (err) {
+      console.error('[useOrganize] 取消请求失败:', err)
+      if (mountedRef.current) message.error(`取消失败：${err instanceof Error ? err.message : String(err)}`)
+    }
+  }, [cancelAI, message])
 
   const organize = useCallback(
     async (chapterId: string): Promise<void> => {
@@ -298,7 +330,10 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
         try {
           await saveProposal(projectPath, built.file)
         } catch (err) {
-          message.error(err instanceof Error ? err.message : String(err), 8)
+          // PROPOSAL_INVALID/TOO_LARGE/CHAPTER_MISSING/DUPLICATE…中文归一（词表单源），console 留原文
+          const raw = err instanceof Error ? err.message : String(err)
+          console.error('[useOrganize] 提案落盘失败:', raw)
+          message.error(proposalErrorText(raw), 8)
           return
         }
         message.success(`整理提案已生成（${built.file.changes.length} 条变更）`)
@@ -308,6 +343,7 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
         message.error(`整理失败：${err instanceof Error ? err.message : String(err)}`, 8)
       } finally {
         organizingRef.current = false
+        activeRequestIdRef.current = null // 取消句柄随批次收尾（任何路径不留陈旧 id）
         if (mountedRef.current) setOrganizing(false)
       }
     },
@@ -320,6 +356,7 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
     pendingCount: pending.count,
     pendingChapterIds: pending.chapters,
     organize,
+    cancel: cancelOrganize,
     refreshPending
   }
 }
