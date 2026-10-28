@@ -11,6 +11,7 @@ import GraphView from '../../components/Graph/GraphView'
 import type { GraphKind } from '../../components/Graph/graphModel'
 import CommandPalette from '../../components/Dialogs/CommandPalette'
 import ExportDialog, { type ExportOptions } from '../../components/Dialogs/ExportDialog'
+import ProposalReviewDialog from '../../components/Dialogs/ProposalReviewDialog'
 import { useMenu } from '../../hooks/useMenu'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import { useBookEvents } from '../../hooks/useBookEvents'
@@ -106,6 +107,8 @@ function Workspace() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [outlineVisible, setOutlineVisible] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  // M4b T5 差异确认面板：徽章点击进入（打开时面板自拉新鲜 proposal:getAll）
+  const [proposalReviewOpen, setProposalReviewOpen] = useState(false)
 
   // 章节会话：save/flush 并发语义（dirty 门控 / LIVE id 镜像 / 函数式回写）全部在 hook 内
   const session = useEditorSession(projectPath)
@@ -485,6 +488,12 @@ function Workspace() {
       {/* 命令面板 */}
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} onExecute={handleCommand} />
       <ExportDialog open={exportDialogOpen} onClose={() => setExportDialogOpen(false)} chapters={chapters} projectName={projectName} onExport={handleExport} />
+      <ProposalReviewDialog
+        open={proposalReviewOpen}
+        onClose={() => setProposalReviewOpen(false)}
+        projectPath={projectPath}
+        chapters={chapters}
+      />
       {/* 左侧边栏 */}
       <SidebarPanel
         projectPath={projectPath || ''} projectName={projectName}
@@ -517,11 +526,27 @@ function Workspace() {
                 { label: '写作', value: 'write' },
                 {
                   // 提案徽章（M4b Task 4）：未消化提案数挂在图谱入口上——T5 审阅面板
-                  // （提案处理的宿主视图）在图谱侧，count=0 时 Badge 自动隐身
+                  // （提案处理的宿主视图）在图谱侧，count=0 时 Badge 自动隐身。
+                  // T5 接线：点击徽章数字打开审阅面板（stopPropagation 避免顺手切视图——
+                  // 点「图谱」文字仍是视图切换，两条路互不踩腿；count=0 时数字不存在，
+                  // 点击自然落回切换语义）
                   label: (
-                    <Badge count={organize.pendingCount} size="small" offset={[4, -4]}>
-                      <span style={{ padding: '0 6px' }}>图谱</span>
-                    </Badge>
+                    <span
+                      className="proposal-review-entry"
+                      onClick={(e) => {
+                        if (
+                          organize.pendingCount > 0 &&
+                          (e.target as HTMLElement).closest('.ant-badge-count')
+                        ) {
+                          e.stopPropagation()
+                          setProposalReviewOpen(true)
+                        }
+                      }}
+                    >
+                      <Badge count={organize.pendingCount} size="small" offset={[4, -4]}>
+                        <span style={{ padding: '0 6px' }}>图谱</span>
+                      </Badge>
+                    </span>
                   ),
                   value: 'graph'
                 }

@@ -323,3 +323,171 @@ body {
 .editor-tabs .ant-tabs-tab:hover .tab-close {
   opacity: 1;
 }
+
+/* ============================================================
+   M4b T5 提案差异确认面板（.proposal-review 作用域，无强制声明）
+   两栏布局：左=按章分组的提案导航，右=选中提案的逐条目审阅列表。
+   颜色/间距/字号/圆角全部走设计 token；已采纳条目整体降透明度表达灰化，
+   覆盖警示用 --color-warning（橙）、拒绝原因用 --color-danger。
+   ============================================================ */
+.proposal-review {
+  display: flex;
+  gap: var(--space-4);
+  height: 56vh;
+}
+
+.proposal-review-nav {
+  flex: 0 0 230px;
+  overflow-y: auto;
+  min-height: 0;
+  border-right: 1px solid var(--color-border);
+  padding-right: var(--space-2);
+}
+
+.proposal-review-detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  min-height: 0;
+  padding-left: var(--space-2);
+}
+
+/* 面板顶部 origin 机制诚实说明 */
+.proposal-review-note {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-xs);
+  line-height: 1.6;
+  margin-bottom: var(--space-3);
+}
+
+.proposal-review-chapter {
+  color: var(--color-text-secondary);
+  font-size: var(--font-xs);
+  padding: var(--space-2) var(--space-1) var(--space-1);
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.proposal-review-proposal {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.proposal-review-proposal:hover {
+  background: var(--color-bg-hover);
+}
+
+.proposal-review-proposal--selected {
+  background: var(--color-bg-selected);
+}
+
+.proposal-review-proposal-title {
+  color: var(--color-text);
+  font-size: var(--font-sm);
+}
+
+.proposal-review-meta {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-xs);
+}
+
+/* 重新同步提示行（采纳通道 REJECT 后的差集告知） */
+.proposal-review-notice {
+  background: var(--color-primary-tint-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-primary-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  font-size: var(--font-sm);
+  margin-bottom: var(--space-2);
+}
+
+.proposal-review-change {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+
+/* 已采纳条目：灰化（不可再勾选的状态由禁用复选框换成 ✓ 文本表达） */
+.proposal-review-change--applied {
+  opacity: 0.45;
+}
+
+.proposal-review-change-check {
+  flex: 0 0 auto;
+  padding-top: var(--space-1);
+}
+
+.proposal-review-change-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.proposal-review-change-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.proposal-review-applied {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-xs);
+  white-space: nowrap;
+}
+
+/* after 紧凑摘要（≤120 字截断在组件完成） */
+.proposal-review-after {
+  color: var(--color-text-secondary);
+  font-size: var(--font-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  margin: var(--space-1) 0;
+}
+
+.proposal-review-quote {
+  border-left: 2px solid var(--color-border-secondary);
+  margin: var(--space-1) 0;
+  padding: 0 var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-sm);
+  overflow-wrap: anywhere;
+}
+
+.proposal-review-quote-source {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-xs);
+}
+
+/* overwritesHuman 橙色警示行 */
+.proposal-review-warn {
+  color: var(--color-warning);
+  font-size: var(--font-xs);
+  margin: var(--space-1) 0;
+}
+
+/* 采纳期逐条拒绝原因（REFUSED: 前缀原样展示，会话态不落盘） */
+.proposal-review-refused {
+  color: var(--color-danger);
+  font-size: var(--font-xs);
+  margin: var(--space-1) 0;
+  overflow-wrap: anywhere;
+}
+
+.proposal-review-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.proposal-review-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+/* 图谱入口徽章数字 = 审阅面板点击区（count=0 时数字不存在，选择器自然落空） */
+.proposal-review-entry .ant-badge-count {
+  cursor: pointer;
+}
