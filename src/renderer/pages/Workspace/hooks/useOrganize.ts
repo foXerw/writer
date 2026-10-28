@@ -35,6 +35,7 @@ import {
 import { aiErrorToast } from '../../../services/aiErrorText'
 import { proposalErrorText } from '../../../services/proposalErrors'
 import { subscribeEntitiesChanged } from '../../../services/entityEvents'
+import { withLedgerLoudError } from './ledgerFallback'
 import { assembleAiContext } from '@/common/ai-context'
 import { budgetToMaxTokens, buildOrganizePrompt } from '@/common/organizePrompt'
 import { buildProposalFromAi } from '@/common/organizeResult'
@@ -251,12 +252,15 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
           message.error(aiErrorToast('not-configured'), 8)
           return
         }
+        // 台账这一路（六路中唯一会抛穿）：坏台账 = fail-loud 中止整理，且文案经 narrativeErrorText
+        // 中文归一后再上抛——整理花用户 token，绝不静默降级空台账（Task 7 收口裁定，与图谱侧
+        // withLedgerFallback 的只读降级刻意不对称；见 ledgerFallback.ts 文件头）。
         const [chapters, volumes, characters, world, ledger, aiData] = await Promise.all([
           getAllChapters(projectPath),
           getAllVolumes(projectPath),
           getAllCharacters(projectPath),
           getAllSettings(projectPath),
-          getForeshadowLedger(projectPath),
+          withLedgerLoudError(() => getForeshadowLedger(projectPath)),
           readAiData(projectPath)
         ])
         const disk = chapters.find((c: Chapter) => c.id === chapterId)
