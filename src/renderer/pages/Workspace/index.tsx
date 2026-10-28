@@ -104,22 +104,6 @@ function Workspace() {
   // 人物关系 | 世界观 | 剧情走向 | 关键选项 | 角色成长）
   const [viewMode, setViewMode] = useState<'write' | 'graph'>('write')
   const [graphKind, setGraphKind] = useState<GraphKind>('character')
-  // viewState 跨切换（M4c-2 Task 6，裁定 3）：写作→图谱离开编辑器前把视图态（光标/滚动）存入 ref；
-  // 切回后编辑器重挂载——脏 CONTENT 已有 useEditorSession 保证，这里只补视图态。restore 走
-  // MonacoEditor handle：monaco 异步创建未就绪时由 handle 暂存、创建完成即应用（同一帧不丢光标）。
-  const viewStateRef = useRef<unknown | null>(null)
-  useEffect(() => {
-    if (viewMode !== 'write') return
-    const st = viewStateRef.current
-    if (st === null) return
-    viewStateRef.current = null
-    editorRef.current?.restoreViewState(st)
-  }, [viewMode])
-  const switchViewMode = (next: 'write' | 'graph') => {
-    if (next === viewMode) return
-    if (next === 'graph') viewStateRef.current = editorRef.current?.saveViewState() ?? null
-    setViewMode(next)
-  }
   // 命令面板 / 大纲 / 导出对话框
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [outlineVisible, setOutlineVisible] = useState(false)
@@ -132,6 +116,29 @@ function Workspace() {
   const { chapters, openedChapters, currentChapter, editorContent, chapterTitle, setChapterTitle,
     loadChapters, openChapter, closeChapter, createChapter, mergeUpdatedChapters, save, flushIfDirty, handleEditorChange,
     isDirtyNow, setFlushPaused, discardEdits, lastSavedContent, markSavedContent } = session
+
+  // viewState 跨切换（M4c-2 Task 6，裁定 3）：写作→图谱离开编辑器前把视图态（光标/滚动）存入 ref；
+  // 切回后编辑器重挂载——脏 CONTENT 已有 useEditorSession 保证，这里只补视图态。restore 走
+  // MonacoEditor handle：monaco 异步创建未就绪时由 handle 暂存、创建完成即应用（同一提交内不丢光标）。
+  // 评审 R1：视图态与【来源章】配对存放——侧栏章节树 / EditorTabs 的 openChapter 都可能在图谱态
+  // 换章（远比受跳章菜单守卫的路径常见），恢复必须按章 id 对号，绝不把 A 章光标复活进 B 章内容。
+  // 位置刻意在 session 解构之后：effect 的依赖数组渲染期即读 currentChapter（const 无提升）。
+  const viewStateRef = useRef<{ chapterId: string; state: unknown } | null>(null)
+  const switchViewMode = (next: 'write' | 'graph') => {
+    if (next === viewMode) return
+    if (next === 'graph') {
+      const st = editorRef.current?.saveViewState() ?? null
+      viewStateRef.current = st === null || !currentChapter ? null : { chapterId: currentChapter.id, state: st }
+    }
+    setViewMode(next)
+  }
+  useEffect(() => {
+    if (viewMode !== 'write') return
+    const saved = viewStateRef.current
+    if (saved === null) return
+    viewStateRef.current = null
+    if (saved.chapterId === currentChapter?.id) editorRef.current?.restoreViewState(saved.state)
+  }, [viewMode, currentChapter])
 
   // 写作统计：countWords 增量（切章重置基线）/ 60s 活跃分钟 / 3s 防抖落盘
   const stats = useWritingStats({ projectPath, chapters, editorContent, currentChapterId: currentChapter?.id ?? null })
