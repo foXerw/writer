@@ -1,16 +1,20 @@
-// M3 图谱视图的纯数据核心：把 CharacterV2[] / WorldEntryV2[] 转换为
+// M3 图谱视图的纯数据核心：把 CharacterV2[] / WorldEntryV2[]（M4c-2 起另加
+// PlotlineV2[] / ChoiceNodeV2[] / CharacterV2 单体）转换为
 // React Flow 可渲染的 { nodes, edges }，不含任何 React / DOM 依赖，可单测。
 // 颜色一律取 src/renderer/styles/global.css 中已定义的设计变量（双主题均存在）。
 
 import type { Node, Edge } from '@xyflow/react'
-import type { CharacterV2, WorldEntryV2 } from '@/common/schema'
+import type { CharacterV2, ChoiceNodeV2, PlotlineV2, WorldEntryV2 } from '@/common/schema'
 import type { CharacterRole, SettingCategory } from '@/common/ipc'
 
 // ---------------------------------------------------------------------------
 // 类型
 // ---------------------------------------------------------------------------
 
-export type GraphKind = 'character' | 'world'
+export type GraphKind = 'character' | 'world' | 'plotline' | 'choice' | 'arc'
+
+/** 剧情线状态。schema.ts 刻意不导出命名类型（Task 1 共管），此处按结构派生。 */
+export type PlotlineStatus = PlotlineV2['status']
 
 // 注意：必须用 type 别名而非 interface —— @xyflow/react v12 的 Node<T> 约束
 // T extends Record<string, unknown>，type 别名享有隐式索引签名而 interface 没有。
@@ -46,6 +50,12 @@ export const CATEGORY_COLORS: Record<SettingCategory, string> = {
   other: 'var(--color-text-secondary)'
 }
 
+export const STATUS_COLORS: Record<PlotlineStatus, string> = {
+  active: 'var(--color-primary)',
+  done: 'var(--color-success)',
+  dormant: 'var(--color-text-tertiary)'
+}
+
 const ROLE_LABELS: Record<CharacterRole, string> = {
   protagonist: '主角',
   antagonist: '反派',
@@ -59,6 +69,12 @@ const CATEGORY_LABELS: Record<SettingCategory, string> = {
   magic: '魔法',
   culture: '文化',
   other: '其他'
+}
+
+const STATUS_LABELS: Record<PlotlineStatus, string> = {
+  active: '进行中',
+  done: '已完结',
+  dormant: '休眠'
 }
 
 /** 未知 category（运行时脏数据）的兜底色，同样来自 global.css。 */
@@ -132,6 +148,12 @@ export function buildCharacterGraph(chars: CharacterV2[]): Graph {
 
   return { nodes, edges }
 }
+
+/**
+ * summary 截断：超过 max 字符取前 max 个加省略号（弧光 stage 卡片行高有限，
+ * 全文留给实体卡）。恰 max 不截、不加省略号。
+ */
+const truncate = (s: string, max = 40): string => (s.length > max ? `${s.slice(0, max)}…` : s)
 
 // ---------------------------------------------------------------------------
 // 世界观设定图：类目分列 + 层级行序
@@ -235,6 +257,174 @@ export function buildWorldGraph(entries: WorldEntryV2[]): Graph {
       })
     })
   }
+
+  return { nodes, edges }
+}
+
+// ---------------------------------------------------------------------------
+// 剧情走向图：每剧情线一列、stages 纵向顺序链（M4c-2 Task 3）
+// ---------------------------------------------------------------------------
+
+/**
+ * 语义钉死：
+ * - 节点 = stage（不设剧情线根节点——根会与首 stage 重复表达标题）。
+ *   每剧情线独占一列：列序 = createdAt 升序、同刻按 id 升序（总序 → 乱序输入同图）；
+ *   0-stage 剧情线仍占其列（空列，列号与排序后下标一致，规则最简）。
+ *   x = colIndex*260，y = stage 数组原序下标*120。
+ * - 节点：label=stage.title，sub=`剧情线标题（状态中文）`，色=STATUS_COLORS[status]
+ *   （运行时脏 status 兜底 FALLBACK_COLOR + 原样回显，同世界观图姿态）；
+ *   id = `ps-<plotlineId>-<row>`，entityId 回指剧情线（点击=打开剧情线卡/跳章）。
+ * - 边：stage_i→stage_{i+1}，id = `pc-<plotlineId>-<目标下标>`；无 label——
+ *   顺序链自明（M3 关系边的 kind 标签语义在此不存在）。n stages → n-1 边。
+ */
+export function buildPlotlineGraph(plotlines: PlotlineV2[]): Graph {
+  if (plotlines.length === 0) return { nodes: [], edges: [] }
+
+  const ordered = [...plotlines].sort((a, b) => {
+    if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  })
+
+  const nodes: Node<GraphNodeData>[] = []
+  const edges: Edge[] = []
+  ordered.forEach((p, col) => {
+    p.stages.forEach((stage, row) => {
+      const id = `ps-${p.id}-${row}`
+      nodes.push({
+        id,
+        type: 'plotline', // nodeTypes 分发键，同 character/world 钉法
+        position: { x: col * COL_X, y: row * ROW_Y },
+        data: {
+          label: stage.title,
+          sub: `${p.title}（${STATUS_LABELS[p.status] ?? p.status}）`,
+          color: STATUS_COLORS[p.status] ?? FALLBACK_COLOR,
+          kind: 'plotline',
+          entityId: p.id
+        }
+      })
+      if (row > 0) {
+        edges.push({ id: `pc-${p.id}-${row}`, source: `ps-${p.id}-${row - 1}`, target: id })
+      }
+    })
+  })
+
+  return { nodes, edges }
+}
+
+// ---------------------------------------------------------------------------
+// 关键选项图：按章分列的无边散点集合（M4c-2 Task 3）
+// ---------------------------------------------------------------------------
+
+/**
+ * 语义钉死：
+ * - 边恒为 []。裁定（计划 §Task 3）：choice→choice 链接仅当 consequence 指向另一
+ *   choice id 时成立，而 M2 schema 的 ChoiceOption.consequence 是自由文本、无此字段，
+ *   故 M4c 选择图 = 按章分列的节点集合，不造边。
+ * - 列 = 有 ≥1 选项节点的章；x 按该章在 orderedChapterIds 中的**全局章序**定位
+ *   （x = indexOf*260），中间没有选项的章留空列——章的远近由章序决定，不做压缩。
+ * - 悬挂 chapterId（章已删/不在序表）：节点不丢，按 chapterId 升序补排在已知列之后
+ *   （列号 = orderedChapterIds.length + 组内秩），确定性且不崩。
+ * - 列内行序：createdAt 升序、同刻按 id 升序（总序 → 乱序输入同图）；y = rowIndex*120。
+ * - 节点：label=title，sub=`N 个选项`（0 选项仍是节点），色=var(--color-warning)；
+ *   id = choice.id，type='choice'。
+ */
+export function buildChoiceGraph(choices: ChoiceNodeV2[], orderedChapterIds: string[]): Graph {
+  if (choices.length === 0) return { nodes: [], edges: [] }
+
+  const columnByChapter = new Map(orderedChapterIds.map((id, i) => [id, i]))
+  const byChapter = new Map<string, ChoiceNodeV2[]>()
+  for (const c of choices) {
+    byChapter.set(c.chapterId, [...(byChapter.get(c.chapterId) ?? []), c])
+  }
+
+  const known = [...byChapter.keys()]
+    .filter((ch) => columnByChapter.has(ch))
+    .sort((a, b) => columnByChapter.get(a)! - columnByChapter.get(b)!)
+    .map((ch) => ({ col: columnByChapter.get(ch)!, list: byChapter.get(ch)! }))
+  const dangling = [...byChapter.keys()]
+    .filter((ch) => !columnByChapter.has(ch))
+    .sort()
+    .map((ch, i) => ({ col: orderedChapterIds.length + i, list: byChapter.get(ch)! }))
+
+  const cmp = (a: ChoiceNodeV2, b: ChoiceNodeV2): number => {
+    if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  }
+
+  const nodes: Node<GraphNodeData>[] = []
+  for (const { col, list } of [...known, ...dangling]) {
+    list.sort(cmp).forEach((c, row) => {
+      nodes.push({
+        id: c.id,
+        type: 'choice', // nodeTypes 分发键，同 character/world 钉法
+        position: { x: col * COL_X, y: row * ROW_Y },
+        data: {
+          label: c.title,
+          sub: `${c.options.length} 个选项`,
+          color: 'var(--color-warning)',
+          kind: 'choice',
+          entityId: c.id
+        }
+      })
+    })
+  }
+
+  return { nodes, edges: [] }
+}
+
+// ---------------------------------------------------------------------------
+// 角色成长图：根 + 单列 arc stages 链（M4c-2 Task 3）
+// ---------------------------------------------------------------------------
+
+/**
+ * 语义钉死：
+ * - 输入为**单个**角色（arc 视图配角色选择器，Task 4）；null/undefined → 空图。
+ * - 根节点：character.id，position {0,0}，label=name、sub=role 中文、color=ROLE_COLORS[role]
+ *   —— data 形状与角色图逐字段一致，故 type/kind 均复用 'character'（Task 4 可直接
+ *   挂 CharacterNode，点击回退 M3「打开角色卡」）。
+ * - stage 节点：arc 数组原序（不做二次排序——成长顺序即录入顺序），单列 x=260、
+ *   y=rowIndex*120；label=title，sub=summary 截断 40，色=ROLE_COLORS[role]（弧光随人）；
+ *   id = `as-<charId>-<row>`，type='arc'，entityId 回指角色。
+ * - 边：根→stage0、stage_i→stage_{i+1}，id = `ac-<charId>-<目标下标>`；无 label。
+ *   m stages → m 边；空 arc → 仅根、0 边。
+ */
+export function buildArcGraph(character: CharacterV2 | null | undefined): Graph {
+  if (!character) return { nodes: [], edges: [] }
+
+  const color = ROLE_COLORS[character.role] ?? FALLBACK_COLOR
+  const nodes: Node<GraphNodeData>[] = [
+    {
+      id: character.id,
+      type: 'character', // 复用角色节点渲染：根与角色图节点 data 同形
+      position: { x: 0, y: 0 },
+      data: {
+        label: character.name,
+        sub: ROLE_LABELS[character.role] ?? character.role,
+        color,
+        kind: 'character',
+        entityId: character.id
+      }
+    }
+  ]
+  const edges: Edge[] = []
+
+  character.arc.forEach((stage, row) => {
+    const id = `as-${character.id}-${row}`
+    nodes.push({
+      id,
+      type: 'arc', // nodeTypes 分发键，同 character/world 钉法
+      position: { x: COL_X, y: row * ROW_Y },
+      data: {
+        label: stage.title,
+        sub: truncate(stage.summary),
+        color,
+        kind: 'arc',
+        entityId: character.id
+      }
+    })
+    const source = row === 0 ? character.id : `as-${character.id}-${row - 1}`
+    edges.push({ id: `ac-${character.id}-${row}`, source, target: id })
+  })
 
   return { nodes, edges }
 }

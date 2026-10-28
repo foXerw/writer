@@ -1,11 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import type { CharacterV2, WorldEntryV2 } from '@/common/schema'
+import type {
+  CharacterArcStage,
+  CharacterV2,
+  ChoiceNodeV2,
+  PlotlineV2,
+  WorldEntryV2
+} from '@/common/schema'
 import type { CharacterRole, SettingCategory } from '@/common/ipc'
 import {
   buildCharacterGraph,
   buildWorldGraph,
+  buildPlotlineGraph,
+  buildChoiceGraph,
+  buildArcGraph,
   ROLE_COLORS,
-  CATEGORY_COLORS
+  CATEGORY_COLORS,
+  STATUS_COLORS,
+  type PlotlineStatus
 } from './graphModel'
 
 // ---------------------------------------------------------------------------
@@ -21,7 +32,8 @@ function char(
   id: string,
   name: string,
   role: CharacterRole,
-  relationships: { targetId: string; kind: string }[] = []
+  relationships: { targetId: string; kind: string }[] = [],
+  arc: CharacterArcStage[] = []
 ): CharacterV2 {
   return {
     id,
@@ -33,7 +45,7 @@ function char(
     personality: '',
     background: '',
     relationships,
-    arc: [],
+    arc,
     tags: [],
     links: [],
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -59,6 +71,48 @@ function entry(
     links: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z'
+  }
+}
+
+function arcStage(title: string, summary: string): CharacterArcStage {
+  return { title, summary, chapterIds: [] }
+}
+
+function plotline(
+  id: string,
+  title: string,
+  status: PlotlineStatus,
+  stageTitles: string[],
+  createdAt = '2026-01-01T00:00:00.000Z'
+): PlotlineV2 {
+  return {
+    id,
+    title,
+    summary: '',
+    status,
+    stages: stageTitles.map((t) => ({ title: t, summary: `概要-${t}`, chapterIds: [], entityIds: [] })),
+    createdAt,
+    updatedAt: createdAt
+  }
+}
+
+function choice(
+  id: string,
+  chapterId: string,
+  title: string,
+  optionCount: number,
+  createdAt = '2026-01-01T00:00:00.000Z'
+): ChoiceNodeV2 {
+  return {
+    id,
+    chapterId,
+    title,
+    options: Array.from({ length: optionCount }, (_, i) => ({
+      label: `选项${i + 1}`,
+      consequence: ''
+    })),
+    createdAt,
+    updatedAt: createdAt
   }
 }
 
@@ -376,5 +430,346 @@ describe('buildWorldGraph', () => {
     expectFinitePositions(g.nodes)
     expectNoOverlap(g.nodes)
     expect(g.edges.length).toBeGreaterThan(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildPlotlineGraph
+// ---------------------------------------------------------------------------
+
+describe('buildPlotlineGraph', () => {
+  it('空输入 → nodes/edges 均为空数组，不抛', () => {
+    const g = buildPlotlineGraph([])
+    expect(g).toEqual({ nodes: [], edges: [] })
+  })
+
+  it('剧情线 0 stages（退化）→ 无节点无边，不抛', () => {
+    const g = buildPlotlineGraph([plotline(ID_A, '空线', 'active', [])])
+    expect(g).toEqual({ nodes: [], edges: [] })
+  })
+
+  it('单剧情线 3 stages → 3 节点纵向一列（x=0，y=0/120/240），2 条顺序链边', () => {
+    const g = buildPlotlineGraph([plotline(ID_A, '主线', 'active', ['起', '承', '合'])])
+    expect(g.nodes).toHaveLength(3)
+    expect(g.edges).toHaveLength(2)
+    expect(g.nodes.map((n) => n.position)).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 120 },
+      { x: 0, y: 240 }
+    ])
+    // 节点 data 形状：label=stage.title，sub=剧情线标题+status 中文
+    expect(g.nodes[1].data).toEqual({
+      label: '承',
+      sub: '主线（进行中）',
+      color: STATUS_COLORS.active,
+      kind: 'plotline',
+      entityId: ID_A
+    })
+  })
+
+  it('两剧情线 → 每线一列（x=colIndex*260），边仅在各自线内 stage_i→stage_{i+1}', () => {
+    const g = buildPlotlineGraph([
+      plotline(ID_A, '甲线', 'active', ['a1', 'a2', 'a3']),
+      plotline(ID_B, '乙线', 'done', ['b1', 'b2'])
+    ])
+    expect(g.nodes).toHaveLength(5)
+    expect(g.edges).toHaveLength(3) // (3-1) + (2-1)
+    const xOf = (label: string): number =>
+      g.nodes.find((n) => n.data.label === label)!.position.x
+    expect(xOf('a1')).toBe(0)
+    expect(xOf('a3')).toBe(0)
+    expect(xOf('b1')).toBe(260)
+    // 边不跨列：每条边的两端 id 前缀同线
+    for (const e of g.edges) {
+      const src = g.nodes.find((n) => n.id === e.source)!
+      const tgt = g.nodes.find((n) => n.id === e.target)!
+      expect(src.position.x).toBe(tgt.position.x)
+      expect(tgt.position.y).toBeGreaterThan(src.position.y)
+    }
+  })
+
+  it('边无 label（链条自明，M3 关系边的 kind 标签不适用于 stage 顺序链）', () => {
+    const g = buildPlotlineGraph([plotline(ID_A, '甲', 'active', ['s1', 's2', 's3'])])
+    expect(g.edges).toHaveLength(2)
+    for (const e of g.edges) expect(e.label).toBeUndefined()
+  })
+
+  it("每个节点带 type:'plotline'（GraphView nodeTypes 分发键，同 character/world 钉法）", () => {
+    const g = buildPlotlineGraph([plotline(ID_A, '甲', 'dormant', ['s1', 's2'])])
+    for (const n of g.nodes) {
+      expect(n.type).toBe('plotline')
+      expect(n.data.kind).toBe('plotline')
+    }
+  })
+
+  it('status 三色映射：active→primary、done→success、dormant→text-tertiary（含中文标签）', () => {
+    const g = buildPlotlineGraph([
+      plotline(ID_A, 'A', 'active', ['a']),
+      plotline(ID_B, 'B', 'done', ['b']),
+      plotline(ID_C, 'C', 'dormant', ['c'])
+    ])
+    const nodeOf = (label: string) => g.nodes.find((n) => n.data.label === label)!
+    expect(nodeOf('a').data.color).toBe('var(--color-primary)')
+    expect(nodeOf('b').data.color).toBe('var(--color-success)')
+    expect(nodeOf('c').data.color).toBe('var(--color-text-tertiary)')
+    expect(nodeOf('a').data.sub).toBe('A（进行中）')
+    expect(nodeOf('b').data.sub).toBe('B（已完结）')
+    expect(nodeOf('c').data.sub).toBe('C（休眠）')
+  })
+
+  it('运行时脏 status → 兜底色 + 原样回显，不抛', () => {
+    const dirty = plotline(ID_A, '甲', 'active', ['s'])
+    const g = buildPlotlineGraph([{ ...dirty, status: 'weird' as PlotlineStatus }])
+    expect(g.nodes).toHaveLength(1)
+    expect(g.nodes[0].data.color).toBe('var(--color-text-tertiary)')
+    expect(g.nodes[0].data.sub).toBe('甲（weird）')
+  })
+
+  it('确定性：按 createdAt→id 排序，输入乱序两次构建结果逐一相同', () => {
+    const base = [
+      plotline(ID_A, '甲', 'active', ['a1', 'a2'], '2026-01-03T00:00:00.000Z'),
+      plotline(ID_B, '乙', 'done', ['b1'], '2026-01-01T00:00:00.000Z'),
+      plotline(ID_D, '丙', 'dormant', ['c1', 'c2', 'c3'], '2026-01-03T00:00:00.000Z')
+    ]
+    const shuffled = [base[2], base[0], base[1]]
+    const g1 = buildPlotlineGraph(base)
+    const g2 = buildPlotlineGraph(shuffled)
+    expect(g2).toEqual(g1)
+    // 列序：createdAt 升序（乙）→ 同日按 id 升序（'3f2b…' < '6666…' 见夹具常量）
+    const xOf = (label: string): number =>
+      g1.nodes.find((n) => n.data.label === label)!.position.x
+    expect(xOf('b1')).toBe(0)
+    expect(xOf('a1')).toBe(260)
+    expect(xOf('c1')).toBe(520)
+  })
+
+  it('布局不变量：坐标有限且两两不重合', () => {
+    const g = buildPlotlineGraph([
+      plotline(ID_A, '甲', 'active', ['a1', 'a2', 'a3']),
+      plotline(ID_B, '乙', 'done', ['b1']),
+      plotline(ID_C, '丙', 'dormant', ['c1', 'c2'])
+    ])
+    expectFinitePositions(g.nodes)
+    expectNoOverlap(g.nodes)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildChoiceGraph
+// ---------------------------------------------------------------------------
+
+describe('buildChoiceGraph', () => {
+  it('空输入 → nodes/edges 均为空数组，不抛', () => {
+    const g = buildChoiceGraph([], [ID_A])
+    expect(g).toEqual({ nodes: [], edges: [] })
+  })
+
+  it('单选项 → 1 节点 0 边，sub=「N 个选项」，色=warning', () => {
+    const g = buildChoiceGraph([choice(ID_A, ID_C, '抉择', 2)], [ID_C])
+    expect(g.nodes).toHaveLength(1)
+    expect(g.edges).toEqual([])
+    expect(g.nodes[0].data).toEqual({
+      label: '抉择',
+      sub: '2 个选项',
+      color: 'var(--color-warning)',
+      kind: 'choice',
+      entityId: ID_A
+    })
+    expect(g.nodes[0].type).toBe('choice')
+    expect(g.nodes[0].position).toEqual({ x: 0, y: 0 })
+  })
+
+  it('0 选项（退化）仍是节点，sub=「0 个选项」', () => {
+    const g = buildChoiceGraph([choice(ID_A, ID_C, '空抉择', 0)], [ID_C])
+    expect(g.nodes).toHaveLength(1)
+    expect(g.nodes[0].data.sub).toBe('0 个选项')
+  })
+
+  it('无边散点图（裁定 R：M2 schema 无 choice→choice 链接字段）→ edges 恒为空', () => {
+    const chapters = [ID_A, ID_B]
+    const choices = [
+      choice(ID_C, ID_A, '甲选', 2),
+      choice(ID_D, ID_B, '乙选', 1),
+      choice('e1', ID_A, '丙选', 3)
+    ]
+    const g = buildChoiceGraph(choices, chapters)
+    expect(g.nodes).toHaveLength(3)
+    expect(g.edges).toEqual([])
+  })
+
+  it('列位置跟随 orderedChapterIds 全局章序：ch3 的选项落在 ch3 列（ch1/ch2 空亦然）', () => {
+    const chapters = ['ch1', 'ch2', 'ch3']
+    const g = buildChoiceGraph([choice(ID_A, 'ch3', '抉择', 1)], chapters)
+    expect(g.nodes[0].position.x).toBe(520) // index 2 * 260
+    expect(g.nodes[0].position.y).toBe(0)
+  })
+
+  it('同章多选项纵向堆叠 y=rowIndex*120；列内按 createdAt→id 排序，乱序输入结果不变', () => {
+    const base = [
+      choice(ID_A, ID_C, '先', 1, '2026-01-02T00:00:00.000Z'),
+      choice(ID_B, ID_C, '后', 2, '2026-01-01T00:00:00.000Z'),
+      choice(ID_D, ID_C, '同日按id', 3, '2026-01-02T00:00:00.000Z')
+    ]
+    const shuffled = [base[2], base[1], base[0]]
+    const g1 = buildChoiceGraph(base, [ID_C])
+    const g2 = buildChoiceGraph(shuffled, [ID_C])
+    expect(g2).toEqual(g1)
+    expect(g1.nodes.map((n) => [n.data.label, n.position.y])).toEqual([
+      ['后', 0],
+      ['先', 120],
+      ['同日按id', 240]
+    ])
+  })
+
+  it('悬挂 chapterId（不在 orderedChapterIds）不丢节点：排在已知列之后、按章 id 升序，确定性', () => {
+    const chapters = ['ch1']
+    const choices = [choice(ID_A, 'zz', '乙', 1), choice(ID_B, 'aa', '甲', 1)]
+    const g = buildChoiceGraph([...choices, choice('c1', 'ch1', '正常', 1)], chapters)
+    expect(g.nodes).toHaveLength(3)
+    const xOf = (label: string): number =>
+      g.nodes.find((n) => n.data.label === label)!.position.x
+    expect(xOf('正常')).toBe(0)
+    // 未知章按 chapterId 升序补列：aa=列1、zz=列2
+    expect(xOf('甲')).toBe(260)
+    expect(xOf('乙')).toBe(520)
+  })
+
+  it('布局不变量：坐标有限且两两不重合；两次构建逐一相同', () => {
+    const chapters = ['ch1', 'ch2', 'ch3']
+    const choices = [
+      choice(ID_A, 'ch1', 'a', 1),
+      choice(ID_B, 'ch1', 'b', 2, '2026-01-02T00:00:00.000Z'),
+      choice(ID_C, 'ch3', 'c', 1),
+      choice(ID_D, 'ghost', 'd', 1)
+    ]
+    const g1 = buildChoiceGraph(choices, chapters)
+    const g2 = buildChoiceGraph(choices, chapters)
+    expect(g2).toEqual(g1)
+    expectFinitePositions(g1.nodes)
+    expectNoOverlap(g1.nodes)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildArcGraph
+// ---------------------------------------------------------------------------
+
+describe('buildArcGraph', () => {
+  it('null / undefined（未选角色）→ 空图，不抛', () => {
+    expect(buildArcGraph(null)).toEqual({ nodes: [], edges: [] })
+    expect(buildArcGraph(undefined)).toEqual({ nodes: [], edges: [] })
+  })
+
+  it('arc 为空（退化）→ 仅角色根节点 {0,0}，无边', () => {
+    const g = buildArcGraph(char(ID_A, '甲', 'protagonist'))
+    expect(g.nodes).toHaveLength(1)
+    expect(g.edges).toHaveLength(0)
+    expect(g.nodes[0].position).toEqual({ x: 0, y: 0 })
+    expect(g.nodes[0].data).toEqual({
+      label: '甲',
+      sub: '主角',
+      color: ROLE_COLORS.protagonist,
+      kind: 'character',
+      entityId: ID_A
+    })
+    // 根节点复用 CharacterNode 渲染（type 与角色图同键，data 形状逐字段一致）
+    expect(g.nodes[0].type).toBe('character')
+  })
+
+  it('单 stage → 2 节点 1 边（根→stage0），stage 列 x=260 y=0', () => {
+    const c = char(ID_A, '甲', 'supporting', [], [arcStage('觉醒', '初获力量')])
+    const g = buildArcGraph(c)
+    expect(g.nodes).toHaveLength(2)
+    expect(g.edges).toHaveLength(1)
+    expect(g.nodes[1].position).toEqual({ x: 260, y: 0 })
+    expect(g.nodes[1].data).toEqual({
+      label: '觉醒',
+      sub: '初获力量',
+      color: ROLE_COLORS.supporting,
+      kind: 'arc',
+      entityId: ID_A
+    })
+    expect(g.nodes[1].type).toBe('arc')
+    expect(g.edges[0].source).toBe(ID_A)
+    expect(g.edges[0].target).toBe(g.nodes[1].id)
+    expect(g.edges[0].label).toBeUndefined()
+  })
+
+  it('3 stages → 4 节点 3 边（根→0、0→1、1→2），stage 纵向 y=0/120/240、x 恒 260', () => {
+    const c = char(ID_A, '甲', 'antagonist', [], [
+      arcStage('起', 's1'),
+      arcStage('承', 's2'),
+      arcStage('转', 's3')
+    ])
+    const g = buildArcGraph(c)
+    expect(g.nodes).toHaveLength(4)
+    expect(g.edges).toHaveLength(3)
+    expect(g.nodes.slice(1).map((n) => n.position)).toEqual([
+      { x: 260, y: 0 },
+      { x: 260, y: 120 },
+      { x: 260, y: 240 }
+    ])
+    for (const e of g.edges) {
+      expect(g.nodes.some((n) => n.id === e.source)).toBe(true)
+      expect(g.nodes.some((n) => n.id === e.target)).toBe(true)
+    }
+    expect(new Set(g.edges.map((e) => e.id)).size).toBe(3)
+  })
+
+  it('summary 截断 40：超长取前 40 字符加省略号，恰 40 不加', () => {
+    const long = '相'.repeat(45)
+    const exact = '凝'.repeat(40)
+    const c = char(ID_A, '甲', 'minor', [], [arcStage('长', long), arcStage('准', exact)])
+    const g = buildArcGraph(c)
+    expect(g.nodes[1].data.sub).toBe('相'.repeat(40) + '…')
+    expect(g.nodes[2].data.sub).toBe(exact)
+  })
+
+  it('stage 顺序 = 数组原序（不做二次排序），两次构建逐一相同', () => {
+    const c = char(ID_A, '甲', 'protagonist', [], [
+      arcStage('三', 'c'),
+      arcStage('一', 'a'),
+      arcStage('二', 'b')
+    ])
+    const g1 = buildArcGraph(c)
+    const g2 = buildArcGraph(c)
+    expect(g2).toEqual(g1)
+    expect(g1.nodes.slice(1).map((n) => n.data.label)).toEqual(['三', '一', '二'])
+  })
+
+  it('布局不变量：坐标有限且两两不重合（根与列、列内行间）', () => {
+    const c = char(ID_A, '甲', 'protagonist', [], [
+      arcStage('s1', ''),
+      arcStage('s2', ''),
+      arcStage('s3', '')
+    ])
+    const g = buildArcGraph(c)
+    expectFinitePositions(g.nodes)
+    expectNoOverlap(g.nodes)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// STATUS_COLORS：CSS 变量存在性钉死（双主题 global.css 均有定义，控制器已核实）
+// ---------------------------------------------------------------------------
+
+describe('STATUS_COLORS', () => {
+  it('三色齐备、互不相同，且取钉死的四个 var token 之列', () => {
+    // 四个 var 名按字面钉死于测试（控制器已核实双主题 global.css 均有定义）：
+    // --color-primary / --color-success / --color-warning / --color-text-tertiary
+    const PINNED_VARS = [
+      'var(--color-primary)',
+      'var(--color-success)',
+      'var(--color-warning)',
+      'var(--color-text-tertiary)'
+    ]
+    expect(Object.keys(STATUS_COLORS).sort()).toEqual(['active', 'done', 'dormant'])
+    expect(new Set(Object.values(STATUS_COLORS)).size).toBe(3)
+    expect(STATUS_COLORS).toEqual({
+      active: 'var(--color-primary)',
+      done: 'var(--color-success)',
+      dormant: 'var(--color-text-tertiary)'
+    })
+    for (const v of Object.values(STATUS_COLORS)) expect(PINNED_VARS).toContain(v)
   })
 })
