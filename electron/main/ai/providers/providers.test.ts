@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AiChatRequest, AiSettings } from '../../../../src/common/ai-types'
 import { ensureOk, http, linkSignal, redactKey } from './http'
 import { getProvider } from './index'
-import { AiCallError, extractJsonLoose } from './types'
+import { AiCallError } from './types'
 
 const SENTINEL_KEY = 'sk-sen…9876'
 
@@ -367,39 +367,7 @@ describe('anthropicProvider.chat（SSE 事件流）', () => {
   })
 })
 
-// ==================== extractJsonLoose ====================
-
-describe('extractJsonLoose 四路', () => {
-  it('裸 JSON', () => {
-    expect(extractJsonLoose('{"a":1,"b":{"c":2}}')).toEqual({ a: 1, b: { c: 2 } })
-  })
-
-  it('```json 围栏 + 前后杂话', () => {
-    expect(extractJsonLoose('好的：\n```json\n{"a":1}\n```\n以上。')).toEqual({ a: 1 })
-  })
-
-  it('无语言标注围栏', () => {
-    expect(extractJsonLoose('```\n{"x":true}\n```')).toEqual({ x: true })
-  })
-
-  it('裸花括号截取：字符串感知的平衡扫描（串内大括号不算数）', () => {
-    const raw = '前置说明 {"note":"这里有 } 大括号","ok":{"deep":[1,2]}} 后面还有话'
-    expect(extractJsonLoose(raw)).toEqual({ note: '这里有 } 大括号', ok: { deep: [1, 2] } })
-  })
-
-  it('坏输入 → AiCallError kind provider + 固定文案', () => {
-    for (const bad of ['完全不是 JSON', '{"a":1', '']) {
-      try {
-        extractJsonLoose(bad)
-        expect.unreachable(`应抛出：${bad}`)
-      } catch (err) {
-        expect(err).toBeInstanceOf(AiCallError)
-        expect((err as AiCallError).kind).toBe('provider')
-        expect((err as AiCallError).message).toBe('无法解析模型输出的 JSON')
-      }
-    }
-  })
-})
+// extractJsonLoose 的「四路」测试随函数迁移至 src/common/jsonLoose.test.ts（M4b Task 4 裁定 3）。
 
 // ==================== 密钥回显脱敏（远端文本进 err.message 前必经 redactKey） ====================
 

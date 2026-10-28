@@ -7,22 +7,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Button, Collapse, Divider, Form, Input, Popconfirm, Select, Space, Typography, message } from 'antd'
 import { RobotOutlined } from '@ant-design/icons'
-import type { AiErrorEvent, AiProtocol, AiSettingsView } from '@/common/ai-types'
+import type { AiProtocol, AiSettingsView } from '@/common/ai-types'
 import { useAISettings } from '../../hooks/useIPC'
 import { parseKindTaggedError } from '../../hooks/useAI'
+import { aiErrorToast } from '../../services/aiErrorText'
 
 const { Text } = Typography
-
-/** 连接测试失败的中文归因（kind 词表穷举；busy 理论不达本通道，兜底也必须有色） */
-const TEST_FAILURE_TEXT: Record<AiErrorEvent['kind'], string> = {
-  auth: '密钥或地址被拒（401/403）',
-  network: '网络不通或地址错误',
-  timeout: '连接超时',
-  'not-configured': '请先完成配置',
-  provider: '服务返回错误',
-  cancelled: '已取消',
-  busy: '已有请求在途'
-}
 
 interface AiFormValues {
   protocol: AiProtocol
@@ -113,9 +103,9 @@ const AiSettingsSection: React.FC = () => {
       message.success(`连接成功（${result.sample}）`, 6)
     } catch (err) {
       // T4 契约：先解包 `[kind] ` 前缀（含 IPC 包装剥离），按 kind 归类中文文案；解不出即 provider
+      // （文案表单一权威在 services/aiErrorText——organize 管线共用，不再本地复制）
       const { kind, message: detail } = parseKindTaggedError(String((err as Error)?.message ?? err))
-      const label = TEST_FAILURE_TEXT[kind]
-      message.error(detail ? `${label}：${detail}` : label, 8)
+      message.error(aiErrorToast(kind, detail), 8)
     } finally {
       setTesting(false)
     }

@@ -83,7 +83,7 @@ export function proposalsDir(p: string): string {
   return join(p, '.ai', 'proposals')
 }
 
-/** 章节摘要目录 `.ai/summaries/chapters/`（M4c 卷摘要预留同级 `volumes/`，当前不创建）。 */
+/** 章节摘要目录 `.ai/summaries/chapters/`。 */
 export function chapterSummariesDir(p: string): string {
   return join(p, '.ai', 'summaries', 'chapters')
 }
@@ -91,6 +91,11 @@ export function chapterSummariesDir(p: string): string {
 /** 单章摘要文件 `.ai/summaries/chapters/<chapterId>.yaml`（chapterId 必须已过章存在性检查——UUID）。 */
 export function chapterSummaryFile(p: string, chapterId: string): string {
   return join(chapterSummariesDir(p), `${chapterId}.yaml`)
+}
+
+/** 卷摘要目录 `.ai/summaries/volumes/`（写侧 M4c 才投产；readAiData 已按同布局宽容读）。 */
+export function volumeSummariesDir(p: string): string {
+  return join(p, '.ai', 'summaries', 'volumes')
 }
 
 /** 实体-章节索引单文件 `.ai/index.json`（spec G7 原文：Record<entityId, chapterId[]>，真 JSON 字节）。 */

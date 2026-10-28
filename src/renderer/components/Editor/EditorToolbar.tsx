@@ -9,7 +9,8 @@ import {
   RedoOutlined,
   EyeOutlined,
   EditOutlined,
-  DownloadOutlined
+  DownloadOutlined,
+  ScanOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import ThemeToggle from '../ThemeToggle'
@@ -30,6 +31,11 @@ interface EditorToolbarProps {
   wordCount?: number
   chapterTitle?: string
   onTitleChange?: (title: string) => void
+  // 整理本章（M4b Task 4）：AI 读本章 → 生成设定提案；organizing 期间按钮转 loading，
+  // organizeDisabled = 无当前章/已有未消化提案（并发门与徽章禁用面由 Workspace 汇总传入）
+  onOrganize?: () => void
+  organizing?: boolean
+  organizeDisabled?: boolean
 }
 
 function EditorToolbar({
@@ -47,7 +53,10 @@ function EditorToolbar({
   onToggleTypewriter,
   wordCount = 0,
   chapterTitle = '',
-  onTitleChange
+  onTitleChange,
+  onOrganize,
+  organizing = false,
+  organizeDisabled = false
 }: EditorToolbarProps) {
   // 标题级别菜单
   const headingItems: MenuProps['items'] = [
@@ -190,6 +199,27 @@ function EditorToolbar({
 
         {/* 分隔线 */}
         <div style={{ width: 1, height: 20, background: 'var(--color-border-secondary)', margin: '0 8px' }} />
+
+        {/* 整理本章按钮（M4b Task 4）：提案生成入口，disabled 汇总自 Workspace
+            （无当前章 / 已有未消化提案；并发在途由 organizing loading 态呈现） */}
+        <Tooltip
+          title={
+            organizeDisabled && !organizing
+              ? '整理本章暂不可用：需有当前章节，且本章没有待处理的提案'
+              : '整理本章（AI 通读本章，生成可逐条采纳的设定提案）'
+          }
+        >
+          <Button
+            type="text"
+            icon={<ScanOutlined />}
+            onClick={onOrganize}
+            loading={organizing}
+            disabled={organizeDisabled}
+            style={{ color: 'var(--color-text)' }}
+          >
+            整理本章
+          </Button>
+        </Tooltip>
 
         {/* 导出按钮 */}
         <Tooltip title="导出 (Ctrl+E)">

@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import type { AiSettingsPatch, AiSettingsView, AiUsageSummary } from '@/common/ai-types'
 import type {
   NovelWriterApi,
+  AiDataSnapshot,
   ProjectData,
   Chapter,
   Volume,
@@ -56,6 +57,19 @@ export function useProject() {
     createProject,
     openProject
   }
+}
+
+// 书内 AI 派生数据 Hook（M4b Task 4）：book:readAiData 的薄包装（一通道一函数）。
+// organize 上下文装配（useOrganize）读章摘要/卷梗概/实体索引原料；容错在仓库侧
+// （缺→空对象、坏→warn+skip），渲染层拿到的恒为形状完好的快照。
+export function useAiData() {
+  const ipc = getIPC()
+
+  const readAiData = useCallback(async (projectPath: string): Promise<AiDataSnapshot> => {
+    return ipc.book.readAiData({ projectPath })
+  }, [ipc])
+
+  return { readAiData }
 }
 
 // 文件相关Hook

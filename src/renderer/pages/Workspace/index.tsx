@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Layout, Button, Typography, App, Segmented } from 'antd'
+import { Badge, Layout, Button, Typography, App, Segmented } from 'antd'
 import { PlusOutlined, BookOutlined, SaveOutlined } from '@ant-design/icons'
 import MonacoEditor, { type MonacoEditorHandle } from '../../components/Editor/MonacoEditor'
 import EditorToolbar from '../../components/Editor/EditorToolbar'
@@ -22,6 +22,7 @@ import { useEditorStore, useShortcutStore } from '../../stores'
 import { useEditorSession } from './hooks/useEditorSession'
 import { useWritingStats } from './hooks/useWritingStats'
 import { useAutoSave } from './hooks/useAutoSave'
+import { useOrganize } from './hooks/useOrganize'
 import { bookChangeTouchesCurrentChapter, decideConflict } from './hooks/bookChangeConflict'
 import type { Chapter, ProjectConfig, ProjectData } from '@/common/ipc'
 import { countWords } from '@/common/wordCount'
@@ -118,6 +119,20 @@ function Workspace() {
 
   // 自动保存：按项目配置间隔静默 flush（取代原 services/autoSave.ts）
   useAutoSave({ enabled: autoSaveEnabled, intervalMs: autoSaveInterval, chapterId: currentChapter?.id ?? null, flush: flushIfDirty })
+
+  // 整理本章（M4b Task 4）：buffer 优先（用户所见即所整理——quote 逐字铁律要求出处
+  // 对齐编辑器缓冲），非当前章/无缓冲回落磁盘内容。并发门与徽章刷新全在 hook 内。
+  const organize = useOrganize({
+    projectPath,
+    projectName,
+    config,
+    getBufferChapter: (chapterId) =>
+      currentChapter && currentChapter.id === chapterId
+        ? { title: chapterTitle, body: isDirtyNow() ? editorContent : currentChapter.content }
+        : null
+  })
+  const organizeDisabled =
+    !projectPath || !currentChapter || organize.pendingChapterIds.has(currentChapter.id)
 
   // save/createChapter 每次渲染刷新镜像 ref（同 useEditorSession 的 flushIfDirtyStable 惯用法）：
   // 供被 memo 的事件回调（命令面板）与异步决议回调（Task 9 冲突弹窗）调用最新闭包，
@@ -423,6 +438,8 @@ function Workspace() {
             onSave={handleSave} onExport={() => setExportDialogOpen(true)} chapterTitle={chapterTitle} onTitleChange={setChapterTitle}
             wordCount={countWords(editorContent)} focusMode={focusMode} typewriterMode={typewriterMode}
             onToggleFocus={setFocusMode} onToggleTypewriter={setTypewriterMode}
+            onOrganize={() => { if (currentChapter) void organize.organize(currentChapter.id) }}
+            organizing={organize.organizing} organizeDisabled={organizeDisabled}
           />
         )}
       </Header>
@@ -498,7 +515,16 @@ function Workspace() {
               onChange={(v) => setViewMode(v as 'write' | 'graph')}
               options={[
                 { label: '写作', value: 'write' },
-                { label: '图谱', value: 'graph' }
+                {
+                  // 提案徽章（M4b Task 4）：未消化提案数挂在图谱入口上——T5 审阅面板
+                  // （提案处理的宿主视图）在图谱侧，count=0 时 Badge 自动隐身
+                  label: (
+                    <Badge count={organize.pendingCount} size="small" offset={[4, -4]}>
+                      <span style={{ padding: '0 6px' }}>图谱</span>
+                    </Badge>
+                  ),
+                  value: 'graph'
+                }
               ]}
             />
             {viewMode === 'graph' && (

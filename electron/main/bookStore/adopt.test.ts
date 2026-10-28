@@ -1,7 +1,8 @@
 // 采纳引擎测试（M4b T3，tmp 书目录 + 真 repository，零仓库 mock）：
 // - R1 origin 机制：aiTouched 语义（人写 = 非空 && 不在 aiTouched）；覆盖人写 → REFUSED: 覆盖人写内容 <field>；
 //   overwritesHuman:true 未经 UI 确认 → REFUSED: 未确认覆盖；确认后落盘 + aiTouched 追加 + updatedAt 刷新；
-//   create 不设 aiTouched（裁定：新建全字段 AI 产但暂无人写内容，采纳入册后归作者监护——从严）；
+//   create×character/world 播种 aiTouched = 所写非空字段名清单（裁定 A：AI 产字段不得伪装人写——
+//   不播种则作者后续编辑这些字段永远无从比对）；
 // - R2 __proto__ 加固：after 携 own '__proto__' 键 → 允许字段照常应用、Object.prototype 零污染、存量干净；
 // - R3 逐实体深校验：create×character/world/plotline/choice/foreshadow 全形状校验（注入新 id+时间戳）、
 //   update×foreshadow 仅 status/plannedPayoffNote/note、summary/index 落 .ai/ 的形狀与合并语义、

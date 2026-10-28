@@ -12,6 +12,9 @@ const projectAPI: RendererToMainRequests = {
   'project:create': (params) => ipcRenderer.invoke('project:create', params),
   'project:open': (path) => ipcRenderer.invoke('project:open', path),
 
+  // 书内 AI 派生数据只读快照（M4b Task 4；organize 上下文装配原料）
+  'book:readAiData': (params) => ipcRenderer.invoke('book:readAiData', params),
+
   'file:read': (path) => ipcRenderer.invoke('file:read', path),
   'file:write': (params) => ipcRenderer.invoke('file:write', params),
   'file:delete': (path) => ipcRenderer.invoke('file:delete', path),
@@ -110,6 +113,11 @@ const novelWriter: NovelWriterApi = {
   project: {
     create: projectAPI['project:create'],
     open: projectAPI['project:open']
+  },
+
+  // 书内 AI 派生数据（M4b Task 4）
+  book: {
+    readAiData: projectAPI['book:readAiData']
   },
 
   // 文件相关

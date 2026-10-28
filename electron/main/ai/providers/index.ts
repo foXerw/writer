@@ -19,7 +19,7 @@ export function getProvider(settings: AiSettings): AiProvider {
 }
 
 export { openaiProvider, anthropicProvider }
-export { AiCallError, extractJsonLoose, capMessage } from './types'
+export { AiCallError, capMessage } from './types'
 export type {
   AiProvider,
   ChatRequestInput,

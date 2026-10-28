@@ -1,5 +1,6 @@
 import { registerThemeHandlers } from './modules/theme'
 import { registerProjectHandlers } from './modules/project'
+import { registerBookDataHandlers } from './modules/bookData'
 import { registerFileHandlers } from './modules/file'
 import { registerChapterHandlers } from './modules/chapter'
 import { registerVolumeHandlers } from './modules/volume'
@@ -18,6 +19,7 @@ import { registerAiHandlers } from './modules/ai'
 export function registerAllIpcHandlers(): void {
   registerThemeHandlers()
   registerProjectHandlers()
+  registerBookDataHandlers()
   registerFileHandlers()
   registerChapterHandlers()
   registerVolumeHandlers()

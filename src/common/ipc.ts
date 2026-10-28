@@ -46,11 +46,23 @@ export interface BookChangedEvent {
   paths: string[]
 }
 
+// `.ai/` 派生数据只读快照（M4b Task 4 book:readAiData 载荷；仓库层 electron/main/bookStore/aiData.ts）。
+// 键序语义：chapterSummaries 章 id → 摘要文本、volumeSummaries 卷 id → 梗概文本、
+// entityIndex 实体 id → 出场章 id 列表。缺文件/坏文件在源侧已按「空/跳过」容错，渲染层拿到恒为形状完好的对象。
+export interface AiDataSnapshot {
+  chapterSummaries: Record<string, string>
+  volumeSummaries: Record<string, string>
+  entityIndex: Record<string, string[]>
+}
+
 // 渲染进程 -> 主进程 请求
 export type RendererToMainRequests = {
   // 项目相关
   'project:create': (params: { name: string; path: string; type: ProjectType }) => Promise<ProjectData>
   'project:open': (path: string) => Promise<ProjectData>
+
+  // 书内 AI 派生数据（M4b Task 4；纯读零校验，organize 上下文装配原料）
+  'book:readAiData': (params: { projectPath: string }) => Promise<AiDataSnapshot>
 
   // 文件相关
   'file:read': (path: string) => Promise<string>
@@ -209,6 +221,10 @@ export interface NovelWriterApi {
   project: {
     create: RendererToMainRequests['project:create']
     open: RendererToMainRequests['project:open']
+  }
+  // 书内 AI 派生数据（M4b Task 4）
+  book: {
+    readAiData: RendererToMainRequests['book:readAiData']
   }
   file: {
     read: RendererToMainRequests['file:read']
