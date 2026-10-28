@@ -197,8 +197,8 @@ function ProposalReviewDialog({
     [checked, appliedSet]
   )
 
-  // 章分组导航：正文顺序排列的章在前，章已删的孤儿提案垫底；同章多份（T4 顾虑：save 不去重）
-  // 按 createdAt 新→旧
+  // 章分组导航：正文顺序排列的章在前，章已删的孤儿提案垫底；同章多份仅第三方直写时可能（BOOK_FORMAT 容忍），通道已 PROPOSAL_DUPLICATE 去重
+  // 按 createdAt 新→旧，再按 id 字典序确保确定排序
   const navRows = useMemo<NavRow[]>(() => {
     const byChapter = new Map<string, ProposalFile[]>()
     for (const p of proposals) {

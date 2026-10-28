@@ -374,6 +374,39 @@ foreshadow/summary/index）组合表钉死在 `ALLOWED_OPS`——**delete 仅限
 `after`（create/update 必填，内容深校验发生在**采纳期**）、`source` `{chapterId: UUID, quote: 非空
 ≤300 字}`（出处引文，必须逐字来自正文）、`overwritesHuman`（仅 update 有意义，见 §7.5）。
 
+示例 `.ai/proposals/prop-11111111-mvrlcc00.yaml`（pending 提案两条变更：新建角色 + 覆盖人写字段；
+`before` 仅为面板展示快照、可缺省；`createdAt` 为 `new Date().toISOString()` 形态）：
+
+```yaml
+id: prop-11111111-mvrlcc00
+chapterId: 11111111-2222-4333-8444-555555555555
+createdAt: '2026-10-28T09:12:03.417Z'
+aiModel: claude-sonnet-4-5
+status: pending
+changes:
+  - op: create
+    entity: character
+    after:
+      name: 拾荒老周
+      role: supporting
+      gender: male
+      age: 57
+    source:
+      chapterId: 11111111-2222-4333-8444-555555555555
+      quote: 老周把最后一块能源核心塞进阿明的背包，没说话。
+  - op: update
+    entity: character
+    targetId: aaaaaaaa-1111-4111-8111-111111111111
+    overwritesHuman: true
+    before:
+      goals: 攒够钱离开这颗星
+    after:
+      goals: 找到回家的航线
+    source:
+      chapterId: 11111111-2222-4333-8444-555555555555
+      quote: 阿明说，等攒够钱，他要找到回家的航线。
+```
+
 - **谁写**：① 整理链（T4）经 `proposal:save` 通道落盘（主进程 validateProposal 双保险 + 出处章盖章
   + 条目数上限 200（`PROPOSAL_TOO_LARGE`，通道级政策——存量超限文件仍可读可采纳））；
   ② 采纳引擎（`bookStore/adopt.ts`）记账重写（appliedIndexes/status、驳回删条目——全部条目删空 =

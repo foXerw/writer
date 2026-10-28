@@ -63,6 +63,11 @@
     ——大纲层不再恒空。零校验零缓存零副作用的纯读纪律不变。
 12. **update×index 的 `targetId` 为占位**（校验器要求 update 必携）：index 是全书单一派生总目录，
     值不参与语义，引擎忽略；entityId/chapterId 双 UUID + 存在性硬门（章存在性为引擎从严）。
+13. **未配置 key 时整理入口 = 点击时校验 + toast，而非禁用置灰（终审裁定）**：spec §6 字面要求
+    「未配置则禁用置灰」，实际实现为入口可点、点击时校验 `isConfigured`（view 侧等价式）并以
+    中文 toast 指引去设置页。理由：状态更新鲜（置灰快照易与设置页实时改动脱节）、一次点击即得
+    指引、不做 error-bombing（其余不可整理情形本就同走点击校验路径）。偏离 spec §6 在此记录并
+    由控制器接受；M4c 若要求严格合规，把 `isConfigured` 折进 `organizeDisabled`（双门并单谓词）即可。
 
 ## M4c / M5 结转
 
@@ -80,6 +85,24 @@
 - **M4c 本体**：剧情线/选项/伏笔录入面板、图谱 3-5 视图（`index.json` 消费侧跳章节联动）；
   **M5** ghost text 实时补全（`feature:'completion'` 白名单已就位）；**M6** 章节审阅（`review` 同上）。
 - usage.jsonl 无界增长轮转（M4a 结转，未动）。
+- **STABLE change-id 重构（M4c 第一优先）**：change 条目改用稳定 id 而非数组下标做采纳记账——
+  一次消除三个耦合风险：位置式 `appliedIndexes` 在条目驳回删除后的漂移、`markSettled` 总失败时的
+  重试双胞胎、跨窗口驳回重排导致索引错位。
+- **prop-id 同毫秒碰撞（已论证无害，记录在案）**：`newProposalId` = 章前缀 + ts 的 36 进制，同毫秒
+  双生成会同 id——DUPLICATE 闸门已挡住通道侧重复落盘、跨章 id 前缀天然不同、sync 处理器单线程无
+  交错窗口；不作缺陷修，留档备查。
+- **静态 `message.*` 遗留**：`ChapterTree` / `VolumeManager` / `AiSettingsSection` 仍用静态
+  `message.*`（同 T6 冒烟②根因）——M4c 统一改 `App.useApp()`。
+- **unsettled 谓词单源**：「未消化」判定（`status !== 'settled'`）散落在按钮禁用 / DUPLICATE 闸门 /
+  徽章计数 / 导航分组等处——收口为 `src/common/proposal.ts` 导出的 `isUnsettled()` 单一权威。
+- **离线 e2e 补一条 `overwritesHuman`**：`e2e-organize.test.ts` 脚本响应加一条 `overwritesHuman: true`
+  的变更（走勾选→`confirmedOverwrite`→覆盖落盘全路）——把冒烟里 CDP-only 的覆盖人写路径变成 CI 回归。
+- **面板文案范围修正**：「AI 只会改动它此前写过的字段」只对角色/设定（有 `aiTouched` 的实体）成立；
+  伏笔/摘要/索引没有 `aiTouched`，该说法对它们构成 overclaim——改措辞限定适用范围。
+- **`PROPOSAL_*` 错误码中文映射**：`PROPOSAL_DUPLICATE`/`PROPOSAL_INVALID`/`PROPOSAL_TOO_LARGE`/
+  `BAD_PROPOSAL_ID` 等通道错误码目前原样入 toast——同 `aiErrorText` 口径建 kind→中文单源。
+- **逐字引文正文内软校验（可辩论）**：`source.quote` 目前只校验非空/长度，不核「逐字来自正文」——
+  可在 save 时对正文做包含性软校验（warn 不拦，防 AI 复述幻觉出处）；是否值得做留 M4c 辩论。
 
 ## 门禁证据
 
