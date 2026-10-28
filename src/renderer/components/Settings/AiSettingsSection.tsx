@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Button, Collapse, Divider, Form, Input, Popconfirm, Select, Space, Typography, message } from 'antd'
 import { RobotOutlined } from '@ant-design/icons'
 import type { AiProtocol, AiSettingsView } from '@/common/ai-types'
+import { AI_FEATURE_LABELS } from '@/common/ai-types'
 import { useAISettings } from '../../hooks/useIPC'
 import { parseKindTaggedError } from '../../hooks/useAI'
 import { aiErrorToast } from '../../services/aiErrorText'
@@ -204,19 +205,19 @@ const AiSettingsSection: React.FC = () => {
                 children: (
                   <>
                     <Form.Item
-                      label={<Text style={{ color: 'var(--color-text-secondary)' }}>大纲整理</Text>}
+                      label={<Text style={{ color: 'var(--color-text-secondary)' }}>{AI_FEATURE_LABELS.organize}（整理本章）</Text>}
                       name="organizeModel"
                     >
                       <Input placeholder="留空 = 使用默认模型" />
                     </Form.Item>
                     <Form.Item
-                      label={<Text style={{ color: 'var(--color-text-secondary)' }}>续写</Text>}
+                      label={<Text style={{ color: 'var(--color-text-secondary)' }}>{AI_FEATURE_LABELS.completion}</Text>}
                       name="completionModel"
                     >
                       <Input placeholder="留空 = 使用默认模型" />
                     </Form.Item>
                     <Form.Item
-                      label={<Text style={{ color: 'var(--color-text-secondary)' }}>审校</Text>}
+                      label={<Text style={{ color: 'var(--color-text-secondary)' }}>{AI_FEATURE_LABELS.review}</Text>}
                       name="reviewModel"
                     >
                       <Input placeholder="留空 = 使用默认模型" />

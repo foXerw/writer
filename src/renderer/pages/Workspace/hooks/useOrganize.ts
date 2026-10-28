@@ -5,7 +5,8 @@
 // 生命周期纪律（对齐 useGraphData/useWritingStats 先例）：
 // - mountedRef 防卸载后 setState；
 // - organizingRef 并发门（裁定 8）：第二次点击在途期间直接 no-op——一书架一整理，
-//   跨章重复由「该章已有 pending 提案」的按钮禁用面兜住（服务端 save 不去重，UI 防呆）；
+//   跨章重复由「该章已有 pending 提案」的按钮禁用面兜住（UI 防呆；引擎侧另有
+//   PROPOSAL_DUPLICATE 权威闸门——Task 6 P2，双窗口各自在途也只会落一份）；
 // - deps 走 argsRef 每渲染刷新：organize 是长流程，事件回调/await 之后必须读到最新闭包
 //   （编辑器缓冲、projectPath），同 Workspace saveRef 惯用法。
 //
@@ -18,7 +19,7 @@
 // - 提案校验不过 → 平文展示 validateProposal 错误串（同 proposal 通道「原样展示」口径）；
 // - changes 为空 → message.info 不算错（裁定 2：不落盘、无文件）。
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { message } from 'antd'
+import { App } from 'antd'
 import { useAI } from '../../../hooks/useAI'
 import {
   useAiData,
@@ -107,6 +108,9 @@ function pendingShape(proposals: { chapterId: string; status: string }[]): {
 }
 
 export function useOrganize(deps: OrganizeDeps): OrganizeController {
+  // T6 CDP 冒烟修复：静态 message.* 触发 antd dev 告警（console.error）——改走 App.useApp()
+  // 上下文实例（本 hook 恒在 <App> 树内的 Workspace 中调用；与 Home/面板同款惯例）
+  const { message } = App.useApp()
   const { chat } = useAI()
   const { getAllChapters } = useChapter()
   const { getAllVolumes } = useVolume()
@@ -197,7 +201,7 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
       })
       return terminal === 'done' ? { ok: true, text } : { ok: false }
     },
-    [chat]
+    [chat, message]
   )
 
   const organize = useCallback(
@@ -241,12 +245,12 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
               type: 'novel',
               formatVersion: 2,
               config: config ?? DEFAULT_CONFIG,
-              // synopsis/outlineNotes 暂无读通道（book.json 注记 UI 属 M4c 摘要产线）——
-              // 空串 = 装配器如实跳过大纲线文本段，卷列表层不受影响
               synopsis: ''
             },
             volumes,
-            outlineNotes: '',
+            // book.json 梗概经 book:readAiData 的 meta 投影进入大纲层（Task 6 P1）：
+            // 装配器以「大纲注记」行渲染；空梗概 = 该文本段照旧缺席，卷列表层不受影响
+            outlineNotes: aiData.meta.synopsis,
             chapters: chapters.map((c) => ({
               id: c.id,
               title: c.title,
@@ -307,7 +311,7 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
       }
     },
     // chat 刻意不入依赖：对话调用封装在 runChat（其依赖自带 chat），本回调只消费 runChat
-    [getAllChapters, getAllVolumes, getAllCharacters, getAllSettings, getForeshadowLedger, readAiData, getAISettings, runChat, saveProposal, refreshPending]
+    [getAllChapters, getAllVolumes, getAllCharacters, getAllSettings, getForeshadowLedger, readAiData, getAISettings, runChat, saveProposal, refreshPending, message]
   )
 
   return {

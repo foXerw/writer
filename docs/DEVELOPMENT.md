@@ -10,7 +10,8 @@
 | M2 | 数据底座（v2 书目录：schema/迁移/仓库/监听/冲突） | ✅ 完成 | 2026-10-26 |
 | M3 | 图谱视图（首批两种：人物/任务关系图 + 世界观图） | ✅ 完成 | 2026-10-28 |
 | M4a | AI 服务层（设置保险库/双协议 provider/流式通道/token 账本/上下文装配器/连接测试闭环） | ✅ 完成 | 2026-10-28 |
-| M4 | AI 维护闭环（整理→提案→差异确认，消费 M4a 服务层；剧情线/选项/伏笔录入 UI 补齐） | 🔄 进行中（M4a 已交付，提案闭环待规划） | - |
+| M4b | 整理闭环（整理本章→提案落盘→差异确认→采纳引擎，origin 人写保护；消费 M4a 服务层） | ✅ 完成 | 2026-10-28 |
+| M4 | AI 维护闭环总目标（剧情线/选项/伏笔录入 UI、图谱 3-5 视图、章节审阅等余下 M4c+ 范围） | 🔄 进行中（M4a/M4b 已交付） | - |
 | M5 | 实时补全（ghost text，Tab 采纳） | ⏳ 规划中 | - |
 | M6 | 章节审阅（AI 读者视角结构化意见） | ⏳ 规划中 | - |
 
@@ -53,6 +54,22 @@
 > 「网络不通或地址错误：网络请求失败：TypeError: fetch failed」（kind 路由跨真实 IPC 边界成立）；
 > 「清除密钥」后掩码消失、测试按钮回置灰。收尾记录见
 > [2026-10-28-m4a-closeout.md](./superpowers/plans/2026-10-28-m4a-closeout.md)。
+>
+> M4b 交付（整理闭环，M4 的第二片）：T0 空闲超时语义收口（45s 默认改为「连续无流增量」计时，
+> 长整理生成不再被总时长误杀）+ feature 白名单单源 + 协议感知占位文案；T1 `src/common/proposal.ts`
+> 提案 schema（op×entity 组合表 `ALLOWED_OPS` 单一权威、delete 仅限剧情线/选项/伏笔——AI 无权删人写实体）；
+> T2 `organizePrompt` 提示词构造（输出规约渲染自组合表、chapterId 由系统盖章 AI 不复述、user 消息逐字节透传红线）；
+> T3 `bookStore/proposals.ts` 提案仓库 + `adopt.ts` 采纳引擎（origin 铁律：`aiTouched` 机制拦截覆盖人写、
+> `__proto__` 加固 allowlist 逐键拷贝、逐条 try/catch 一条坏不拖累整批、markSettled 唯一记账口）+
+> `proposal:*` 五通道；T4 「整理本章」触发链（`useOrganize` + `book:readAiData` 只读快照 +
+> `organizeResult` 盖章纯函数 + 图谱入口徽章）；T5 差异审阅面板（逐条 diff/出处引文/橙警默认不勾/
+> 采纳驳回/徽章回落）；T6 端到端离线链路证明（`e2e-organize.test.ts`：假 fetch 全链——装配→流式→
+> 提案→落盘→采纳四路→settled）+ `PROPOSAL_DUPLICATE` 同章去重引擎闸门 + `.ai/` 三件套
+> （proposals/summaries/index.json）正式化进 BOOK_FORMAT §7。
+> 验证：typecheck 0 错、lint 0 error（1 既有 warning）、`npm run test` 627 用例全绿、build 通过；
+> CDP 真机冒烟：手工 pending 提案 → 徽章 1 → 点数字面板开且视图保持写作 → 覆盖条目橙警默认不勾 →
+> 勾选采纳 → 角色面板新角色出现、图谱节点刷新、徽章清零，全程 console 零报错。收尾记录见
+> [2026-10-28-m4b-closeout.md](./superpowers/plans/2026-10-28-m4b-closeout.md)。
 >
 > 非 SPEC 里程碑的可选储备（backlog，不进上表）：多书管理与工作台扩展、存量老书批量回填（M6 后另设计）。
 
@@ -641,3 +658,4 @@
 | 2026-10-28 | 3.0 (M3) | **里程碑 M3 图谱视图完成**：`graphModel` 纯构图（角色径向/世界观分列，退化数据容错）+ React Flow 只读画布 + 自定义节点 + `.graph-view` 主题；Workspace `写作\|图谱`/`人物关系\|世界观` 切换与节点点击联动侧栏；`useGraphData` 实时刷新。typecheck 0 错/lint 0 错/317 测试全绿/build 通过 + CDP 真机渲染实测 |
 | 2026-10-28 | 3.1 (M3 终审) | **M3 终审整改波 FI-1/FI-2/FI-3**：新增渲染层 `entityEvents` pub-sub，应用内角色/设定保存即时刷新图谱（CDP 实测边数 3→4、画布不重挂、零浮层）；更正「自写回声 book:changed」假前提的全部注释；「切回写作编辑器状态不丢」表述诚实化（光标/滚动恢复列 M4）；spec §3/§7 裁定修订。321 测试全绿/门禁全过 |
 | 2026-10-28 | 4.0a (M4a) | **里程碑 M4a AI 服务层完成**：安全硬化（T1）；设置保险库+掩码 IPC 契约（T2）；双协议流式 provider 适配器（T3，密钥回显脱敏不变量）；`chatService` 流式通道+按书 token 账本+`useAI`（T4，`[kind]` 前缀跨 IPC 协议）；分层上下文装配器+wordCount CJK 码点修正（T5）；连接测试真接线/清除密钥/StatsPanel 错误态/feature 白名单/文档收口（T6）。typecheck 0 错/lint 0 错/449 测试全绿/build 通过 + CDP 真机冒烟（假 baseUrl→网络分类中文 toast 跨真实 IPC 边界） |
+| 2026-10-28 | 4.0b (M4b) | **里程碑 M4b 整理闭环完成**：空闲超时语义收口（T0）；提案 schema+组合表单一权威（T1）；organize 提示词契约（T2）；提案仓库+origin 守卫采纳引擎+`proposal:*` 通道（T3）；「整理本章」触发链+徽章+`book:readAiData`（T4）；差异审阅面板（T5）；端到端离线链路证明+`PROPOSAL_DUPLICATE` 闸门+`.ai/` 三件套文档正式化+收尾（T6）。typecheck 0 错/lint 0 error/627 测试全绿/build 通过 + CDP 真机冒烟（手工提案→徽章→面板橙警默认不勾→采纳落盘→图谱刷新→徽章清零，console 零报错） |

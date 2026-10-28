@@ -95,6 +95,17 @@ describe('buildOrganizeContract 规约条款', () => {
     expect(contract).toContain('after')
   })
 
+  it('示例旗标用占位 false + 紧邻置 true 说明（Task 6 P4：防示例本身诱导模型滥置 true）', () => {
+    expect(contract).toContain('"overwritesHuman":false}')
+    expect(contract).not.toContain('"overwritesHuman":true') // 规约文本里旗标只许出现在说明文字，不许进示例
+    const exampleLine = contract.split('\n').find((l) => l.startsWith('- 形如：')) as string
+    const noteLine = contract.split('\n').find((l) => l.startsWith('- 示例中的 overwritesHuman')) as string
+    expect(exampleLine).toBeDefined()
+    expect(noteLine).toBeDefined()
+    expect(contract.indexOf(noteLine)).toBe(contract.indexOf(exampleLine) + exampleLine.length + 1) // 紧邻下一行
+    expect(noteLine).toContain('仅当确需覆盖人写字段时置 true')
+  })
+
   it('信封字段归系统：id/createdAt/aiModel/status 由系统补全', () => {
     expect(contract).toContain('createdAt')
     expect(contract).toContain('aiModel')

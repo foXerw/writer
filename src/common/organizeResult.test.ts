@@ -66,6 +66,26 @@ describe('buildProposalFromAi：ok 路径（裁定 1 盖章序）', () => {
     expect(out.file.id).toBe(`prop-${CHAPTER_ID.slice(0, 8)}-${Date.now().toString(36)}`)
   })
 
+  it('多条目盖章（T5 结转，Task 6 P3）：带 source.chapterId 与不带 source 的两条混合 → 逐条盖章、整份通过校验', () => {
+    const withSource: Record<string, unknown> = {
+      ...goodChange(),
+      source: { quote: '林晚把伞靠在门边。', chapterId: OTHER_CHAPTER } // AI 违约复述 id
+    }
+    const bare: Record<string, unknown> = {
+      op: 'create',
+      entity: 'character',
+      after: { name: '老周' },
+      source: { quote: '老周敲了敲门。' } // 契约形状：source 无 chapterId
+    }
+    const out = buildProposalFromAi(JSON.stringify({ changes: [withSource, bare] }), CHAPTER_ID, 'm')
+    if (out.kind !== 'ok') return expect.unreachable()
+    expect(out.file.changes).toHaveLength(2)
+    // 两条都被盖整章 id（违约值被覆写、缺失值被兜底注入）
+    expect(out.file.changes.map((c) => c.source.chapterId)).toEqual([CHAPTER_ID, CHAPTER_ID])
+    expect(out.file.changes.map((c) => c.source.quote)).toEqual(['林晚把伞靠在门边。', '老周敲了敲门。'])
+    expect(validateProposal(out.file)).toEqual([]) // 盖章后整份可过——不是单条特例
+  })
+
   it('围栏包裹的合法输出同样通过（宽容解析在函数内生效）', () => {
     const out = buildProposalFromAi('整理如下：\n```json\n' + JSON.stringify({ changes: [goodChange()] }) + '\n```\n', CHAPTER_ID, 'm')
     expect(out.kind).toBe('ok')

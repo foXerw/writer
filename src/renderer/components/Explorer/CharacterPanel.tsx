@@ -28,7 +28,7 @@ import {
 import type { CharacterGender, CharacterRole, CharacterTag } from '@/common/ipc'
 import type { CharacterV2, EntityLink } from '@/common/schema'
 import { useCharacter, useVolume, useSetting } from '../../hooks/useIPC'
-import { notifyEntitiesChanged } from '../../services/entityEvents'
+import { notifyEntitiesChanged, subscribeEntitiesChanged } from '../../services/entityEvents'
 
 const { Text } = Typography
 const { TextArea } = Input
@@ -79,6 +79,17 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({
   useEffect(() => {
     loadCharacters()
   }, [loadCharacters])
+
+  // T6 CDP 冒烟修复（联动缺口）：采纳引擎在主进程写盘（自写被 watcher 源头抑制、
+  // 不回声 book:changed），此前花名册只在挂载时拉——AI 采纳的新角色不重开书面板不出现。
+  // 订阅 entityEvents（M3 FI-1 同款纪律：面板保存/采纳/驳回都经它广播）。
+  useEffect(
+    () =>
+      subscribeEntitiesChanged(() => {
+        void loadCharacters()
+      }),
+    [loadCharacters]
+  )
 
   // 名字解析花名册（关系边 targetId → 显示名）：卷与词条各拉一次即可——仅用于标签展示，
   // 失败静默降级（对应边显示「已删除或不存在」，不阻塞面板）。

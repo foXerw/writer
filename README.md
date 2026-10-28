@@ -49,6 +49,11 @@
 - **Token 分账**: 每本书 `.ai/usage.jsonl` 按功能与模型记录用量（只含计数，永不含正文与密钥），侧栏「AI 用量」按功能/模型汇总（换书、实体或用量变更时刷新）
 - **分层上下文装配器**: 按优先级与 token 预算组装小说上下文（大纲/前文尾部/角色卡等），正文优先红线测试钉死（M4b 功能直接消费）
 
+### AI 整理闭环（M4b）
+- **整理本章**: AI 在分层上下文中读取当前章正文，对角色卡/世界观/剧情线/选项/伏笔/章摘要/实体索引提出变更**建议**——AI 只提议、永不直写正式数据，提案落盘为 `.ai/proposals/*.yaml`（图谱入口以徽章显示未消化条数）
+- **人逐条确认**: 差异审阅面板逐条列出变更（动作/目标/改动摘要/出处引文），支持逐条采纳或驳回；同章存在未消化提案时禁止重复整理（按钮禁用 + 服务端 `PROPOSAL_DUPLICATE` 双闸门），徽章随消化自动回落
+- **人写内容保护（origin 铁律）**: 你手写的字段 AI 动不了——覆盖人写内容的条目必须显式旗标，面板标橙警示且**默认不勾选**，由你亲手勾选确认才落盘；AI 写过的字段自动记名（`aiTouched`），后续整理改自己建的内容不误伤
+
 ## 项目结构
 
 ```
@@ -217,7 +222,8 @@ ls node_modules/electron/dist/electron.exe
 
 > **完整规范见 [docs/BOOK_FORMAT.md](docs/BOOK_FORMAT.md)**：目录树全量、每类文件字段表（对照
 > `src/common/schema.ts`）、章节 front-matter 示例、`.migration-backup/` 与
-> `.novelwriter.json.migrated` 只读约定、`.ai/`（M4a 用量账本 `usage.jsonl` + M4b 预留）说明与密钥
+> `.novelwriter.json.migrated` 只读约定、`.ai/`（用量账本 `usage.jsonl` + 提案 `proposals/` +
+> 章摘要 `summaries/` + 实体索引 `index.json`）说明与密钥
 > 存放姿态，以及「第三方 / AI 工具如何安全读写
 > 一本书」操作守则。旧版（v1，`.novelwriter.json` + `settings/` + `NNN-标题.md`）在打开时会被自动
 > 就地迁移为 v2（先整本备份），无需手工转换。
@@ -233,6 +239,7 @@ ls node_modules/electron/dist/electron.exe
 ├── world/<类别>/<uuid>.yaml # 世界观词条（location/history/magic/culture/other）
 ├── plotlines/ choices/  # 剧情线 / 关键选项（纯数据层，录入 UI 随 M4）
 ├── foreshadow.yaml      # 伏笔台账
+├── .ai/                 # AI 产物区（用量账本/提案/摘要/索引，按需创建，详见 BOOK_FORMAT.md §7）
 └── .migration-backup/   # 迁移备份（只读，详见 BOOK_FORMAT.md）
 ```
 

@@ -114,6 +114,32 @@ describe('proposal:save 双保险 + 盖章', () => {
     expect(saved.changes).toHaveLength(200)
   })
 
+  it('同章去重闸门（Task 6 P2）：已有 pending 提案 → 第二份拒 PROPOSAL_DUPLICATE；全部采纳（settled）后放行', async () => {
+    const p = mkTmpBook()
+    const ch = createChapter(p, '第一章')
+    const first = mkFile(ch.id)
+    await getHandler('proposal:save')(null, { projectPath: p, file: first })
+    // 模拟另一窗口/第二次整理产出的同章提案（id 不同、chapterId 相同）
+    const second = mkFile(ch.id)
+    await expect(
+      Promise.resolve().then(() => getHandler('proposal:save')(null, { projectPath: p, file: second }))
+    ).rejects.toThrow(`PROPOSAL_DUPLICATE: ${ch.id}`)
+    expect(existsSync(proposalPath(p, second.id))).toBe(false)
+    // 消化第一份 → settled：同章可再收新提案（闸门只拦未消化的）
+    await getHandler('proposal:adopt')(null, {
+      projectPath: p,
+      proposalId: first.id,
+      changeIndexes: [0],
+      confirmedOverwrite: []
+    })
+    const third = mkFile(ch.id)
+    const saved = (await getHandler('proposal:save')(null, {
+      projectPath: p,
+      file: third
+    })) as ProposalFile
+    expect(existsSync(proposalPath(p, saved.id))).toBe(true)
+  })
+
   it('盖章：chapterId 不是现存章 → PROPOSAL_CHAPTER_MISSING 拒落', async () => {
     const p = mkTmpBook()
     createChapter(p, '第一章')

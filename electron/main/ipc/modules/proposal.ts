@@ -7,6 +7,9 @@
 // - PROPOSAL_INVALID: <id|abs>: …   文件级校验失败（save 双保险 / 点读坏档抛穿）
 // - PROPOSAL_TOO_LARGE: <n> > 200   save 条目数上限（通道级策略——validateProposal 不关心数量，
 //                                   病理输出/手滑巨型文件在门口拦；存储层/引擎不设限，存量文件可读可采纳）
+// - PROPOSAL_DUPLICATE: <id>        save 同章去重闸门（Task 6 P2）：该章已有未消化提案
+//                                   （pending/partial）→ 拒落第二份——跨窗口双开/在途竞态的
+//                                   引擎侧唯一权威（UI 侧 pendingChapterIds 禁按钮只是防呆）
 // - PROPOSAL_CHAPTER_MISSING: <id>  save 盖章：提案出处章不是现存章（幻觉/过期章 id 拒落）
 // - PROPOSAL_MISSING: <id>          adopt/reject 目标提案不存在
 // - BAD_PROPOSAL_ID: <id>           id 路径安全门（join 重定向封死）
@@ -48,6 +51,15 @@ export function registerProposalHandlers(): void {
       }
       if (!listChapters(projectPath).some((c) => c.id === file.chapterId)) {
         throw new Error(`PROPOSAL_CHAPTER_MISSING: ${file.chapterId}`)
+      }
+      // Task 6 P2 同章去重闸门：已有未消化提案（pending/partial）的章拒收第二份——
+      // UI 防呆挡不住两个窗口各自在途的场景，盘上单份未消化提案是不变量（settled 存量不拦：
+      // 消化完毕的章当然可以再整理出新提案）。
+      const dupe = listProposals(projectPath).find(
+        (f) => f.chapterId === file.chapterId && f.status !== 'settled'
+      )
+      if (dupe) {
+        throw new Error(`PROPOSAL_DUPLICATE: ${file.chapterId}`)
       }
       return writeProposal(projectPath, file) // 存储层第三道 validateProposal（writeProposal 前置）
     }

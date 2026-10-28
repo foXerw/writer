@@ -379,6 +379,11 @@ foreshadow/summary/index）组合表钉死在 `ALLOWED_OPS`——**delete 仅限
   ② 采纳引擎（`bookStore/adopt.ts`）记账重写（appliedIndexes/status、驳回删条目——全部条目删空 =
   整份文件删除）；③ **第三方 AI 工具可直接读写本目录**（提案即文件的本意）——写前必须过
   `validateProposal`（返回空数组才许落盘）+ 原子写（§8 守则 1），文件名 = id。
+- **同章去重闸门**（T6 P2，通道级政策）：`proposal:save` 落盘前扫 `listProposals`——该章已有
+  **未消化**提案（status 为 `pending`/`partial`）→ 抛 `PROPOSAL_DUPLICATE: <chapterId>` 拒落第二份。
+  UI 侧「该章已有未消化提案则禁用整理按钮」只是防呆，这里是引擎侧唯一权威（双窗口各自在途也只会落一份）；
+  `settled` 存量不拦——消化完毕的章当然可以再整理出新提案。第三方直写本目录不受此闸门约束
+  （交换区本意），但请自律保持同章单份未消化的不变量。
 - **谁读**：审阅面板（`proposal:getAll/get`）；坏文件列表侧 warn+跳过（面板永不崩），点读抛穿
   `PROPOSAL_INVALID`。采纳期对每条 change 重跑 `validateChange`（双保险——手改坏的条目按条拒绝，
   好条目照救）。
@@ -389,13 +394,17 @@ foreshadow/summary/index）组合表钉死在 `ALLOWED_OPS`——**delete 仅限
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `chapterId` | string | ✅ | 与文件名 stem 一致 |
+| `chapterId` | string | ✅ | 与文件名 stem 一致（写侧恒注入；读侧键权威见下） |
 | `text` | string | ✅ 非空 | 摘要正文 |
 | `updatedAt` | string | ✅ ISO | 写入时刻 |
 | `aiModel` | string | ✅ | 产出该摘要的提案的模型名 |
 
 **谁写**：仅采纳引擎（summary 条目的 adopt；出处章必须现存）。**谁读**：整理链上下文装配
-（T4 `book:readAiData`）。派生缓存——可安全手删（该章摘要缺席直至下次整理重建）。
+（T4 `book:readAiData`）。**读侧键权威**（裁定 4 + T6 复核）：摘要映射以**文件内 `chapterId` 字段**
+为键（卷摘要目录同，键 = `volumeId`——卷摘要写侧 M4c 才投产，读侧已按同布局宽容消费）；
+字段缺失/非字符串时兜底取文件名 stem——写侧布局下两者常态一致，手改分叉时以内容为准。
+`text` 非字符串/缺失、整档 YAML 坏 → warn（绝对路径）+ 跳过该条，绝不瘫痪整次读取。
+派生缓存——可安全手删（该章摘要缺席直至下次整理重建）。
 
 ### 7.4 `index.json` — 实体-章节索引（单文件）
 
@@ -422,6 +431,13 @@ AI 采纳引擎写过的字段名清单，**只由采纳引擎维护**（应用�
 （`REFUSED: 未知字段 <key>`——静默丢弃会让采纳账目说谎）。create×character/world 的新实体
 **播种 `aiTouched` = 所写非空字段名清单**（裁定 A：AI 产字段不得伪装人写——后续整理改自己建的卡
 无需旗标；空值字段不入账，人后续填写天然是人写）。create×plotline/choice/foreshadow 无此字段。
+
+**差异面板交互（T5）**：`op=update` 且 `overwritesHuman: true` 的条目在审阅面板带橙色警示行
+（列出将被覆盖的 after 字段），复选框**默认不勾**——只有作者手动勾选该条，其索引才进入通道参数
+`confirmedOverwrite[]`；不勾 = 条目根本不上报（保持 pending，不产生拒绝记录）。勾选集与
+`confirmedOverwrite` 的映射不变式：`confirmed ⊆ sent`（confirmed 由勾选集过滤覆盖条目得出），
+不存在「勾了覆盖条却没进 confirmed」的失配路径。
+
 已知边界：人手编辑 UI 不改写 `aiTouched`（人改过的 AI 字段仍视为 AI 领地）——UI 侧收口留后续里程碑。
 
 ### 7.6 AI 设置与密钥的存放位置（不在书目录）

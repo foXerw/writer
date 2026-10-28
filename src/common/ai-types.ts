@@ -14,6 +14,15 @@ export type AiFeature = 'organize' | 'completion' | 'review'
  * `as const` 保字面量元组：AiFeature 枚举与列表漂移时，includes/Record 消费点在 tsc 即报错。
  */
 export const AI_FEATURES = ['organize', 'completion', 'review'] as const
+/**
+ * 功能中文标签唯一权威（T6 sweep：设置页「大纲整理/续写/审校」与用量面板「整理/补全/审阅」
+ * 漂移收口——所有面向用户的 feature 名一律引本表，勿再各处手抄）。
+ */
+export const AI_FEATURE_LABELS: Record<AiFeature, string> = {
+  organize: '整理',
+  completion: '补全',
+  review: '审阅'
+}
 export interface AiModels {
   organize?: string
   completion?: string

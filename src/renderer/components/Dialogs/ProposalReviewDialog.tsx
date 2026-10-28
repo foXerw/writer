@@ -15,7 +15,7 @@
 // reject 会给存活条目重排索引（appliedIndexes 同步重映射），故任何 reject 后必须整份重读，
 // 勾选集清零——旧索引指向的已不是旧条目（本文件最重要的状态纪律）。
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Checkbox, Empty, List, Modal, Spin, Tag, Tooltip, Typography, message } from 'antd'
+import { App, Button, Checkbox, Empty, List, Modal, Spin, Tag, Tooltip, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useProposal } from '../../hooks/useIPC'
 import { notifyEntitiesChanged } from '../../services/entityEvents'
@@ -99,6 +99,9 @@ function ProposalReviewDialog({
   projectPath,
   chapters
 }: ProposalReviewDialogProps) {
+  // T6 CDP 冒烟修复：静态 message.* 触发 antd dev 告警（console.error，冒烟零错误红线）——
+  // 改走 App.useApp() 上下文实例，与 Home/Workspace/useEditorSession 同款惯例
+  const { message } = App.useApp()
   const { getAllProposals, getProposalById, adoptProposalChanges, rejectProposalChanges } =
     useProposal()
 
@@ -117,7 +120,7 @@ function ProposalReviewDialog({
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[ProposalReviewDialog] ${context}:`, msg)
     message.error(`${context}：${msg}`, 8)
-  }, [])
+  }, [message])
 
   /** 拉未消化提案列表（status==='settled' 不进面板——徽章同口径；返回过滤后列表供调用方判存活）。 */
   const refreshList = useCallback(async (): Promise<ProposalFile[]> => {
@@ -161,6 +164,7 @@ function ProposalReviewDialog({
   useEffect(() => {
     if (!open || !selectedId) {
       setDetail(null)
+      setLoadingDetail(false)
       return
     }
     let cancelled = false
@@ -171,6 +175,9 @@ function ProposalReviewDialog({
     void fetchDetail(selectedId).then((f) => {
       if (cancelled) return
       setDetail(f ?? null)
+      // T6 CDP 冒烟修复：loadingDetail 此前无闭合路径——真机下面板详情区永转圈、
+      // 变更条目永不渲染（fetchDetail 内部已 catch 通道错，绝不会再走 reject 分支）
+      setLoadingDetail(false)
     })
     return () => {
       cancelled = true

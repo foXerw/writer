@@ -494,6 +494,15 @@ describe('linkSignal 空闲语义（timeoutMs = 活动上限，非总时长）',
     expect(linked.cause()).toBe('cancelled')
     linked.cleanup()
   })
+
+  it('cleanup 后 noteActivity 永久失效（closed 分支不得重新起计时器——T6 sweep）', async () => {
+    const linked = linkSignal({ timeoutMs: 60 })
+    linked.cleanup() // 析构时刻意不 abort：只要求「活动无从续命」
+    linked.noteActivity()
+    await sleep(150) // 若 closed 分支仍起表，60ms 时 signal 就该 aborted
+    expect(linked.signal.aborted).toBe(false)
+    expect(linked.cause()).toBe(null)
+  })
 })
 
 describe('流阶段空闲重置（provider 端到端判别）', () => {

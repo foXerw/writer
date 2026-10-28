@@ -30,7 +30,7 @@ import type { SettingCategory } from '@/common/ipc'
 // parentId/order/links 暂不在面板暴露——M2 不新增世界 UI，存量字段经 updateSetting 整条透传保存）
 import type { WorldEntryV2 } from '@/common/schema'
 import { useSetting } from '../../hooks/useIPC'
-import { notifyEntitiesChanged } from '../../services/entityEvents'
+import { notifyEntitiesChanged, subscribeEntitiesChanged } from '../../services/entityEvents'
 
 const { Text } = Typography
 const { TextArea } = Input
@@ -72,6 +72,16 @@ const SettingPanel: React.FC<SettingPanelProps> = ({
   useEffect(() => {
     loadSettings()
   }, [loadSettings])
+
+  // T6 CDP 冒烟修复（联动缺口，同 CharacterPanel）：采纳引擎主进程写盘不回声
+  // book:changed——AI 采纳的新词条须经 entityEvents 触发重拉才可见
+  useEffect(
+    () =>
+      subscribeEntitiesChanged(() => {
+        void loadSettings()
+      }),
+    [loadSettings]
+  )
 
   // 打开新建设定弹窗
   const handleCreate = (category?: SettingCategory) => {

@@ -48,11 +48,13 @@ export interface BookChangedEvent {
 
 // `.ai/` 派生数据只读快照（M4b Task 4 book:readAiData 载荷；仓库层 electron/main/bookStore/aiData.ts）。
 // 键序语义：chapterSummaries 章 id → 摘要文本、volumeSummaries 卷 id → 梗概文本、
-// entityIndex 实体 id → 出场章 id 列表。缺文件/坏文件在源侧已按「空/跳过」容错，渲染层拿到恒为形状完好的对象。
+// entityIndex 实体 id → 出场章 id 列表、meta 书目注记投影（book.json 的 name/synopsis，Task 6 P1：
+// organize 上下文大纲层原料）。缺文件/坏文件在源侧已按「空/跳过」容错，渲染层拿到恒为形状完好的对象。
 export interface AiDataSnapshot {
   chapterSummaries: Record<string, string>
   volumeSummaries: Record<string, string>
   entityIndex: Record<string, string[]>
+  meta: { name: string; synopsis: string }
 }
 
 // 渲染进程 -> 主进程 请求

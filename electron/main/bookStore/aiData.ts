@@ -8,11 +8,15 @@
 // - 键权威 = 文件内 chapterId/volumeId 字段（裁定 4「keyed by chapterId from file」），
 //   字段缺失/非字符串时兜底用文件名 stem（写侧布局 = `<id>.yaml`，两者常态一致）；
 // - index.json 是真 JSON 字节（adopt.mergeIndex 产出 Record<entityId, chapterId[]>），
-//   非 string[] 的键值逐个 warn + 跳过（其余保留），顶层非对象 → warn + {}。
+//   非 string[] 的键值逐个 warn + 跳过（其余保留），顶层非对象 → warn + {}；
+// - meta（Task 6 P1）= book.json 的 {name, synopsis} 投影——organize 上下文大纲层的原料
+//   （useOrganize 把 synopsis 接进 ContextInputs.outlineNotes）。book.json 是 JSON 字节
+//   （JSON ⊂ YAML），读取沿用 docStore.readYamlFile（与 format.ts/project.ts 同款口径）；
+//   缺档/坏档/字段非字符串 → 空串兜底（坏档 warn，缺档静默——新书常态），绝不整体抛。
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AiDataSnapshot } from '../../../src/common/ipc'
-import { aiIndexFile, chapterSummariesDir, volumeSummariesDir } from './paths'
+import { aiIndexFile, bookJsonPath, chapterSummariesDir, volumeSummariesDir } from './paths'
 import { listYamlFiles, readYamlFile } from './docStore'
 
 const YAML_EXT = '.yaml'
@@ -77,11 +81,37 @@ function readEntityIndex(p: string): Record<string, string[]> {
   return out
 }
 
-/** 一次读齐 organize 上下文的 `.ai/` 三域原料（通道 book:readAiData 的唯一委托目标）。 */
+/** book.json → {name, synopsis}：缺档静默空串；坏档 warn + 空串；字段缺失/非字符串 → 该字段空串。 */
+function readBookMeta(p: string): AiDataSnapshot['meta'] {
+  const empty = { name: '', synopsis: '' }
+  const abs = bookJsonPath(p)
+  if (!existsSync(abs)) return empty
+  let doc: unknown
+  try {
+    doc = readYamlFile<unknown>(abs)
+  } catch (err) {
+    console.warn(
+      `跳过损坏 book.json（书目注记按空读取）: ${abs}: ${err instanceof Error ? err.message : String(err)}`
+    )
+    return empty
+  }
+  if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) {
+    console.warn(`跳过非对象 book.json（书目注记按空读取）: ${abs}`)
+    return empty
+  }
+  const record = doc as Record<string, unknown>
+  return {
+    name: typeof record.name === 'string' ? record.name : '',
+    synopsis: typeof record.synopsis === 'string' ? record.synopsis : ''
+  }
+}
+
+/** 一次读齐 organize 上下文的 `.ai/` 三域原料 + 书目注记（通道 book:readAiData 的唯一委托目标）。 */
 export function readAiData(p: string): AiDataSnapshot {
   return {
     chapterSummaries: readSummaries(chapterSummariesDir(p), 'chapterId'),
     volumeSummaries: readSummaries(volumeSummariesDir(p), 'volumeId'),
-    entityIndex: readEntityIndex(p)
+    entityIndex: readEntityIndex(p),
+    meta: readBookMeta(p)
   }
 }

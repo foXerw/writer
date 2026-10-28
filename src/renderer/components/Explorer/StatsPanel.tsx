@@ -10,7 +10,7 @@ import {
   RobotOutlined
 } from '@ant-design/icons'
 import type { AiFeature, AiUsageSummary } from '@/common/ai-types'
-import { AI_FEATURES } from '@/common/ai-types'
+import { AI_FEATURES, AI_FEATURE_LABELS } from '@/common/ai-types'
 import { useAIUsage } from '../../hooks/useIPC'
 import { subscribeEntitiesChanged, subscribeUsageChanged } from '../../services/entityEvents'
 
@@ -22,12 +22,7 @@ interface HistoryDay {
   minutes: number
 }
 
-// AI 功能中文标签（与 AiFeature 枚举逐一对应；顺序即展示顺序）
-const AI_FEATURE_LABELS: Record<AiFeature, string> = {
-  organize: '整理',
-  completion: '补全',
-  review: '审阅'
-}
+// AI 功能中文标签单源在 src/common/ai-types.AI_FEATURE_LABELS（T6 sweep：与设置页共用，漂移收口）
 // 展示顺序单源引 AI_FEATURES（M4b Task 0）；标签 Record<AiFeature,…> 由 tsc 钉穷举
 const AI_FEATURE_ORDER: readonly AiFeature[] = AI_FEATURES
 

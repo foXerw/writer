@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { mkTmpBook } from '../../../tests/tmp'
 import { readAiData } from './aiData'
-import { chapterSummariesDir, volumeSummariesDir, aiIndexFile } from './paths'
+import { bookJsonPath, chapterSummariesDir, volumeSummariesDir, aiIndexFile } from './paths'
 
 const CH1 = '3f2b6c1a-9d4e-4a7b-8c5d-1e6f7a8b9c0d'
 const CH2 = '7a1c2b3d-4e5f-4a6b-9c8d-0e1f2a3b4c5d'
@@ -26,12 +26,14 @@ beforeEach(() => {
 })
 
 describe('readAiData：缺态', () => {
-  it('.ai/ 整体不存在 → 三个空对象（绝不抛）', () => {
+  it('.ai/ 整体不存在 → 三个空对象 + meta 空串（绝不抛；mkTmpBook 无 book.json = 静默缺席）', () => {
     expect(readAiData(book)).toEqual({
       chapterSummaries: {},
       volumeSummaries: {},
-      entityIndex: {}
+      entityIndex: {},
+      meta: { name: '', synopsis: '' }
     })
+    expect(console.warn).not.toHaveBeenCalled() // 缺 book.json 是新书常态，不 warn
   })
 
   it('index.json 缺失 → entityIndex {}，摘要照常读', () => {
@@ -60,7 +62,8 @@ describe('readAiData：正常态', () => {
     expect(readAiData(book)).toEqual({
       chapterSummaries: { [CH1]: '第一章摘要', [CH2]: '第二章摘要' },
       volumeSummaries: { [VOL1]: '第一卷梗概' },
-      entityIndex: { 'entity-1': [CH1, CH2], 'entity-2': [] }
+      entityIndex: { 'entity-1': [CH1, CH2], 'entity-2': [] },
+      meta: { name: '', synopsis: '' } // 无 book.json → 空投影
     })
   })
 
@@ -107,5 +110,26 @@ describe('readAiData：坏态（warn + skip，绝不整体抛）', () => {
     writeFileSync(aiIndexFile(book), '[1,2,3]', 'utf8')
     expect(readAiData(book).entityIndex).toEqual({})
     expect(console.warn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('readAiData：meta 投影（Task 6 P1——book.json 的 name/synopsis，organize 大纲层原料）', () => {
+  it('合法 book.json → meta 两字段齐投；字段缺失/非字符串 → 该字段空串（宽容不算坏档）', () => {
+    writeFileSync(
+      bookJsonPath(book),
+      JSON.stringify({ id: 'x', name: '星海拾荒者', synopsis: '拾荒少年', formatVersion: 2 }),
+      'utf8'
+    )
+    expect(readAiData(book).meta).toEqual({ name: '星海拾荒者', synopsis: '拾荒少年' })
+    writeFileSync(bookJsonPath(book), JSON.stringify({ name: 42 }), 'utf8')
+    expect(readAiData(book).meta).toEqual({ name: '', synopsis: '' })
+    expect(console.warn).not.toHaveBeenCalled()
+  })
+
+  it('book.json 坏字节 → warn（绝对路径）+ 空投影，绝不整体抛（一份坏配置不瘫痪整理上下文）', () => {
+    writeFileSync(bookJsonPath(book), '{ broken json', 'utf8')
+    expect(readAiData(book).meta).toEqual({ name: '', synopsis: '' })
+    expect(console.warn).toHaveBeenCalledTimes(1)
+    expect(String(vi.mocked(console.warn).mock.calls[0][0])).toContain(bookJsonPath(book))
   })
 })

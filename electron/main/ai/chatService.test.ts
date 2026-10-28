@@ -146,8 +146,9 @@ describe('startChat happy path', () => {
     startChat(sender, baseReq({ timeoutMs: 120_000 }))
     startChat(sender, baseReq({ requestId: 'r2', timeoutMs: -1 }))
     startChat(sender, baseReq({ requestId: 'r3', timeoutMs: 'oops' as never }))
+    startChat(sender, baseReq({ requestId: 'r4', timeoutMs: 0 })) // 0 也是非法值（>0 门）——T6 sweep 显式钉
     await settle()
-    expect(seen.map((o) => o?.timeoutMs)).toEqual([120_000, 45_000, 45_000])
+    expect(seen.map((o) => o?.timeoutMs)).toEqual([120_000, 45_000, 45_000, 45_000])
   })
 
   it('无 projectPath：done 照常回，账本零落盘', async () => {
