@@ -490,7 +490,10 @@ AI 采纳引擎写过的字段名清单，**只由采纳引擎维护**（应用�
 
 **`aiSource` create 幂等令牌（M4c-2，五实体通用）**：`CharacterV2` / `WorldEntryV2` / `PlotlineV2` /
 `ChoiceNodeV2` / `ForeshadowEntry` 携可选字段 `aiSource?: { proposalId: string; cid: string }`
-（出现即要求两个非空字符串——坏形状 = 文档级校验错误，列表侧 warn+跳过）。**只由采纳引擎写入**：
+（出现即要求两个非空字符串——坏形状 = 文档级校验错误，四个列表域 characters/world/plotlines/choices
+列表侧 warn+跳过；伏笔台账例外——`foreshadow.yaml` 是单文件台账，读侧 `readLedger` 遇坏条目抛
+`FORESHADOW_INVALID`：图谱侧静默降级（console.warn）、整理在 AI 调用前 fail-loud 中文报错、叙事面板
+显错，两副面孔系刻意设计，见 M4c-2 收尾裁定 8）。**只由采纳引擎写入**：
 create×五实体落盘时盖章 `aiSource = { proposalId: 提案 id, cid: 该条目的记账键 }`（changeKey 单源：
 `change.cid`，legacy 无 cid 条目 = 位置回退键）。创建前引擎按令牌全等扫描目标域既有实体：
 **命中 = 该条目已应用过 → 视为已应用（计入 applied、不新建、绝不双胞胎）**。这关闭了 M4b 终审/
