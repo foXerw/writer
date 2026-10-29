@@ -63,6 +63,10 @@ function SidebarPanel({
   onSetTab,
   onToggleCollapse
 }: SidebarPanelProps) {
+  // 头部行的真实收缩判据（R1-M1）：Sider 按 collapsed||focusMode 折叠为 48px，
+  // 若头部仍按裸 collapsed 渲染展开内容，专注模式下书名/设置钮被裁进 48px 条里，
+  // 不可见的设置钮还带着 no-drag 在拖拽带上打洞——两处判据必须统一。
+  const headerCollapsed = collapsed || focusMode
   // 侧边栏Tab配置
   const sidebarTabs = [
     { key: 'chapters', label: '章节', icon: <FileTextOutlined /> },
@@ -82,14 +86,14 @@ function SidebarPanel({
       {/* 顶部项目信息 —— 无边框窗口的拖拽带（UI 验收批次 #1）：
           行本体可拖窗，返回/设置两个按钮显式 no-drag 保持可点击（与 Home 页 Header 同法） */}
       <div style={{
-        padding: collapsed ? '12px 0' : '12px 16px',
+        padding: headerCollapsed ? '12px 0' : '12px 16px',
         borderBottom: '1px solid var(--color-border)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: collapsed ? 'center' : 'space-between',
+        justifyContent: headerCollapsed ? 'center' : 'space-between',
         ...appRegionStyle('drag')
       }}>
-        {!collapsed && (
+        {!headerCollapsed && (
           <Space>
             <Button
               type="text"
@@ -102,7 +106,7 @@ function SidebarPanel({
             </Text>
           </Space>
         )}
-        {!collapsed && (
+        {!headerCollapsed && (
           <Button
             type="text"
             icon={<SettingOutlined />}
@@ -110,7 +114,7 @@ function SidebarPanel({
             style={{ color: 'var(--color-text)', ...appRegionStyle('no-drag') }}
           />
         )}
-        {collapsed && (
+        {headerCollapsed && (
           <Button
             type="text"
             icon={<LeftOutlined />}
@@ -120,8 +124,8 @@ function SidebarPanel({
         )}
       </div>
 
-      {/* 侧边栏Tab */}
-      {!collapsed && (
+      {/* 侧边栏Tab（M1 同判据：focusMode 下 Sider 只有 48px，展开内容渲染出来只是裁切残影） */}
+      {!headerCollapsed && (
         <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 50px)' }}>
           {/* Tab按钮栏 */}
           <div style={{
@@ -135,7 +139,6 @@ function SidebarPanel({
               // 「叙事」整槽被裁到看不见。放开收缩后 flex:1 均分 ≈56px，标签万一套不下走省略号。
               <Button
                 key={t.key}
-                className="sidebar-tab-btn"
                 type="text"
                 onClick={() => onSetTab(t.key as SidebarTab)}
                 style={{

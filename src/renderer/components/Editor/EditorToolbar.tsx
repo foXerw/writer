@@ -89,22 +89,14 @@ function EditorToolbar({
     >
       {/* 左侧：章节标题和基本工具 */}
       <Space size="small" style={{ flexShrink: 0 }}>
-        {/* 章节标题输入：宽度由 global.css 的 .editor-toolbar-title-input 控制
-            （≤1100px 媒体查询收缩）——内联宽度会压过媒体查询、窄窗下把右侧按钮簇顶出视口（#6b） */}
+        {/* 章节标题输入：全部视觉样式在 global.css 的 .editor-toolbar-title-input——
+            内联样式会压过媒体查询（窄窗收缩 #6b）与 :focus 规则（R1-M4 主色环），只能整体外置 */}
         <input
           type="text"
           className="editor-toolbar-title-input"
           value={chapterTitle}
           onChange={(e) => onTitleChange?.(e.target.value)}
           placeholder="章节标题"
-          style={{
-            background: 'var(--color-bg-base)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 4,
-            padding: '4px 8px',
-            color: 'var(--color-text)',
-            fontSize: 14
-          }}
         />
 
         {/* 分隔线 */}

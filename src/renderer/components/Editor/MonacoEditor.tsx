@@ -46,9 +46,11 @@ const novelDarkTheme = {
     // Monaco 的 slider 颜色走 CSS 变量（--vscode-scrollbarSlider-*），只能经主题色注入——
     // 用样式表硬覆盖会撞上内联/变量层，被迫用强制声明（项目门禁禁止）
     'scrollbar.background': '#00000000',
-    'scrollbarSlider.background': '#424242',
-    'scrollbarSlider.hoverBackground': '#6e6e6e',
-    'scrollbarSlider.activeBackground': '#8a8a8a'
+    // slider 三档镜像 global.css webkit 滚动条 token（dark 档），monaco 只吃字面量色值——
+    // 注释钉死对应关系，改 token 时同步这里，防两套观感漂移：
+    'scrollbarSlider.background': '#424242',        // ↔ --color-scrollbar-thumb
+    'scrollbarSlider.hoverBackground': '#6e6e6e',   // ↔ ::-webkit-scrollbar-thumb:hover 的 --color-text-tertiary
+    'scrollbarSlider.activeBackground': '#8a8a8a'   // hover 档再亮一级（webkit 无 active 档，取同向梯度）
   }
 }
 
@@ -221,12 +223,14 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
             indentation: false
           },
           renderWhitespace: 'none',
-          // 中文正文里全角引号/破折号等会被 unicode-highlight 判为「可疑字符」画成黄框小方块，
-          // 极易被误读成异常光标（UI 验收批次 #3）——写作应用整篇都是这类字符，关闭检测
+          // unicode 高亮三档拆分（UI 验收批次 #3 / R1-I1）：
+          // - ambiguousCharacters + nonBasicASCII = 中文正文全角字符误报（黄框被当成异常光标），关；
+          // - includeComments/includeStrings 只是前两档的注释/字符串子集开关，随前两档一并关；
+          // - invisibleCharacters **保持默认开启**：零宽空格/控制符是粘贴进稿件的真实隐患，
+          //   与普通全角标点不相交，黄框只提示真正不可见的字符——这一档要留。
           unicodeHighlight: {
             nonBasicASCII: false,
             ambiguousCharacters: false,
-            invisibleCharacters: false,
             includeComments: false,
             includeStrings: false
           },

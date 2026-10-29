@@ -344,9 +344,26 @@ body {
   overflow-x: auto;
 }
 
+/* 原生标题输入的全部视觉（自 R0 内联样式外置，R1-M4）：min() 让它随视口连续收缩
+   （14vw ≈ 180px@1280），窄窗下不再把右侧按钮簇顶出视口 */
 .editor-toolbar .editor-toolbar-title-input {
-  width: 180px;
+  width: min(180px, 14vw);
   flex-shrink: 0;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text);
+  font-size: var(--font-md);
+}
+
+/* 原生 input 没有 antd 的聚焦态，会露出 Chromium 默认描边（UI 验收 R1-M4）：
+   对齐 antd Input 的 focus 观感——主色边框 + 2px 柔光环，全 token、双主题成立
+   （author 样式天然压过 UA 默认 outline，无需强制声明） */
+.editor-toolbar .editor-toolbar-title-input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-primary-tint-bg);
 }
 
 @media (max-width: 1100px) {
