@@ -80,4 +80,22 @@ describe('withLedgerLoudError（整理侧：fail-loud + 中文可读）', () => 
       withLedgerLoudError(() => Promise.reject(new Error('IPC_STREAM_BROKEN: connection reset')))
     ).rejects.toThrow(/^操作失败：IPC_STREAM_BROKEN: connection reset$/)
   })
+
+  // 合并后加固批 item 1：中文重抛壳不丢原 error——console.error 留痕之外，cause 链也可编程追溯。
+  it('重抛壳保留 cause：原 error（Error 抛值）可编程追溯', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const original = new Error('FORESHADOW_INVALID: /book/foreshadow.yaml: boom')
+    const p = withLedgerLoudError(() => Promise.reject(original))
+    const thrown = (await p.catch((e: unknown) => e)) as Error & { cause?: unknown }
+    expect(thrown.message).toMatch(/^伏笔台账数据已损坏/)
+    expect(thrown.cause).toBe(original)
+  })
+
+  it('重抛壳保留 cause：非 Error 抛值同样挂进 cause 链', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const p = withLedgerLoudError(() => Promise.reject('bare string'))
+    const thrown = (await p.catch((e: unknown) => e)) as Error & { cause?: unknown }
+    expect(thrown.message).toBe('操作失败：bare string')
+    expect(thrown.cause).toBe('bare string')
+  })
 })

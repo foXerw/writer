@@ -46,6 +46,6 @@ export async function withLedgerLoudError(
     return await load()
   } catch (error) {
     console.error('[useOrganize] 伏笔台账读取失败，整理中止（不降级为空台账）：', error)
-    throw new Error(narrativeErrorText(error instanceof Error ? error.message : String(error)))
+    throw new Error(narrativeErrorText(error instanceof Error ? error.message : String(error)), { cause: error })
   }
 }

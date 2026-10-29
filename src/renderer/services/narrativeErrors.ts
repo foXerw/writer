@@ -38,12 +38,15 @@ const PREFIX_RE = /^([A-Z][A-Z0-9_]*)(?::\s*)?([\s\S]*)$/
  */
 export function narrativeErrorText(raw: string): string {
   const { kind, message } = parseKindTaggedError(raw)
+  // 加固批 item 4：锚定匹配前先 trim 解包文本（与 proposalErrors 逐字节同式的 PREFIX_RE
+  // 此前唯有本表不 trim——前导空白消息错过 ^[A-Z] 锚定、掉进泛化回落，两表不对称）。
+  const unwrapped = message.trim()
   // [busy] tag 由 parseKindTaggedError 解出并剥掉；单独归一（在途门与本域写入互斥的场景防御）
-  if (kind === 'busy') return `已有请求在途：${message}`
-  const m = PREFIX_RE.exec(message)
+  if (kind === 'busy') return `已有请求在途：${unwrapped}`
+  const m = PREFIX_RE.exec(unwrapped)
   if (m && NARRATIVE_ERROR_TEXT[m[1]]) {
     const detail = m[2].trim()
     return detail ? `${NARRATIVE_ERROR_TEXT[m[1]]}：${detail}` : NARRATIVE_ERROR_TEXT[m[1]]
   }
-  return message ? `操作失败：${message}` : '操作失败'
+  return unwrapped ? `操作失败：${unwrapped}` : '操作失败'
 }

@@ -32,6 +32,17 @@ import type {
 import { useNarrative } from '../../hooks/useIPC'
 import { notifyEntitiesChanged, subscribeEntitiesChanged } from '../../services/entityEvents'
 import { narrativeErrorText } from '../../services/narrativeErrors'
+// 行编辑器稳定键（加固批 item 2）：_k 只活在组件态，保存载荷经 xxxToYyy 转换剥净（纯函数单测钉死）。
+import {
+  keyOptions,
+  keyStages,
+  newOptionRow,
+  newStageRow,
+  optionRowToOption,
+  stageRowToStage,
+  type OptionRow,
+  type StageRow
+} from './narrativeRowKeys'
 
 const { Text } = Typography
 const { TextArea } = Input
@@ -105,13 +116,13 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
   // 剧情线 Modal：title/summary/status 进 Form；stages 是 Form 外受控行编辑（CharacterPanel 弧线行同款）
   const [plotlineModalOpen, setPlotlineModalOpen] = useState(false)
   const [editingPlotline, setEditingPlotline] = useState<PlotlineV2 | null>(null)
-  const [stageRows, setStageRows] = useState<PlotlineStage[]>([])
+  const [stageRows, setStageRows] = useState<StageRow[]>([])
   const [plotlineForm] = Form.useForm()
 
   // 关键选项 Modal：options 行编辑同款姿态；chapterId 是 Form 字段（挂章是 choice 的存在方式）
   const [choiceModalOpen, setChoiceModalOpen] = useState(false)
   const [editingChoice, setEditingChoice] = useState<ChoiceNodeV2 | null>(null)
-  const [optionRows, setOptionRows] = useState<ChoiceOption[]>([])
+  const [optionRows, setOptionRows] = useState<OptionRow[]>([])
   const [choiceForm] = Form.useForm()
 
   // 伏笔：新建/编辑走 Modal（title/埋章/预设说明），埋章另有行内 Select；
@@ -211,10 +222,9 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
       summary: plotline.summary,
       status: plotline.status
     })
-    // 存量阶段的 chapterIds/entityIds 不在面板暴露，原样透传（面板只治 title/summary 两列）
-    setStageRows(
-      plotline.stages.map((s) => ({ ...s, chapterIds: [...s.chapterIds], entityIds: [...s.entityIds] }))
-    )
+    // 存量阶段的 chapterIds/entityIds 不在面板暴露，原样透传（面板只治 title/summary 两列）；
+    // keyStages 逐行赋稳定 _k（删行不重指派，焦点/IME 不再随 index 错位）
+    setStageRows(keyStages(plotline.stages))
     setPlotlineModalOpen(true)
   }
 
@@ -233,11 +243,7 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
       messageApi.error('请填写每个剧情阶段的标题')
       return
     }
-    const stages: PlotlineStage[] = stageRows.map((s) => ({
-      ...s,
-      title: s.title.trim(),
-      summary: s.summary ?? ''
-    }))
+    const stages: PlotlineStage[] = stageRows.map(stageRowToStage)
     try {
       if (editingPlotline) {
         await updatePlotline(projectPath, {
@@ -290,7 +296,7 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
   const handleEditChoice = (choice: ChoiceNodeV2) => {
     setEditingChoice(choice)
     choiceForm.setFieldsValue({ title: choice.title, chapterId: choice.chapterId })
-    setOptionRows(choice.options.map((o) => ({ ...o })))
+    setOptionRows(keyOptions(choice.options))
     setChoiceModalOpen(true)
   }
 
@@ -309,10 +315,7 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
       messageApi.error('请填写每个分支选项的标签')
       return
     }
-    const options: ChoiceOption[] = optionRows.map((o) => ({
-      label: o.label.trim(),
-      consequence: o.consequence ?? ''
-    }))
+    const options: ChoiceOption[] = optionRows.map(optionRowToOption)
     try {
       if (editingChoice) {
         await updateChoice(projectPath, {
@@ -696,7 +699,7 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
         cancelText="取消"
       >
         <Form form={plotlineForm} layout="vertical" initialValues={{ status: 'active' }}>
-          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入剧情线标题' }]}>
+          <Form.Item name="title" label="标题" rules={[{ required: true, whitespace: true, message: '请输入剧情线标题' }]}>
             <Input placeholder="请输入剧情线标题" />
           </Form.Item>
           <Form.Item name="status" label="状态">
@@ -715,7 +718,7 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
             <Text type="secondary" style={{ fontSize: 13 }}>剧情阶段</Text>
           </Divider>
           {stageRows.map((stage, index) => (
-            <Space key={index} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
+            <Space key={stage._k} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
               <Input
                 style={{ width: 130 }}
                 placeholder="阶段标题"
@@ -740,9 +743,7 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
             type="dashed"
             block
             icon={<PlusOutlined />}
-            onClick={() =>
-              setStageRows((rows) => [...rows, { title: '', summary: '', chapterIds: [], entityIds: [] }])
-            }
+            onClick={() => setStageRows((rows) => [...rows, newStageRow()])}
           >
             添加阶段
           </Button>
@@ -760,7 +761,7 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
         cancelText="取消"
       >
         <Form form={choiceForm} layout="vertical">
-          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入选项标题' }]}>
+          <Form.Item name="title" label="标题" rules={[{ required: true, whitespace: true, message: '请输入选项标题' }]}>
             <Input placeholder="如：过桥还是绕路" />
           </Form.Item>
           <Form.Item
@@ -778,7 +779,7 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
             <Text type="secondary" style={{ fontSize: 13 }}>分支选项</Text>
           </Divider>
           {optionRows.map((option, index) => (
-            <Space key={index} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
+            <Space key={option._k} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
               <Input
                 style={{ width: 150 }}
                 placeholder="选项标签"
@@ -803,7 +804,7 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
             type="dashed"
             block
             icon={<PlusOutlined />}
-            onClick={() => setOptionRows((rows) => [...rows, { label: '', consequence: '' }])}
+            onClick={() => setOptionRows((rows) => [...rows, newOptionRow()])}
           >
             添加分支
           </Button>
@@ -821,7 +822,7 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({ projectPath, chapters }
         cancelText="取消"
       >
         <Form form={foreshadowForm} layout="vertical">
-          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入伏笔标题' }]}>
+          <Form.Item name="title" label="标题" rules={[{ required: true, whitespace: true, message: '请输入伏笔标题' }]}>
             <Input placeholder="如：断掉的玉佩" />
           </Form.Item>
           <Form.Item
