@@ -6,7 +6,8 @@
 // - R2 __proto__ 加固：after 携 own '__proto__' 键 → 允许字段照常应用、Object.prototype 零污染、存量干净；
 // - R3 逐实体深校验：create×character/world/plotline/choice/foreshadow 全形状校验（注入新 id+时间戳）、
 //   update×foreshadow 仅 status/plannedPayoffNote/note、summary/index 落 .ai/ 的形狀与合并语义、
-//   delete 仅限 plotline/choice/foreshadow 且 targetId 必须存在（delete×character 由 validateChange 双保险拒）；
+//   delete 仅限 plotline/choice/foreshadow（delete×character 由 validateChange 双保险拒）——目标缺席 = 视为已应用
+//   （结转微批 #2 裁定，取代原 R3「存在性必须」），非 UUID targetId 仍 *_MISSING 拒；
 // - 批次纪律：逐条 try/catch（一条坏不拖累整批）、applied/refused 对账、markSettled 键域双写记账、
 //   重复采纳拒绝、非法/未知键拒绝、rejectChanges 按键摘除（空 → 整份删除）+ 双账同步收缩；
 // - M4c-1 稳定键：通道参数 = changeKey 键集（cid ?? 位置回退键，单源 src/common/proposal.ts）。
@@ -15,7 +16,8 @@
 // - M4c-2 create 幂等（aiSource 令牌）：create×五实体落盘前按 aiSource={proposalId,条目键} 扫描
 //   目标域——命中 = 已应用（计入 applied、不新建、绝不双胞胎）；未命中 → 创建并盖章令牌。
 //   判别性测试 = markSettled 失败（账目回滚）后重试同批「计数不变 + applied 报键」（旧世界双胞胎，
-//   M4b 终审 + M4c-1 钉死的最后残留窗口在此关闭）；update/delete 不注入不查询（既有幂等语义不动）。
+//   M4b 终审 + M4c-1 钉死的最后残留窗口在此关闭）；update/delete 不注入不查询——delete 的
+//   markSettled 失败窗收敛走「目标缺席 = 已应用」（结转微批 #2，见文末专节），update 语义不动。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -566,21 +568,25 @@ describe('plotline / choice', () => {
     expect(listChoices(p).find((x) => x.id === c.id)?.options).toEqual([{ label: '战', consequence: '胜' }])
   })
 
-  it('delete×plotline / delete×choice：存在 → 删；缺失 → 拒（存在性要求，裁定 R3）', () => {
+  it('delete×plotline / delete×choice：存在 → 删；真 UUID 目标缺席 → 视为已应用；非 UUID → *_MISSING 拒（结转微批 #2）', () => {
     const { p, ch } = setup()
     const pl = createPlotline(p, { title: '待删线' })
     const c = createChoice(p, { title: '待删选项', chapterId: ch.id })
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'delete', entity: 'plotline', targetId: pl.id }),
       mkChange(ch.id, { op: 'delete', entity: 'choice', targetId: c.id }),
-      mkChange(ch.id, { op: 'delete', entity: 'plotline', targetId: randomUUID() })
+      mkChange(ch.id, { op: 'delete', entity: 'plotline', targetId: randomUUID() }),
+      mkChange(ch.id, { op: 'delete', entity: 'choice', targetId: 'not-a-uuid' })
     ])
-    const r = adoptChanges(p, f.id, keysOf(f, [0, 1, 2]), [])
-    expect(r.applied).toEqual(keysOf(f, [0, 1]))
+    const r = adoptChanges(p, f.id, keysOf(f, [0, 1, 2, 3]), [])
+    // 存在 → 删；缺席（真 UUID——引擎无从分辨「已被我们删过」与「手动删过」，终态一致）→ 已应用入 applied
+    expect(r.applied).toEqual(keysOf(f, [0, 1, 2]))
     expect(listPlotlines(p)).toEqual([])
     expect(listChoices(p)).toEqual([])
-    expect(r.refused[0].key).toBe(keyOf(f, 2))
-    expect(r.refused[0].reason).toContain('PLOTLINE_MISSING')
+    // 保守保留的可判别 MISSING 路径：非 UUID 永不可能是真实实体（id 域 = UUID），放行会洗白 applied 账 → 仍拒
+    expect(r.refused.length).toBe(1)
+    expect(r.refused[0].key).toBe(keyOf(f, 3))
+    expect(r.refused[0].reason).toContain('CHOICE_MISSING')
   })
 
   it('delete×character 双保险：绕过 writeProposal 的坏提案 → validateChange 在采纳现场再拒', () => {
@@ -734,16 +740,19 @@ describe('foreshadow', () => {
     expect(adoptChanges(p, echo.id, keysOf(echo, [0]), []).applied).toEqual(keysOf(echo, [0]))
   })
 
-  it('update/delete×foreshadow 幻影 targetId → FORESHADOW_MISSING 拒', () => {
+  it('update×foreshadow 幻影 targetId → FORESHADOW_MISSING 拒（update 语义不动）；delete×foreshadow 缺席 → 视为已应用、非 UUID → 仍拒（结转微批 #2）', () => {
     const { p, ch } = setup()
     const ghost = randomUUID()
     const f = plant(p, ch.id, [
       mkChange(ch.id, { op: 'update', entity: 'foreshadow', targetId: ghost, after: { status: 'resolved' } }),
-      mkChange(ch.id, { op: 'delete', entity: 'foreshadow', targetId: ghost })
+      mkChange(ch.id, { op: 'delete', entity: 'foreshadow', targetId: ghost }),
+      mkChange(ch.id, { op: 'delete', entity: 'foreshadow', targetId: 'not-a-uuid' })
     ])
-    const r = adoptChanges(p, f.id, keysOf(f, [0, 1]), [])
-    expect(r.applied).toEqual([])
+    const r = adoptChanges(p, f.id, keysOf(f, [0, 1, 2]), [])
+    expect(r.applied).toEqual(keysOf(f, [1])) // 缺席 = 终态已满足，零写盘幂等
+    expect(r.refused.length).toBe(2)
     expect(r.refused.every((x) => x.reason.includes('FORESHADOW_MISSING'))).toBe(true)
+    expect(readLedger(p).entries).toEqual([]) // update 照旧拒；幽灵删除不动台账
   })
 
   it('delete×foreshadow：条目从台账移除，其余保留', () => {
@@ -1448,5 +1457,46 @@ describe('create 幂等（M4c-2 aiSource 令牌）', () => {
     const retry = adoptChanges(p, f.id, [k1], [])
     expect(retry).toEqual({ applied: [k1], refused: [] })
     expect(listCharacters(p)).toHaveLength(1) // 回退键令牌同样关窗
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 结转微批 #2：delete 重试收敛（markSettled 失败窗——镜像 create aiSource 命中跳过补上的 delete 侧半窗）
+// ---------------------------------------------------------------------------
+
+describe('delete 目标缺席 = 已应用（结转微批 #2）', () => {
+  it('删除已落盘而账目回滚 → 重试同批：applied 含删除键、提案 settled（旧世界三条 *_MISSING 永卡）', () => {
+    const { p, ch } = setup()
+    const pl = createPlotline(p, { title: '旧线' })
+    const co = createChoice(p, { title: '旧岔路', chapterId: ch.id })
+    const fs = mkForeshadow({ title: '待删旧钟' })
+    upsertForeshadow(p, fs)
+    const f = plant(p, ch.id, [
+      mkChange(ch.id, { op: 'delete', entity: 'plotline', targetId: pl.id }),
+      mkChange(ch.id, { op: 'delete', entity: 'choice', targetId: co.id }),
+      mkChange(ch.id, { op: 'delete', entity: 'foreshadow', targetId: fs.id })
+    ])
+    const keys = keysOf(f, [0, 1, 2])
+    expect(adoptChanges(p, f.id, keys, []).applied).toEqual(keys)
+    expect(listPlotlines(p)).toEqual([])
+    expect(listChoices(p)).toEqual([])
+    expect(readLedger(p).entries).toEqual([])
+    // 模拟 markSettled 写盘失败（create 判别测试同款字节等价手法）：实体已删、盘上账目回滚成未记账形态
+    const { proposal: raw } = loadProposalRaw(p, f.id)
+    writeProposal(p, {
+      id: raw.id,
+      chapterId: raw.chapterId,
+      createdAt: raw.createdAt,
+      aiModel: raw.aiModel,
+      status: 'pending',
+      changes: raw.changes as ProposalChange[]
+    })
+    // 重试同批：delete 不留令牌/墓碑，目标缺席 = 提案要求的数据终态已达成 → 视为已应用——
+    // applied 照常报键、本批 markSettled 把账补上、提案收敛 settled（旧世界此处三条 *_MISSING 全拒，只能手动驳回）
+    const retry = adoptChanges(p, f.id, keys, [])
+    expect(retry).toEqual({ applied: keys, refused: [] })
+    const settled = loadProposalRaw(p, f.id).proposal
+    expect(settled.appliedCids).toEqual(keys)
+    expect(settled.status).toBe('settled')
   })
 })

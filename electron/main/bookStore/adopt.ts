@@ -32,8 +32,9 @@
 //   chapterId ∈ 现存章（章存在性是本引擎在裁定之上的从严——幻影章进索引即垃圾，宁拒），
 //   合并进 `.ai/index.json`（Record<entityId, chapterId[]>，去重，按 listChapters 章序存储）；
 //   update×index 的 targetId 为占位（校验器要求 update 必携，值不参与语义——index 是全书单一总目录）；
-//   delete×plotline/choice/foreshadow → targetId 存在性必须（缺失 → 拒），路由 narrative.ts 删除口
-//   （伏笔无独立删除函数——readLedger+writeLedger 即台账的正典读写咽喉，writeLedger 自带校验闸门）。
+//   delete×plotline/choice/foreshadow → targetId 必须 UUID 形状（非 UUID → 拒 *_MISSING）；真 UUID
+//   而目标缺席 → 视为已应用（结转微批 #2 裁定，取代原 R3「存在性必须」，理由见 adoptDelete 注释），
+//   路由 narrative.ts 删除口（伏笔无独立删除函数——readLedger+writeLedger 即台账的正典读写咽喉，writeLedger 自带校验闸门）。
 //
 // 批次纪律：逐条 try/catch——一条坏不拖累整批；拒绝原因一律 `REFUSED: ` 前缀 + 中文/仓库错误码
 // （PROPOSAL_* 通道级错误除外：提案缺失/坏 id 直接抛穿）。M4c-1 起通道以 changeKey 键集说话
@@ -578,21 +579,35 @@ function adoptIndex(p: string, change: ProposalChange): void {
 }
 
 // ---------------------------------------------------------------------------
-// delete（存在性必须——裁定 R3；幂等 false 一律转拒）
+// delete（结转微批 #2：目标缺席 = 视为已应用；非 UUID targetId 照旧拒）
 // ---------------------------------------------------------------------------
 
+/**
+ * 缺席目标的账目处置——镜像 create 的 aiSource 命中跳过（T1）：直接 return 不抛，
+ * 批次入口计入 applied、本批 markSettled 把账补上。
+ * 理由（出处不可判别）：删除不在盘上留任何令牌/墓碑，引擎无从区分「首采已删、只是
+ * markSettled 记账写失败回滚」与「用户手动删除」——两条路径的盘面逐字节等价（目标缺席）。
+ * 此时提案要求的数据终态已然成立（实体确已不在），旧行为拒 *_MISSING 反而让该条永远无法
+ * settle（用户只能手动驳回）——数据已对、账目卡死，放行优于拒绝。
+ * 保守划界：非 UUID targetId 永不可能是真实实体（id 域 = UUID，五可删实体统一发号），
+ * 「已被我们删过」叙事不成立，一律照旧 *_MISSING 拒——放行等于让垃圾载荷洗白 applied 账。
+ * update×foreshadow 的 FORESHADOW_MISSING 等 update 路径的缺失拒绝不在本裁定范围（不动）。
+ */
 function adoptDelete(p: string, change: ProposalChange): void {
   const id = change.targetId as string
   switch (change.entity) {
     case 'plotline':
-      if (!deletePlotline(p, id)) throw new Error(`PLOTLINE_MISSING: ${id}`)
+      if (!UUID_PATTERN.test(id)) throw new Error(`PLOTLINE_MISSING: ${id}`) // 形状垃圾：永非真实实体，仍拒
+      deletePlotline(p, id) // false = 目标缺席（UUID 门已挡掉唯一他因）→ 视为已应用，返回值刻意吞掉
       return
     case 'choice':
-      if (!deleteChoice(p, id)) throw new Error(`CHOICE_MISSING: ${id}`)
+      if (!UUID_PATTERN.test(id)) throw new Error(`CHOICE_MISSING: ${id}`)
+      deleteChoice(p, id) // 同上：缺席 → 已应用
       return
     case 'foreshadow': {
+      if (!UUID_PATTERN.test(id)) throw new Error(`FORESHADOW_MISSING: ${id}`)
       const ledger = readLedger(p)
-      if (!ledger.entries.some((e) => e.id === id)) throw new Error(`FORESHADOW_MISSING: ${id}`)
+      if (!ledger.entries.some((e) => e.id === id)) return // 缺席 = 已应用（零写盘幂等，镜像 create 命中跳过）
       // narrative.ts 无伏笔删除函数——readLedger/writeLedger 即台账正典读写咽喉（校验闸门在 writeLedger）
       writeLedger(p, { entries: ledger.entries.filter((e) => e.id !== id) })
       return
