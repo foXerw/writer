@@ -43,7 +43,11 @@ export function newOptionRow(): OptionRow {
   return { _k: nextRowKey(), label: '', consequence: '' }
 }
 
-/** 保存转换：显式重建 PlotlineStage 四字段（title trim 语义原样），_k 不在输出形状内。 */
+/**
+ * 保存转换：显式重建 PlotlineStage 四字段（title trim 语义原样），_k 不在输出形状内。
+ * ⚠ 漂移门（结转微批 #2 注记）：PlotlineStage 未来新增字段必须同步加进此处重建——
+ * 精确形状重建会静默丢新字段，Object.keys 等值测试只钉今天的形状、不为漂移报警。
+ */
 export function stageRowToStage(row: StageRow): PlotlineStage {
   return {
     title: row.title.trim(),
@@ -53,7 +57,11 @@ export function stageRowToStage(row: StageRow): PlotlineStage {
   }
 }
 
-/** 保存转换：显式重建 ChoiceOption 两字段（label trim 语义原样），_k 不在输出形状内。 */
+/**
+ * 保存转换：显式重建 ChoiceOption 两字段（label trim 语义原样），_k 不在输出形状内。
+ * ⚠ 漂移门（结转微批 #2 注记）：ChoiceOption 未来新增字段必须同步加进此处重建——
+ * 精确形状重建会静默丢新字段，Object.keys 等值测试只钉今天的形状、不为漂移报警。
+ */
 export function optionRowToOption(row: OptionRow): ChoiceOption {
   return {
     label: row.label.trim(),

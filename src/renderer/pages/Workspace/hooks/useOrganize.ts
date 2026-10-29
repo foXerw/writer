@@ -18,6 +18,8 @@
 // - 解析失败 → 固定文案 + console 只记原文长度（原文可能逐字引用正文，隐私红线绝不落日志）；
 // - 提案校验不过 → 平文展示 validateProposal 错误串（本地纯函数错误，无前缀可归一）；
 // - proposal:save 通道拒绝 → services/proposalErrors 中文归一（T6 结转，PROPOSAL_* 词表单源）；
+// - 外层 catch 意外上抛 → organizeFailureText 归一：已冠「操作失败：」者原样作 toast，
+//   不再叠「整理失败：」双前缀（结转微批 #2）；
 // - changes 为空 → message.info 不算错（裁定 2：不落盘、无文件）。
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { App } from 'antd'
@@ -36,6 +38,7 @@ import { aiErrorToast } from '../../../services/aiErrorText'
 import { proposalErrorText } from '../../../services/proposalErrors'
 import { subscribeEntitiesChanged } from '../../../services/entityEvents'
 import { withLedgerLoudError } from './ledgerFallback'
+import { organizeFailureText } from './organizeFailureText'
 import { assembleAiContext } from '@/common/ai-context'
 import { budgetToMaxTokens, buildOrganizePrompt } from '@/common/organizePrompt'
 import { buildProposalFromAi } from '@/common/organizeResult'
@@ -344,7 +347,7 @@ export function useOrganize(deps: OrganizeDeps): OrganizeController {
         await refreshPending()
       } catch (err) {
         console.error('[useOrganize] 整理流程异常:', err)
-        message.error(`整理失败：${err instanceof Error ? err.message : String(err)}`, 8)
+        message.error(organizeFailureText(err instanceof Error ? err.message : String(err)), 8)
       } finally {
         organizingRef.current = false
         activeRequestIdRef.current = null // 取消句柄随批次收尾（任何路径不留陈旧 id）

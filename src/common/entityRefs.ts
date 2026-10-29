@@ -55,11 +55,15 @@ export function buildEntityChapterRefs(args: EntityChapterRefsArgs): Record<stri
   /** index ∪ 显式引用 → 去重 → 剔除悬挂 → 按书序排序，写入一个实体键。 */
   const emit = (entityId: string, explicit: string[]): void => {
     const indexPart = args.index[entityId] ?? []
-    const deduped = new Set<string>()
+    // Map 键去重、值携书序位次：悬挂引用（get 出 undefined）在这一关出局后，位次即「必然存在」
+    // ——结转微批 #2 删掉了排序回调里的死 `?? 0` 兜底（原 deduped 只收 position.has 为真的 id，
+    // 兜底分支不可达），杜绝「看起来会越界」的误导性防御。
+    const deduped = new Map<string, number>()
     for (const chapterId of [...indexPart, ...explicit]) {
-      if (position.has(chapterId)) deduped.add(chapterId)
+      const pos = position.get(chapterId)
+      if (pos !== undefined) deduped.set(chapterId, pos)
     }
-    refs[entityId] = [...deduped].sort((a, b) => (position.get(a) ?? 0) - (position.get(b) ?? 0))
+    refs[entityId] = [...deduped].sort((a, b) => a[1] - b[1]).map(([chapterId]) => chapterId)
   }
 
   for (const character of args.characters) {

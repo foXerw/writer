@@ -1,5 +1,6 @@
 // ai-types 纯函数契约测试（M4a Task 2）：maskKey 掩码边界 + isConfigured 判定。
-// maskKey 是「密钥永不过 IPC」的渲染层最后防线形状，边界（空串/8 字符）必须钉死。
+// maskKey 是「密钥永不过 IPC」的渲染层最后防线形状，边界（空串/12 全遮/13 部分遮）必须钉死
+//（M4c-2 结转微批 #2 裁定：全遮阈值 8 → 12——9~12 字符旧形态泄露 ≥3/4 明文，防反推名存实亡）。
 import { describe, expect, it } from 'vitest'
 import type { AiProtocol, AiSettings } from './ai-types'
 import { isConfigured, maskKey } from './ai-types'
@@ -20,14 +21,16 @@ describe('maskKey', () => {
     expect(maskKey('')).toBe('')
   })
 
-  it('短密钥（1~8 字符，含 8 边界）→ 统一 ••••，绝不泄露任何明文片段', () => {
+  it('短密钥（1~12 字符，含 12 边界）→ 统一 ••••，绝不泄露任何明文片段', () => {
     expect(maskKey('a')).toBe('••••')
     expect(maskKey('abcdefg')).toBe('••••')
-    expect(maskKey('abcdefgh')).toBe('••••') // 恰 8 字符：仍全遮
+    expect(maskKey('abcdefgh')).toBe('••••') // 恰 8 字符：旧阈值边界，仍全遮
+    expect(maskKey('abcdefghi')).toBe('••••') // 9 字符：旧形态泄露 9 中 7 位（abc…fghi）——防反推窗口，新阈值下必须全遮
+    expect(maskKey('abcdefghijkl')).toBe('••••') // 恰 12 字符：新边界，仍全遮
   })
 
-  it('9 字符起 → 前3…后4', () => {
-    expect(maskKey('abcdefghi')).toBe('abc…fghi')
+  it('13 字符起 → 前3…后4（真实 provider 密钥 DeepSeek ~35 / OpenAI 50+ 不受影响）', () => {
+    expect(maskKey('abcdefghijklm')).toBe('abc…jklm') // 恰 13 字符：新边界，部分遮
     expect(maskKey('sk-abcdef1234567890')).toBe('sk-…7890')
   })
 

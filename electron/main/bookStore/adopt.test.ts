@@ -719,6 +719,9 @@ describe('foreshadow', () => {
     const stored = readLedger(p).entries.find((x) => x.id === e.id)!
     expect(stored.plannedPayoffNote).toBe('新计划')
     expect(stored.note).toBe('补注')
+    // 「旧钟」/「open」是刻意证据（T6 评审核实，防误读成残留断言）：表外字段两头都不许动——
+    // 先前合法窄门 update 只写 note 两字段没碰存量 title；下文表外 title:'改名' 被整条拒后
+    // 同样动不了这片合法写面。此两行钉住的是「被拒变更发生前盘面已然干净」的基线。
     expect(stored.title).toBe('旧钟')
     expect(stored.status).toBe('open')
     // 评审 I2 口径（mergeGuarded 同款）：表外兄弟键不再静默忽略——静默丢弃会让 applied 账说谎。

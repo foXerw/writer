@@ -117,12 +117,14 @@ export interface AiErrorEvent {
 }
 
 /**
- * 密钥掩码：'' → ''；≤8 → '••••'（短密钥全遮防反推）；否则 `前3…后4`。
+ * 密钥掩码：'' → ''；≤12 → '••••'（短密钥全遮防反推——M4c-2 结转微批 #2 裁定 8→12：
+ * ≤12 时 `前3…后4` 至多遮 4/12、9 字符键泄 7/9，防反推名存实亡）；否则 `前3…后4`
+ *（真实 provider 密钥 DeepSeek ~35 / OpenAI 50+ 不受阈值影响）。
  * 纯函数、无副作用——渲染层与主进程共用同一形状真相。
  */
 export function maskKey(key: string): string {
   if (!key) return ''
-  if (key.length <= 8) return '••••'
+  if (key.length <= 12) return '••••'
   return `${key.slice(0, 3)}…${key.slice(-4)}`
 }
 
