@@ -24,7 +24,9 @@ export function createMainWindow(): BrowserWindow {
     y: mainWindowState.y,
     width: mainWindowState.width,
     height: mainWindowState.height,
-    minWidth: 800,
+    // 960×600：低于此宽/高侧栏 tab 条、编辑器工具栏、图谱控制区无法再优雅降级
+    // （UI 验收批次 #6：边缘拖窗改变尺寸导致布局碎裂的兜底闸门；含 windowStateKeeper 恢复校验）
+    minWidth: 960,
     minHeight: 600,
     backgroundColor: getThemeBackgroundColor(),
     titleBarStyle: 'hidden',

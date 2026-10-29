@@ -8,6 +8,7 @@ import EditorTabs from '../../components/Layout/EditorTabs'
 import OutlineView from '../../components/Editor/OutlineView'
 import SidebarPanel, { type SidebarTab } from '../../components/Workspace/SidebarPanel'
 import GraphView from '../../components/Graph/GraphView'
+import { appRegionStyle } from '../../styles/css'
 import type { GraphKind } from '../../components/Graph/graphModel'
 import CommandPalette from '../../components/Dialogs/CommandPalette'
 import ExportDialog, { type ExportOptions } from '../../components/Dialogs/ExportDialog'
@@ -571,6 +572,8 @@ function Workspace() {
           保证 写作↔图谱 双向都可达；图谱态下再出五档二级切换（M4c-2 Task 4） */}
       <Layout>
         {!focusMode && (
+          // 主区顶部视图切换条 = 无边框窗口的第二条拖拽带（UI 验收批次 #1）：
+          // 写作/图谱两模式共用此行，行本体可拖窗；Segmented（含图谱五档二级切换）显式 no-drag
           <div
             style={{
               flex: '0 0 auto',
@@ -579,10 +582,12 @@ function Workspace() {
               gap: 'var(--space-3)',
               padding: 'var(--space-2) var(--space-4)',
               background: 'var(--color-bg-base)',
-              borderBottom: '1px solid var(--color-border)'
+              borderBottom: '1px solid var(--color-border)',
+              ...appRegionStyle('drag')
             }}
           >
             <Segmented
+              style={appRegionStyle('no-drag')}
               value={viewMode}
               onChange={(v) => switchViewMode(v as 'write' | 'graph')}
               options={[
@@ -620,6 +625,7 @@ function Workspace() {
             />
             {viewMode === 'graph' && (
               <Segmented
+                style={appRegionStyle('no-drag')}
                 value={graphKind}
                 onChange={(v) => setGraphKind(v as GraphKind)}
                 options={[

@@ -13,6 +13,7 @@ import CharacterPanel from '../Explorer/CharacterPanel'
 import SettingPanel from '../Explorer/SettingPanel'
 import StatsPanel from '../Explorer/StatsPanel'
 import NarrativePanel from '../Explorer/NarrativePanel'
+import { appRegionStyle } from '../../styles/css'
 import type { WritingStatsView } from '../../pages/Workspace/hooks/useWritingStats'
 import type { Chapter } from '@/common/ipc'
 
@@ -78,13 +79,15 @@ function SidebarPanel({
       collapsed={collapsed || focusMode}
       style={{ background: 'var(--color-bg-elevated)', overflow: 'hidden' }}
     >
-      {/* 顶部项目信息 */}
+      {/* 顶部项目信息 —— 无边框窗口的拖拽带（UI 验收批次 #1）：
+          行本体可拖窗，返回/设置两个按钮显式 no-drag 保持可点击（与 Home 页 Header 同法） */}
       <div style={{
         padding: collapsed ? '12px 0' : '12px 16px',
         borderBottom: '1px solid var(--color-border)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: collapsed ? 'center' : 'space-between'
+        justifyContent: collapsed ? 'center' : 'space-between',
+        ...appRegionStyle('drag')
       }}>
         {!collapsed && (
           <Space>
@@ -92,7 +95,7 @@ function SidebarPanel({
               type="text"
               icon={<LeftOutlined />}
               onClick={onBack}
-              style={{ color: 'var(--color-text)' }}
+              style={{ color: 'var(--color-text)', ...appRegionStyle('no-drag') }}
             />
             <Text style={{ color: 'var(--color-text)', fontWeight: 500, fontSize: 13 }} ellipsis>
               {projectName}
@@ -104,7 +107,7 @@ function SidebarPanel({
             type="text"
             icon={<SettingOutlined />}
             onClick={onOpenSettings}
-            style={{ color: 'var(--color-text)' }}
+            style={{ color: 'var(--color-text)', ...appRegionStyle('no-drag') }}
           />
         )}
         {collapsed && (
@@ -112,7 +115,7 @@ function SidebarPanel({
             type="text"
             icon={<LeftOutlined />}
             onClick={onBack}
-            style={{ color: 'var(--color-text)' }}
+            style={{ color: 'var(--color-text)', ...appRegionStyle('no-drag') }}
           />
         )}
       </div>
@@ -127,12 +130,17 @@ function SidebarPanel({
             background: 'var(--color-bg-base)'
           }}>
             {sidebarTabs.map(t => (
+              // minWidth:0 是关键（UI 验收批次 #2）：flex 子项默认 min-width:auto 不会收缩到
+              // 内容以下，5 个按钮 × min-content(~72px)=360px 撑破 280px Sider 的 overflow:hidden，
+              // 「叙事」整槽被裁到看不见。放开收缩后 flex:1 均分 ≈56px，标签万一套不下走省略号。
               <Button
                 key={t.key}
+                className="sidebar-tab-btn"
                 type="text"
                 onClick={() => onSetTab(t.key as SidebarTab)}
                 style={{
                   flex: 1,
+                  minWidth: 0,
                   height: 36,
                   borderRadius: 0,
                   color: tab === t.key ? 'var(--color-text)' : 'var(--color-text-secondary)',
@@ -141,12 +149,14 @@ function SidebarPanel({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 4,
-                  fontSize: 12
+                  gap: 2,
+                  padding: '0 2px',
+                  fontSize: 12,
+                  overflow: 'hidden'
                 }}
               >
-                {t.icon}
-                {t.label}
+                <span style={{ flexShrink: 0, display: 'inline-flex' }}>{t.icon}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</span>
               </Button>
             ))}
           </div>

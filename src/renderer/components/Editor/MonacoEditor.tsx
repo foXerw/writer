@@ -41,7 +41,14 @@ const novelDarkTheme = {
     'editorLineNumber.activeForeground': '#c6c6c6',
     'editor.inactiveSelectionBackground': '#3a3d41',
     'editorIndentGuide.background': '#404040',
-    'editorIndentGuide.activeBackground': '#707070'
+    'editorIndentGuide.activeBackground': '#707070',
+    // 编辑器滚动条配色对齐 global.css 的 ::-webkit-scrollbar token（dark 档）：
+    // Monaco 的 slider 颜色走 CSS 变量（--vscode-scrollbarSlider-*），只能经主题色注入——
+    // 用样式表硬覆盖会撞上内联/变量层，被迫用强制声明（项目门禁禁止）
+    'scrollbar.background': '#00000000',
+    'scrollbarSlider.background': '#424242',
+    'scrollbarSlider.hoverBackground': '#6e6e6e',
+    'scrollbarSlider.activeBackground': '#8a8a8a'
   }
 }
 
@@ -71,6 +78,11 @@ const novelLightTheme = {
     'editor.inactiveSelectionBackground': '#e6f4ff',
     'editorIndentGuide.background': '#f0f0f0',
     'editorIndentGuide.activeBackground': '#d9d9d9',
+    // 编辑器滚动条配色对齐 global.css 的 ::-webkit-scrollbar token（light 档），同 dark 主题注释
+    'scrollbar.background': '#00000000',
+    'scrollbarSlider.background': '#c1c1c1',
+    'scrollbarSlider.hoverBackground': '#8c8c8c',
+    'scrollbarSlider.activeBackground': '#757575'
   },
 }
 
@@ -209,10 +221,24 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
             indentation: false
           },
           renderWhitespace: 'none',
+          // 中文正文里全角引号/破折号等会被 unicode-highlight 判为「可疑字符」画成黄框小方块，
+          // 极易被误读成异常光标（UI 验收批次 #3）——写作应用整篇都是这类字符，关闭检测
+          unicodeHighlight: {
+            nonBasicASCII: false,
+            ambiguousCharacters: false,
+            invisibleCharacters: false,
+            includeComments: false,
+            includeStrings: false
+          },
+          // 滚动条对齐应用观感（UI 验收批次 #4）：悬停/滚动才出现、更细、无阴影箭头
           scrollbar: {
-            vertical: 'visible',
+            vertical: 'auto',
             horizontal: 'hidden',
-            verticalScrollbarSize: 10
+            verticalScrollbarSize: 8,
+            horizontalScrollbarSize: 0,
+            useShadows: false,
+            verticalHasArrows: false,
+            horizontalHasArrows: false
           },
           readOnly
         })

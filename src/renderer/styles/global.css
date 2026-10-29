@@ -325,6 +325,41 @@ body {
 }
 
 /* ============================================================
+   Monaco 编辑器滚动条（UI 验收批次 #4）：观感对齐上方 ::-webkit-scrollbar——
+   slider/轨道颜色经 MonacoEditor 主题色注入（scrollbarSlider.* → --vscode-scrollbarSlider-* 变量，
+   monaco 的 CSS 只引用变量，不经主题层覆盖就得动用强制声明，项目门禁禁止）；
+   这里只补 monaco 未内联设置的圆角（--radius-sm = 4px，与 webkit thumb 圆角同源）。
+   ============================================================ */
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
+  border-radius: var(--radius-sm);
+}
+
+/* ============================================================
+   编辑器工具栏窄窗降级（UI 验收批次 #6b）：≤1100px 时「整理本章」只留图标、
+   标题输入收缩——文字标签随媒体查询折叠，右侧按钮簇不裂行；标签折叠 + 输入收缩
+   后左右簇在 960 最小窗宽下仍可能吃不下，横向滚动兜底（裂行与裁掉按钮都不可接受，
+   滚动保住全部入口），常规窗宽不触发。
+   ============================================================ */
+.editor-toolbar {
+  overflow-x: auto;
+}
+
+.editor-toolbar .editor-toolbar-title-input {
+  width: 180px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1100px) {
+  .editor-toolbar-organize-label {
+    display: none;
+  }
+
+  .editor-toolbar .editor-toolbar-title-input {
+    width: 120px;
+  }
+}
+
+/* ============================================================
    M4b T5 提案差异确认面板（.proposal-review 作用域，无强制声明）
    两栏布局：左=按章分组的提案导航，右=选中提案的逐条目审阅列表。
    颜色/间距/字号/圆角全部走设计 token；已采纳条目整体降透明度表达灰化，

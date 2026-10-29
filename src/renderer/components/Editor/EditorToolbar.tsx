@@ -76,6 +76,7 @@ function EditorToolbar({
 
   return (
     <div
+      className="editor-toolbar"
       style={{
         height: 40,
         padding: '0 16px',
@@ -87,10 +88,12 @@ function EditorToolbar({
       }}
     >
       {/* 左侧：章节标题和基本工具 */}
-      <Space size="small">
-        {/* 章节标题输入 */}
+      <Space size="small" style={{ flexShrink: 0 }}>
+        {/* 章节标题输入：宽度由 global.css 的 .editor-toolbar-title-input 控制
+            （≤1100px 媒体查询收缩）——内联宽度会压过媒体查询、窄窗下把右侧按钮簇顶出视口（#6b） */}
         <input
           type="text"
+          className="editor-toolbar-title-input"
           value={chapterTitle}
           onChange={(e) => onTitleChange?.(e.target.value)}
           placeholder="章节标题"
@@ -100,8 +103,7 @@ function EditorToolbar({
             borderRadius: 4,
             padding: '4px 8px',
             color: 'var(--color-text)',
-            fontSize: 14,
-            width: 200
+            fontSize: 14
           }}
         />
 
@@ -174,7 +176,7 @@ function EditorToolbar({
       </Space>
 
       {/* 右侧：模式切换和保存 */}
-      <Space size="small">
+      <Space size="small" style={{ flexShrink: 0 }}>
         {/* 专注模式开关 */}
         <Tooltip title="专注模式 (F8)">
           <Button
@@ -229,7 +231,9 @@ function EditorToolbar({
               disabled={organizeDisabled}
               style={{ color: 'var(--color-text)' }}
             >
-              整理本章
+              {/* 窄窗口（≤1100px）下文字标签由 CSS 媒体查询折叠、只留图标（global.css
+                  .editor-toolbar-organize-label），保证按钮簇不裂行（UI 验收批次 #6） */}
+              <span className="editor-toolbar-organize-label">整理本章</span>
             </Button>
           </Tooltip>
         )}
@@ -258,8 +262,8 @@ function EditorToolbar({
 
         <ThemeToggle />
 
-        {/* 字数统计 */}
-        <span style={{ color: 'var(--color-text-secondary)', fontSize: 12, marginLeft: 8 }}>
+        {/* 字数统计（nowrap 防「272 字」被挤成两行，UI 验收批次 #5；间距由 Space gap 提供） */}
+        <span style={{ color: 'var(--color-text-secondary)', fontSize: 12, whiteSpace: 'nowrap' }}>
           {wordCount.toLocaleString()} 字
         </span>
       </Space>

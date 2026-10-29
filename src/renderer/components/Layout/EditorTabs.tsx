@@ -173,7 +173,7 @@ function EditorTabs({
         onChange={handleChange}
         hideAdd
         size="small"
-        style={{ width: 'calc(100% - 80px)', marginBottom: 0 }}
+        style={{ flex: 1, minWidth: 0, marginBottom: 0 }}
         tabBarStyle={{
           margin: 0,
           paddingLeft: 4,
@@ -187,16 +187,17 @@ function EditorTabs({
           </Dropdown>
         }
       />
+      {/* 「N 个标签」计数槽（UI 验收批次 #5）：原绝对定位 + borderLeft 竖线在右上角拼出
+          一格「游离网格」，且与下一行字数列不对齐。改为行内 flex 项：与工具栏同 16px 右内边距、
+          整行高度垂直居中，竖线删除——信息保留，观感归位。 */}
       <div style={{
-        position: 'absolute',
-        right: 8,
-        padding: '0 8px',
-        borderLeft: '1px solid var(--color-border)',
+        flex: '0 0 auto',
         height: '100%',
         display: 'flex',
-        alignItems: 'center'
+        alignItems: 'center',
+        paddingRight: 'var(--space-4)'
       }}>
-        <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+        <span style={{ fontSize: 11, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
           {chapters.length} 个标签
         </span>
       </div>
