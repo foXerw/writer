@@ -219,7 +219,7 @@ function SidebarPanel({
       }}>
         <Button
           type="text"
-          icon={collapsed ? <FolderOpenOutlined /> : <FolderOpenOutlined />}
+          icon={<FolderOpenOutlined />}
           onClick={onToggleCollapse}
           style={{ color: 'var(--color-text-tertiary)' }}
         />

@@ -44,11 +44,13 @@ export function newOptionRow(): OptionRow {
 }
 
 /**
- * 保存转换：显式重建 PlotlineStage 四字段（title trim 语义原样），_k 不在输出形状内。
- * ⚠ 漂移门（结转微批 #2 注记）：PlotlineStage 未来新增字段必须同步加进此处重建——
- * 精确形状重建会静默丢新字段，Object.keys 等值测试只钉今天的形状、不为漂移报警。
+ * PlotlineStage 重建式（stageRowToStage 的真实输出形状）：显式四字段（title trim 语义
+ * 原样），_k 不在输出形状内。
+ * ⚠ 漂移门（结转微批 #2 注记，#4 升级为编译锁）：PlotlineStage 新增字段未同步进此重建式
+ * 时，文末 StageConverterLock 的 Exclude 变非 never，tsc 当场报错——不再静默丢字段；
+ * Object.keys 等值测试仍只钉今天的形状，运行态镜像见往返零丢失单测。
  */
-export function stageRowToStage(row: StageRow): PlotlineStage {
+function buildStageOut(row: StageRow) {
   return {
     title: row.title.trim(),
     summary: row.summary ?? '',
@@ -57,14 +59,42 @@ export function stageRowToStage(row: StageRow): PlotlineStage {
   }
 }
 
+/** 保存转换：委托 buildStageOut；`: PlotlineStage` 标注保留可赋值性硬门（缺必填/错类型当场报错）。 */
+export function stageRowToStage(row: StageRow): PlotlineStage {
+  return buildStageOut(row)
+}
+
 /**
- * 保存转换：显式重建 ChoiceOption 两字段（label trim 语义原样），_k 不在输出形状内。
- * ⚠ 漂移门（结转微批 #2 注记）：ChoiceOption 未来新增字段必须同步加进此处重建——
- * 精确形状重建会静默丢新字段，Object.keys 等值测试只钉今天的形状、不为漂移报警。
+ * ChoiceOption 重建式（optionRowToOption 的真实输出形状）：显式两字段（label trim 语义
+ * 原样），_k 不在输出形状内。
+ * ⚠ 漂移门（结转微批 #2 注记，#4 升级为编译锁）：ChoiceOption 新增字段未同步进此重建式
+ * 时，文末 OptionConverterLock 的 Exclude 变非 never，tsc 当场报错——不再静默丢字段；
+ * Object.keys 等值测试仍只钉今天的形状，运行态镜像见往返零丢失单测。
  */
-export function optionRowToOption(row: OptionRow): ChoiceOption {
+function buildOptionOut(row: OptionRow) {
   return {
     label: row.label.trim(),
     consequence: row.consequence ?? ''
   }
 }
+
+/** 保存转换：委托 buildOptionOut；`: ChoiceOption` 标注保留可赋值性硬门。 */
+export function optionRowToOption(row: OptionRow): ChoiceOption {
+  return buildOptionOut(row)
+}
+
+/**
+ * 编译时漂移锁（结转微批 #4）：schema 任一字段（必填或可选）新增而未同步进上方重建式时，
+ * Exclude<keyof schema, keyof 重建式输出> 变非 never，类型实参违反 `T extends never`
+ * 约束，tsc 报 TS2344（错误文本直接点名缺失字段，如 Type '"scratchFoo"' does not
+ * satisfy the constraint 'never'）。两处实现口径：
+ * ① 题面建议的 `type _Lock = ... extends never ? true : { missing: ... }` 配局部 const
+ *   实例化不可直接用——tsconfig noUnusedLocals 会把未用的局部类型/变量判 TS6196/TS6133，
+ *   锁只能以导出声明存活（无人导入、存在于模块即被 tsc 检查）；约束违反与「true 不可
+ *   赋给 {missing}」同为编译失败，取约束式。
+ * ② 锁必须比 ReturnType<typeof buildStageOut>（无标注的重建式）而非导出函数——导出函数
+ *   带 `: PlotlineStage` 返回标注时 ReturnType ≡ PlotlineStage，Exclude 恒 never、锁空转。
+ */
+type NeverBut<T extends never> = T
+export type StageConverterLock = NeverBut<Exclude<keyof PlotlineStage, keyof ReturnType<typeof buildStageOut>>>
+export type OptionConverterLock = NeverBut<Exclude<keyof ChoiceOption, keyof ReturnType<typeof buildOptionOut>>>

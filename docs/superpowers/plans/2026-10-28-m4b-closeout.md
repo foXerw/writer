@@ -78,6 +78,7 @@
   取消按钮（180s 空闲窗内用户只能等）。
 - **aiModel capture-at-send-time**：`resolveModelLabel(view)` 在解析完成后复算——设置中途被改会
   把「后一个模型名」盖到「前一个请求」的提案上。口径未定，M4c 决定（发时快照 vs 现算）。
+  「2026-10-30 勘误：M4c-2 微批 #3 五跳取证判为幻影——view 为发前一次性 IPC 克隆快照，飞行中改设置不可见；详见 m4c2-closeout 继续结转 aiModel 条。」
 - **多条目盖章测试**：✅ 已在 T6 P3 闭环（organizeResult 多 change 混合盖章 + 整份过校验）。
 - **T0 结转小项**：✅ 已在 T6 sweep 闭环（sanitizeIdleMs 0 值 / closed 分支 noteActivity / 标签单源）。
 - **M3 结转不动**：点击跳章节 UI、Monaco 光标/滚动恢复、实体卡面板定位——均未被 M4b 触碰，

@@ -223,16 +223,21 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
             indentation: false
           },
           renderWhitespace: 'none',
-          // unicode 高亮三档拆分（UI 验收批次 #3 / R1-I1）：
-          // - ambiguousCharacters + nonBasicASCII = 中文正文全角字符误报（黄框被当成异常光标），关；
-          // - includeComments/includeStrings 只是前两档的注释/字符串子集开关，随前两档一并关；
-          // - invisibleCharacters **保持默认开启**：零宽空格/控制符是粘贴进稿件的真实隐患，
-          //   与普通全角标点不相交，黄框只提示真正不可见的字符——这一档要留。
+          // unicode 高亮口径（UI 验收批次 #3 / R1-I1 → 结转微批 #4 收窄为以下两键）：
+          // - nonBasicASCII + ambiguousCharacters = 中文正文全角字符误报（黄框被当成异常光标），
+          //   关；黄框 artifact 由这两档全局消除，与 token 作用域开关无关。
+          // - invisibleCharacters 保持默认开启：零宽空格/控制符是粘贴进稿件的真实隐患，
+          //   与普通全角标点不相交——这一档要留。
+          // - includeComments/includeStrings 两键已删（核对 monaco 0.55.1 源码
+          //   unicodeHighlighter.js：getDecoration(!includeComments, !includeStrings) 会把注释/
+          //   字符串 token 作用域豁免**全部**档位的告警、含 invisibleCharacters——旧 false 曾让
+          //   markdown 的 ```/~~~ 围栏、四空格代码块、链接目标等 string 作用域成零宽字符盲区）。
+          //   删键后 includeStrings 恢复默认 true，字符串盲区闭合；注意 includeComments 的默认值
+          //   是 inUntrustedWorkspace 哨兵、standalone 恒 trusted 下解析为 false（HTML 注释/
+          //   引用标记等注释作用域仍豁免），彻底闭合需显式 includeComments: true，另行裁定。
           unicodeHighlight: {
             nonBasicASCII: false,
-            ambiguousCharacters: false,
-            includeComments: false,
-            includeStrings: false
+            ambiguousCharacters: false
           },
           // 滚动条对齐应用观感（UI 验收批次 #4）：悬停/滚动才出现、更细、无阴影箭头
           scrollbar: {

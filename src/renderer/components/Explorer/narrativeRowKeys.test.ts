@@ -87,4 +87,13 @@ describe('save payload strips _k', () => {
     const bare = optionRowToOption({ _k: 1, label: '桥', consequence: undefined as unknown as string })
     expect(bare).toEqual({ label: '桥', consequence: '' })
   })
+
+  it('全量字段往返零丢失（StageConverterLock/OptionConverterLock 的运行态镜像）', () => {
+    // 输入是穷尽的 schema 字面量（annotated PlotlineStage/ChoiceOption）：任一字段在转换器
+    // 里被漏掉，toEqual 的期望值仍带该字段 → 本测试红；类型层同款保障由文末编译锁负责。
+    const stage: PlotlineStage = { title: '  起  ', summary: '开场', chapterIds: ['c1', 'c2'], entityIds: ['e1'] }
+    expect(stageRowToStage({ ...stage, _k: 42 })).toEqual({ ...stage, title: '起' })
+    const option: ChoiceOption = { label: ' 过桥 ', consequence: '落水' }
+    expect(optionRowToOption({ ...option, _k: 43 })).toEqual({ ...option, label: '过桥' })
+  })
 })
