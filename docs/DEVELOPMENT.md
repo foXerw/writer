@@ -11,9 +11,9 @@
 | M3 | 图谱视图（首批两种：人物/任务关系图 + 世界观图） | ✅ 完成 | 2026-10-28 |
 | M4a | AI 服务层（设置保险库/双协议 provider/流式通道/token 账本/上下文装配器/连接测试闭环） | ✅ 完成 | 2026-10-28 |
 | M4b | 整理闭环（整理本章→提案落盘→差异确认→采纳引擎，origin 人写保护；消费 M4a 服务层） | ✅ 完成 | 2026-10-28 |
-| M4 | AI 维护闭环总目标（剧情线/选项/伏笔录入 UI、图谱 3-5 视图、章节审阅等余下 M4c+ 范围） | 🔄 进行中（M4a/M4b/M4c 录入+五视图+跳章片已交付；章节审阅归 M6） | - |
+| M4 | AI 维护闭环总目标（剧情线/选项/伏笔录入 UI、图谱 3-5 视图、章节审阅等余下 M4c+ 范围） | ✅ 完成（M4a/M4b/M4c 全交付；末片「章节审阅」划归 M6 并于 2026-11-01 交付后由 M6 收尾波裁定关账，见 closeout 裁定 13） | 2026-11-01 |
 | M5 | 实时补全（ghost text，Tab 采纳；opt-in 开关默认关） | ✅ 完成 | 2026-10-31 |
-| M6 | 章节审阅（AI 读者视角结构化意见） | ⏳ 规划中 | - |
+| M6 | 章节审阅（AI 读者视角结构化意见，可跳转/驳回/转提案；真 key CDP 全链冒烟过） | ✅ 完成 | 2026-11-01 |
 
 > M2 交付：`src/common/schema.ts` v2 模型+校验器；`electron/main/bookStore/`（paths/docStore 原子写/
 > format 探测/migrate 迁移+续传+自检/refs/chapters/volumes/characters/world/narrative/watcher 五域缓存）；
@@ -108,6 +108,27 @@
 > 坏 baseUrl 全静默（无 ghost/无 toast/`[useCompletion]` warn 恰一条）→ 流中切章 ghost 即清且
 > 账本零新增 → usage.jsonl 末行 feature=completion、model=补全槽解析实发值；应用可归因 console
 > 零错误。裁定/结转/人工验证清单见 [2026-10-31-m5-closeout.md](./superpowers/plans/2026-10-31-m5-closeout.md)。
+>
+> M6 交付（章节 AI 审阅）：T1 意见 schema+校验+锚重定位+分章账本 `bookStore/reviews`（合并矩阵/
+> 抑制键/状态守卫，真 JSON 落 `.ai/reviews/<章id>.json`）+ `review:*` 四通道（T1）；T2 全章上下文
+> 装配器+意见信封解析（`reviewContext`，分段规则单源复用 T1，paraIndex 双向钉）（T2）；T3
+> `proposal:appendChanges` additive 尾部追加（DUPLICATE 闸门零放宽、cid 盖章、坏条目整拒零写）（T3）；
+> T4 意见→提案 change 映射（三类硬意见→伏笔 create/世界 update/角色 update，need-target 候选兜底，
+> overwritesHuman 恒置——动机字段路由 goals 默认裁定翻转）（T4/T5a）；T5 `useReview` 编排
+> （逐章 N 次调用/部分失败隔离/48000 输入预算先闸后发/取消停循环+掐在途/五字段盖章落账）+
+> `ReviewDialog`（范围选择≤5 连续硬闸、逐章流式分节、跳转=relocateAnchor→Monaco 精确高亮、
+> 驳回/转化/目标选择器、stale/锚已失/已驳回/已转化四态呈现）（T5）；T6 真 key CDP 总冒烟+
+> `reviewErrors` 中文词表+收尾文档（本波）。
+> 验证：typecheck 0 错、lint 0 error（1 既有 warning）、`npm run test` **964 用例全绿**、build 通过；
+> CDP 真机总冒烟（DeepSeek Anthropic 兼容端点）十二清单全过：真审当前章首流式增量实测 ~0.9–1.1s
+> （SLA 15s）→ 按章分组硬软分色 → 跳转高亮精确锚句 → 改正文一锚漂移「锚已失」灰态独立帧 →
+> 驳回持久跨 reload+重审不复现 → 转化新建提案（无 pending 章）→第二条并入同提案（appendChanges
+> changes=2，差异面板两来源+覆盖人写橙警勾选框帧）→ 采纳前书内容域逐文件 md5 零变更（审阅只读
+> 铁律 byte 级实证）→ 三章范围中途取消=已完成章留存+「完成 1 章、已取消 1 章」文案+徽标=磁盘
+> open 对账 → 坏 baseUrl=对话框内中文错误节+恢复后「重试本章」跑通 → 6 章/跳章选择被 UI 整次
+> 拒绝 → 超长章（56005 token）装配前拒绝零花费 → usage.jsonl review 行 model=review 槽回落实发值 →
+> 应用可归因 console 零错误；证据帧逐关键时刻独立（md5 各异），demo 书全程 byte-exact 还原。
+> 裁定/结转/人工验证清单见 [2026-11-01-m6-closeout.md](./superpowers/plans/2026-11-01-m6-closeout.md)。
 >
 > 非 SPEC 里程碑的可选储备（backlog，不进上表）：多书管理与工作台扩展、存量老书批量回填（M6 后另设计）。
 
@@ -699,3 +720,4 @@
 | 2026-10-28 | 4.0b (M4b) | **里程碑 M4b 整理闭环完成**：空闲超时语义收口（T0）；提案 schema+组合表单一权威（T1）；organize 提示词契约（T2）；提案仓库+origin 守卫采纳引擎+`proposal:*` 通道（T3）；「整理本章」触发链+徽章+`book:readAiData`（T4）；差异审阅面板（T5）；端到端离线链路证明+`PROPOSAL_DUPLICATE` 闸门+`.ai/` 三件套文档正式化+收尾（T6）。typecheck 0 错/lint 0 error/627 测试全绿/build 通过 + CDP 真机冒烟（手工提案→徽章→面板橙警默认不勾→采纳落盘→图谱刷新→徽章清零，console 零报错） |
 | 2026-10-29 | 4.0c (M4c-2) | **里程碑 M4c-2 叙事 UI + 图谱五视图完成**：`aiSource` create 幂等令牌关双胞胎窗（T1）；实体→章节引用并集纯函数（T2）；graphModel 三新 builder（T3）；GraphView 五视图+跳章菜单+arc 选择器+坏台账图谱侧降级（T4）；NarrativePanel 三段录入+narrativeErrors 词表（T5）；viewState 按章配对+整理取消 UI+结转小批清零（T6）；收尾裁定「台账坏值两副面孔」落码+文档对表（T7）。typecheck 0 错/lint 0 error/736 测试全绿/build 通过 + CDP 真机总冒烟（真实 DeepSeek key 首次闭环：连接测试→整理取消→整理跑通→差异面板可见，五视图/跳章/CRUD/坏台账全过，console 应用可归因零报错——两类上游 dev-only 噪声单列不判负，见 closeout 裁定 10）。收尾记录见 [2026-10-28-m4c2-closeout.md](./superpowers/plans/2026-10-28-m4c2-closeout.md) |
 | 2026-10-31 | 5.0 (M5) | **里程碑 M5 实时补全完成**：completion 旁路装配器（卡投影+章反查，organize 装配器零变动）（T1）；纯触发状态机 IME/修订/冷却硬闸门（T2）；设置页补全开关默认关三态 patch（T3）；monaco 流式灰字层+捕获相 Tab/Esc+IME/就绪/blur 信号+includeComments carry-in（T4）；useCompletion 编排代际令牌+全 kind 静默（T5）；真 key CDP 九条总冒烟+收尾文档+采纳回显 reveal 修复（T6）。typecheck 0 错/lint 0 error/**820 测试全绿**/build 通过 + CDP 真机总冒烟九条全过（开关持久→停笔首灰字实测 1.3–1.7s→流半 Tab 只采纳已到达→Esc 撤→修订/合成静默→坏配置恰一条 warn→流中切章账本零新增→completion 分账行实发模型），应用可归因 console 零报错。收尾记录见 [2026-10-31-m5-closeout.md](./superpowers/plans/2026-10-31-m5-closeout.md) |
+| 2026-11-01 | 6.0 (M6) | **里程碑 M6 章节 AI 审阅完成**：意见 schema+锚重定位+分章账本合并矩阵/抑制键+`review:*` 四通道（T1）；全章上下文装配器+意见信封解析、分段规则单源（T2）；`proposal:appendChanges` additive 尾部追加、DUPLICATE 闸门零放宽（T3）；意见→提案映射三类硬意见+目标选择器兜底+动机 goals 默认翻转（T4/T5a）；`useReview` 编排（逐章 N 次调用/部分失败隔离/48000 预算先闸/取消语义）+`ReviewDialog` 全 UI（≤5 连续范围闸/流式分节/跳转高亮/四态呈现）（T5）；真 key CDP 十二清单总冒烟+`reviewErrors` 中文词表+取消文案修正+README/BOOK_FORMAT §7.7-7.8 文档+closeout（T6）。typecheck 0 错/lint 0 error（1 既有 warning）/**964 测试全绿**/build 通过 + CDP 真机总冒烟十二清单全过（首流式增量 ~0.9s→锚漂移灰态→驳回 reload 持久+重审抑制→转化双路径+差异面板橙警→采纳前书内容域 byte 级零变更→三章取消留存+徽标对账→坏配置错误节+重试跑通→6 章/跳章 UI 拒绝→超预算零花费拒绝→review 分账行实发模型），应用可归因 console 零报错。收尾记录见 [2026-11-01-m6-closeout.md](./superpowers/plans/2026-11-01-m6-closeout.md) |

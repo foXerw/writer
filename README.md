@@ -64,6 +64,12 @@
 - **不打扰宪法**: 输入法组字中、段中修订态（光标后有余文）、切章/切视图一律不弹或即时清场；补全任何失败（断网/坏配置/超时）静默无提示，绝不打断写作流；被撤销的同句不再自动重弹
 - **Token 分账**: 补全调用按 `feature=completion` 记入每本书 `.ai/usage.jsonl`，侧栏「AI 用量」按功能汇总可见
 
+### 章节 AI 审阅（M6）
+- **一键读者视角**: 工具栏「审阅」按钮打开对话框，AI 以读者/编辑视角通读当前章（可选连续至多 5 章，逐章各发一次请求），产出段落锚定的结构化意见：硬伤三类（伏笔未回收/设定冲突/动机断裂）+ 软感受三类（节奏/人物扁平/文笔），按章分组、流式呈现、硬软分色
+- **可跳转的锚**: 每条意见带原文引句锚点，点「跳转」在编辑器精确高亮原句；正文改版后锚漂移该条转「锚已失」灰态（仍可驳回，跳转禁用）；重审未再重现的意见标「上次未重现」而非删除
+- **消费闭环**: 硬意见一键**转提案**（复用 M4b 差异面板逐条确认，含覆盖人写橙警勾选），同章已有未消化提案时**并入**该提案（additive 追加，不放宽「一章一份未消化提案」闸门）；软意见只可驳回；驳回后重审同章不复读（抑制键防重）
+- **只读铁律**: 审阅全链（含转提案）**零写字书内容域**——只写 `.ai/reviews/` 意见账本与 `.ai/proposals/` 提案文件，正式数据仍由你经差异面板亲手采纳落盘；调用按 `feature=review` 记入 `.ai/usage.jsonl`（模型取 review 槽，留空回落默认模型）
+
 ## 项目结构
 
 ```
@@ -233,7 +239,7 @@ ls node_modules/electron/dist/electron.exe
 > **完整规范见 [docs/BOOK_FORMAT.md](docs/BOOK_FORMAT.md)**：目录树全量、每类文件字段表（对照
 > `src/common/schema.ts`）、章节 front-matter 示例、`.migration-backup/` 与
 > `.novelwriter.json.migrated` 只读约定、`.ai/`（用量账本 `usage.jsonl` + 提案 `proposals/` +
-> 章摘要 `summaries/` + 实体索引 `index.json`）说明与密钥
+> 审阅意见账本 `reviews/` + 章摘要 `summaries/` + 实体索引 `index.json`）说明与密钥
 > 存放姿态，以及「第三方 / AI 工具如何安全读写
 > 一本书」操作守则。旧版（v1，`.novelwriter.json` + `settings/` + `NNN-标题.md`）在打开时会被自动
 > 就地迁移为 v2（先整本备份），无需手工转换。
@@ -249,7 +255,7 @@ ls node_modules/electron/dist/electron.exe
 ├── world/<类别>/<uuid>.yaml # 世界观词条（location/history/magic/culture/other）
 ├── plotlines/ choices/  # 剧情线 / 关键选项（录入 UI = 侧栏「叙事」面板，M4c-2）
 ├── foreshadow.yaml      # 伏笔台账
-├── .ai/                 # AI 产物区（用量账本/提案/摘要/索引，按需创建，详见 BOOK_FORMAT.md §7）
+├── .ai/                 # AI 产物区（用量账本/提案/审阅意见账本/摘要/索引，按需创建，详见 BOOK_FORMAT.md §7）
 └── .migration-backup/   # 迁移备份（只读，详见 BOOK_FORMAT.md）
 ```
 

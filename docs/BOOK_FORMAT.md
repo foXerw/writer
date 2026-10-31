@@ -48,6 +48,8 @@
     ├── usage.jsonl                    # M4a：token 用量账本（追加式 JSONL，见 §7.1）
     ├── proposals/
     │   └── <id>.yaml                  # M4b：AI 整理提案（ProposalFile；id = `prop-<章id前8>-<ts36>`，见 §7.2）
+    ├── reviews/
+    │   └── <chapterId>.json           # M6：审阅意见分章账本（ReviewOpinion[]，真 JSON 数组，见 §7.7）
     ├── summaries/
     │   └── chapters/
     │       └── <uuid>.yaml            # M4b：章节摘要缓存（见 §7.3）
@@ -330,7 +332,7 @@ v1 根配置 `.novelwriter.json` 在**迁移成功收尾时改名**而来（`mig
 自动**续传补完**（R1 接线）：已转换的文件不重做、书 id 保持稳定、同 id 角色 json 绝不覆盖已存在的
 yaml（跳过 + warning，R2 守卫）、报告照常并入迁移 UI。
 
-## 7. `.ai/`（AI 产物区：M4a 用量账本 + M4b 提案/摘要/索引）
+## 7. `.ai/`（AI 产物区：M4a 用量账本 + M4b 提案/摘要/索引 + M6 审阅意见账本）
 
 `.ai/` 是**AI 产物命名空间**，全部按需创建（从未用过 AI 的书没有此目录，是常态）。
 与正式内容域（chapters/characters/world/…）的分界：`.ai/` 下除 `proposals/` 外全是
@@ -520,6 +522,68 @@ update/delete 路径**不注入也不查询**令牌（其幂等来自既有的�
 - UI 密钥框永不回填明文，留空保存 = 不修改；清除走显式 `clearApiKey` 路径（落盘空串）；
 - 该文件不出现在书目录里——拷贝/同步/提交一本书不会带走任何密钥；
 - 坏文件回退默认值并 warn（warn 只含错误名/errno，绝不回显文件内容）。
+
+### 7.7 `.ai/reviews/<chapterId>.json` — 审阅意见分章账本（M6）
+
+审阅（AI 读者视角结构化意见，M6）的落账单位是**每章一个文件**：
+`.ai/reviews/<chapterId>.json`，内容为真 JSON 数组 `ReviewOpinion[]`（缩进 2 + 尾换行，
+人可读；tmp+rename 原子写）。目录按需创建——从未审阅过的书没有 `reviews/`，是常态。
+
+**派生数据待遇（与 `index.json` 同款）**：watcher 对整个 `.ai/` 不做域失效；该文件可安全手删/
+整目录删除——丢的只是意见账本，重审可再生，书籍内容域零影响。读侧**宽容**（坏 JSON 字节/顶层
+非数组 → console.warn + 空数组；数组内坏条目逐条校验 warn+跳过——一本坏账不瘫痪审阅面板）；
+写侧**严格自家产物**（`REVIEW_*` 平文前缀错误，校验发生在任何盘操作之前，部分写零污染）。
+
+`ReviewOpinion` 字段（对照 `src/common/reviewTypes.ts`，校验器 `validateReviewOpinion`）：
+
+| 字段 | 类型 | 必填 | 含义 |
+|------|------|------|------|
+| `id` | string | 是 | 意见 id（渲染层落账前盖 UUID） |
+| `chapterId` | string | 是 | 归属章 UUID；与文件名不符的意见拒落（跨章污染门） |
+| `category` | 六枚举 | 是 | `foreshadow-unresolved`/`setting-conflict`/`motivation-break`（硬）＋`pacing`/`flatness`/`prose-craft`（软） |
+| `severity` | `'hard' \| 'soft'` | 是 | 硬可转提案；软只可驳回（散文是作者地盘） |
+| `anchor` | `{quote, paraIndex}` | 是 | 锚句原文（≤120 码点）+ 段落序号；跳转/抑制都读它 |
+| `text` / `suggestion?` | string | text 是 | 意见本体 / 可执行建议 |
+| `status` | `open\|dismissed\|converted` | 是 | 状态迁移唯一写入口：`review:dismiss`（open→dismissed，幂等）、`review:markConverted`（非 stale 的 open→converted+`proposalId`，指针唯一） |
+| `stale` | boolean | 是 | 「上次未重现」标记，只在 saveRun 合并里产生；徽标仍计、可驳回、不可转化 |
+| `createdAt` / `model` | string | 是 | ISO 时间戳 / 实发模型槽值（存储层把当次 run 的 model 统一盖到全部新入意见） |
+| `proposalId?` / `targetEntityId?` | string | 否 | 转化提案指针 / 意见点名的目标实体（转化映射用） |
+
+**重审按章替换的合并矩阵**（saveRun 唯一实现）：旧 `dismissed/converted` 原样保留；旧 `open`
+与**实际入档**的新意见同抑制键 → 被替换出局；旧 `open` 未重现 → 保留并置 `stale=true`（幂等
+不叠加，重现则恢复新鲜）；新意见命中旧 `dismissed` 的抑制键 → 丢弃（同章防复读）。
+**抑制键** = `chapterId|category|fnv1a32(normalizeQuote(anchor.quote))`——键含 chapterId，
+跨章不抑制；`normalizeQuote` 收敛全半角引号/空白后取哈希。
+
+**通道级政策**：单 run 意见数 ≤200（`REVIEW_TOO_MANY`，与 `PROPOSAL_TOO_LARGE` 先例同档；
+存储层不设限，存量账本可读可迁移）；`chapterId` 必须 UUID 形状（`BAD_REVIEW_CHAPTER_ID`
+路径安全门——账本文件名即 chapterId，`../` 重定向封死）。
+
+**审阅只读铁律**：审阅全链（装配→请求→落账→驳回→转提案）只写 `.ai/reviews/` 与
+`.ai/proposals/`，对 `chapters/`、四类实体、`foreshadow.yaml`、`index.json`、`summaries/`
+**零字节**（转提案≠采纳；M6 冒烟含采纳前逐文件 md5 对账证据）。
+
+### 7.8 `proposal:appendChanges` — additive 尾部追加语义（M6 T3）
+
+审阅意见「转化」在**同章已有未消化提案**时不新建文件，而是把映射出的 change 追加进该提案尾部。
+通道 `proposal:appendChanges({projectPath, proposalId, changes})`，纪律：
+
+- **DUPLICATE 闸门零放宽**：目标必须存在且未消化（`isUnsettled` 单源谓词），否则
+  `PROPOSAL_APPEND_TARGET: <id>`——「一章至多一份未消化提案」不变量不因追加通道开口子，
+  同章第二份提案仍走 `proposal:save` 被 `PROPOSAL_DUPLICATE` 拒；
+- **只追加尾部**：既有条目的顺序与 `cid` 一律不动（M4c-1 键域记账稳定）；追加条目 `cid`
+  缺省盖新鲜 UUID、给定则原样保留；
+- **坏条目整拒零写**：逐条 `validateChange`，任一坏 → `PROPOSAL_INVALID: <id>:
+  append.changes[i]: …` 整体拒绝（好条目不留半套）；落盘前对合并后**整档**复跑
+  `validateProposal`（追加 cid 与既有 cid 重复等文件级歧义在此拦），坏形状零字节；
+- **头部字段透传**：`id/chapterId/createdAt/aiModel/status/appliedIndexes` 原样保留——
+  追加不消化、不翻状态（pending 保持 pending、partial 保持 partial；status 唯一写入口
+  仍是 adopt/reject）；追加条目未采纳，`appliedCids` 不为其说话；`aiSource` 盖章归采纳期
+  （M4c-2 纪律，save/append 都不碰来源标记）；
+- **条目数上限只约束 save**：`PROPOSAL_TOO_LARGE`（200）是 `proposal:save` 的通道级政策，
+  append 不复核合并后总数（已知不对称，见 M6 收尾结转「意见数帽对称性」）。
+
+空追加 = 恒等重写（无条目可拒、既有内容不变）。
 
 ## 8. 第三方 / AI 工具安全操作守则
 
