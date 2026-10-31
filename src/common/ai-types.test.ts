@@ -12,6 +12,7 @@ function settings(over: Partial<AiSettings> = {}): AiSettings {
     apiKey: 'sk-abcdef1234567890',
     defaultModel: 'gpt-test',
     models: {},
+    completionEnabled: false,
     ...over
   }
 }

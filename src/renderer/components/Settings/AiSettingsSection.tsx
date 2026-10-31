@@ -1,11 +1,11 @@
 // AI 服务设置区块（M4a Task 2 设置 + Task 6 测试连接闭环）：
-// 协议/Base URL/密钥/默认模型/按功能覆盖 + 保存/测试连接/清除密钥。
+// 协议/Base URL/密钥/默认模型/按功能覆盖/补全开关（M5 Task 3，默认关） + 保存/测试连接/清除密钥。
 // 渲染层只接触 AiSettingsView（掩码视图）——密钥输入框永不回填明文，
 // 留空即「不修改」（主进程空串保留语义）；清除走 patch.clearApiKey:true 显式路径。
 // 测试连接错误分类（T4 契约）：必须经 parseKindTaggedError 解包 `[kind] ` 前缀再展示中文文案，
 // 绝不裸匹配 message 文本——Electron 会把 handler reject 裹成 `Error invoking remote method …`。
 import React, { useCallback, useEffect, useState } from 'react'
-import { App, Button, Collapse, Divider, Form, Input, Popconfirm, Select, Space, Typography } from 'antd'
+import { App, Button, Collapse, Divider, Form, Input, Popconfirm, Select, Space, Switch, Tooltip, Typography } from 'antd'
 import { RobotOutlined } from '@ant-design/icons'
 import type { AiProtocol, AiSettingsView } from '@/common/ai-types'
 import { AI_FEATURE_LABELS } from '@/common/ai-types'
@@ -23,6 +23,7 @@ interface AiFormValues {
   organizeModel?: string
   completionModel?: string
   reviewModel?: string
+  completionEnabled?: boolean
 }
 
 const PROTOCOL_OPTIONS: { value: AiProtocol; label: string }[] = [
@@ -62,7 +63,8 @@ const AiSettingsSection: React.FC = () => {
           defaultModel: v.defaultModel,
           organizeModel: v.models.organize ?? '',
           completionModel: v.models.completion ?? '',
-          reviewModel: v.models.review ?? ''
+          reviewModel: v.models.review ?? '',
+          completionEnabled: v.completionEnabled
         })
       })
       .catch(() => {
@@ -88,7 +90,9 @@ const AiSettingsSection: React.FC = () => {
           organize: values.organizeModel ?? '',
           completion: values.completionModel ?? '',
           review: values.reviewModel ?? ''
-        }
+        },
+        // M5 拍板 2：显式 opt-in——开与关都随表单落定，缺省视作关
+        completionEnabled: values.completionEnabled ?? false
       })
       setView(next)
       form.setFieldValue('apiKey', undefined)
@@ -197,6 +201,23 @@ const AiSettingsSection: React.FC = () => {
             name="defaultModel"
           >
             <Input placeholder="例如 gpt-4o-mini / claude-sonnet-4-5" />
+          </Form.Item>
+
+          <Form.Item
+            label={
+              <Tooltip title="停笔浮现灰字，Tab 采纳，Esc 撤">
+                <Text style={{ color: 'var(--color-text-secondary)' }}>写作补全（默认关）</Text>
+              </Tooltip>
+            }
+            name="completionEnabled"
+            valuePropName="checked"
+            extra={
+              <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
+                开启后编辑器提供实时补全；关闭时零打扰。修改需点击「保存」生效
+              </Text>
+            }
+          >
+            <Switch />
           </Form.Item>
 
           <Collapse

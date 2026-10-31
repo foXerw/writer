@@ -8,6 +8,7 @@
 // - clearApiKey === true = 显式清除（落盘 ''）；与 apiKey 同现时清除优先（Task 2 复审裁定：
 //   破坏性动作压过写入，杜绝「一次 patch 既设又清」的歧义态）；falsy（缺省/false/0）不改写此语义；
 // - models 按键部分合并：给了值的键覆盖，未给的键保留旧值，空串 = 清除该覆盖；
+// - completionEnabled 三态：缺省 = 不修改，true/false = 显式开/关，非布尔拒绝（M5 Task 3）；
 // - 非法 protocol / 类型漂移的字段一律拒绝（保留旧值），绝不整盘信任磁盘/入参。
 //
 // 容错与噪音纪律：load 坏文件 console.warn 回退默认、绝不抛；warn 与 throw 文案
@@ -26,7 +27,9 @@ const DEFAULT_SETTINGS: AiSettings = {
   baseUrl: '',
   apiKey: '',
   defaultModel: '',
-  models: {}
+  models: {},
+  // M5 spec 发起人拍板 2：补全显式 opt-in，默认关——旧文件缺键也迁成 false，绝不默认开。
+  completionEnabled: false
 }
 
 const VALID_PROTOCOLS: readonly AiProtocol[] = ['openai', 'anthropic']
@@ -38,6 +41,10 @@ function settingsFilePath(): string {
 
 function isString(v: unknown): v is string {
   return typeof v === 'string'
+}
+
+function isBoolean(v: unknown): v is boolean {
+  return typeof v === 'boolean'
 }
 
 /** 磁盘/入参 JSON → 合法 AiSettings：逐字段校验回退，缺什么补什么（越界防护）。 */
@@ -57,7 +64,11 @@ function coerceSettings(raw: unknown): AiSettings {
     baseUrl: isString(o.baseUrl) ? o.baseUrl : DEFAULT_SETTINGS.baseUrl,
     apiKey: isString(o.apiKey) ? o.apiKey : DEFAULT_SETTINGS.apiKey,
     defaultModel: isString(o.defaultModel) ? o.defaultModel : DEFAULT_SETTINGS.defaultModel,
-    models
+    models,
+    // 迁移：旧设置文件（M5 之前落盘）没有该键 → 补 false（默认关）；非布尔漂移同样回退
+    completionEnabled: isBoolean(o.completionEnabled)
+      ? o.completionEnabled
+      : DEFAULT_SETTINGS.completionEnabled
   }
 }
 
@@ -94,7 +105,9 @@ export function toSettingsView(s: AiSettings): AiSettingsView {
     hasKey: s.apiKey.length > 0,
     maskedKey: maskKey(s.apiKey),
     defaultModel: s.defaultModel,
-    models: { ...s.models }
+    models: { ...s.models },
+    // 纯布尔直通：非密钥字段，无需掩码
+    completionEnabled: s.completionEnabled
   }
 }
 
@@ -114,7 +127,9 @@ export function saveSettings(patch: AiSettingsPatch): AiSettingsView {
     // clearApiKey:true = 清除（优先）；否则空串/缺省 = 保留旧密钥，非空串 = 整体替换
     apiKey: p.clearApiKey === true ? '' : isString(p.apiKey) && p.apiKey !== '' ? p.apiKey : base.apiKey,
     defaultModel: isString(p.defaultModel) ? p.defaultModel : base.defaultModel,
-    models: mergeModels(base.models, p.models)
+    models: mergeModels(base.models, p.models),
+    // 三态合并：缺省保留旧值；显式 true/false 覆盖；非布尔拒绝（越界防护同 protocol 纪律）
+    completionEnabled: isBoolean(p.completionEnabled) ? p.completionEnabled : base.completionEnabled
   }
 
   const file = settingsFilePath()

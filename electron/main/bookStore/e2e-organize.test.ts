@@ -130,6 +130,7 @@ function writeAiSettings(over: Partial<AiSettings> = {}): void {
     apiKey: 'sk-e2e-offline-key',
     defaultModel: 'fallback-model',
     models: { organize: 'e2e-organize-model' }, // feature 覆盖 > 默认：解析链的真实证明
+    completionEnabled: false,
     ...over
   }
   writeFileSync(join(holder.userData, 'ai-settings.json'), JSON.stringify(settings), 'utf8')

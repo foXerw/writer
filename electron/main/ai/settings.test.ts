@@ -44,7 +44,8 @@ describe('loadSettings', () => {
       baseUrl: '',
       apiKey: '',
       defaultModel: '',
-      models: {}
+      models: {},
+      completionEnabled: false
     })
   })
 
@@ -95,6 +96,41 @@ describe('loadSettings', () => {
   })
 })
 
+// M5 Task 3 补全开关（spec 发起人拍板 2：显式 opt-in，默认关）。
+// 迁移红线：升级前写下的旧文件没有 completionEnabled 键，load 必须补 false，绝不默认开。
+describe('completionEnabled 迁移与读取（M5 默认关）', () => {
+  it('旧设置文件（无该键）→ load 迁移为 false（缺键绝不默认开）', () => {
+    writeFileSync(
+      FILE(),
+      JSON.stringify({
+        protocol: 'anthropic',
+        baseUrl: 'https://x',
+        apiKey: 'sk-key-12345678',
+        defaultModel: 'claude-test',
+        models: {}
+      }),
+      'utf-8'
+    )
+    expect(loadSettings().completionEnabled).toBe(false)
+  })
+
+  it('文件缺失 → 默认值含 completionEnabled:false', () => {
+    expect(loadSettings().completionEnabled).toBe(false)
+  })
+
+  it('合法布尔值原样读出（true 可持久）', () => {
+    writeFileSync(FILE(), JSON.stringify({ baseUrl: 'https://x', completionEnabled: true }), 'utf-8')
+    expect(loadSettings().completionEnabled).toBe(true)
+  })
+
+  it('类型漂移（字符串/数字）→ 回退 false，不整盘信任磁盘', () => {
+    writeFileSync(FILE(), JSON.stringify({ completionEnabled: 'yes' }), 'utf-8')
+    expect(loadSettings().completionEnabled).toBe(false)
+    writeFileSync(FILE(), JSON.stringify({ completionEnabled: 1 }), 'utf-8')
+    expect(loadSettings().completionEnabled).toBe(false)
+  })
+})
+
 describe('saveSettings 合并语义', () => {
   it('空 patch → 返回掩码视图；磁盘落成默认值；视图对象绝不带 apiKey 属性', () => {
     const view = saveSettings({})
@@ -104,7 +140,8 @@ describe('saveSettings 合并语义', () => {
       hasKey: false,
       maskedKey: '',
       defaultModel: '',
-      models: {}
+      models: {},
+      completionEnabled: false // M5 Task 3：默认关的迁移红线也在整形状断言里钉死
     })
     expect('apiKey' in view).toBe(false)
     expect('maskedKey' in (loadSettings() as AiSettings)).toBe(false) // 磁盘存的是完整对象而非视图
@@ -197,6 +234,28 @@ describe('saveSettings 合并语义', () => {
     expect(text).toContain('AI_SETTINGS_WRITE_FAILED')
     expect(text).not.toContain('super-secret')
   })
+
+  it('patch {completionEnabled:true} 往返：视图透出 true、磁盘落成 true、再 load 为 true', () => {
+    const v = saveSettings({ completionEnabled: true })
+    expect(v.completionEnabled).toBe(true)
+    expect(JSON.parse(readFileSync(FILE(), 'utf-8')).completionEnabled).toBe(true)
+    expect(loadSettings().completionEnabled).toBe(true)
+  })
+
+  it('completionEnabled 未给（undefined）→ 保留旧值；显式 false → 关掉（布尔三态：缺省保留/真开/假关）', () => {
+    saveSettings({ completionEnabled: true })
+    expect(saveSettings({ baseUrl: 'https://keep' }).completionEnabled).toBe(true) // patch 不带该键
+    expect(loadSettings().completionEnabled).toBe(true)
+    expect(saveSettings({ completionEnabled: false }).completionEnabled).toBe(false) // 显式关必须能关掉
+    expect(loadSettings().completionEnabled).toBe(false)
+  })
+
+  it('completionEnabled 非布尔 patch（字符串/数字）→ 拒绝写入，保留旧值（越界防护）', () => {
+    saveSettings({ completionEnabled: true })
+    expect(saveSettings({ completionEnabled: 'false' as never }).completionEnabled).toBe(true)
+    expect(saveSettings({ completionEnabled: 0 as never }).completionEnabled).toBe(true)
+    expect(loadSettings().completionEnabled).toBe(true)
+  })
 })
 
 describe('toSettingsView', () => {
@@ -207,12 +266,19 @@ describe('toSettingsView', () => {
         baseUrl: '',
         apiKey,
         defaultModel: '',
-        models: {}
+        models: {},
+        completionEnabled: false
       })
     expect(mk('').maskedKey).toBe('')
     expect(mk('').hasKey).toBe(false)
     expect(mk('short').maskedKey).toBe('••••')
     expect(mk('sk-abcdefgh1234').maskedKey).toBe('sk-…1234')
     expect(mk('sk-abcdefgh1234').hasKey).toBe(true)
+  })
+
+  it('completionEnabled 直通透出（纯布尔，无掩码语义，M5 Task 3）', () => {
+    const base = { protocol: 'openai', baseUrl: '', apiKey: '', defaultModel: '', models: {} } as const
+    expect(toSettingsView({ ...base, models: {}, completionEnabled: true }).completionEnabled).toBe(true)
+    expect(toSettingsView({ ...base, models: {}, completionEnabled: false }).completionEnabled).toBe(false)
   })
 })

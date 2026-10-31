@@ -35,6 +35,11 @@ export interface AiSettings {
   apiKey: string
   defaultModel: string
   models: AiModels
+  /**
+   * 实时补全总开关（M5 Task 3，spec 发起人拍板 2：显式 opt-in）。默认 false；
+   * 迁移语义：升级前落盘的旧文件没有该键，loadSettings 缺省补 false（绝不默认开）。
+   */
+  completionEnabled: boolean
 }
 /** 掩码视图，永不含明文 key */
 export interface AiSettingsView {
@@ -44,6 +49,8 @@ export interface AiSettingsView {
   maskedKey: string
   defaultModel: string
   models: AiModels
+  /** 补全开关直通透出（纯布尔，非密钥，无掩码语义） */
+  completionEnabled: boolean
 }
 /** apiKey 空串/缺省 = 不改；clearApiKey:true = 显式清除（M4a Task 2 复审裁定的清除路径） */
 export interface AiSettingsPatch {
@@ -54,6 +61,8 @@ export interface AiSettingsPatch {
   clearApiKey?: boolean
   defaultModel?: string
   models?: AiModels
+  /** 三态：缺省 = 不修改；true/false = 显式开/关。非布尔一律拒绝（保留旧值）。 */
+  completionEnabled?: boolean
 }
 export interface AiUsageRecord {
   ts: string

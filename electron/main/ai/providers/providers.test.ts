@@ -17,6 +17,7 @@ const validSettings = (over: Partial<AiSettings> = {}): AiSettings => ({
   apiKey: SENTINEL_KEY,
   defaultModel: 'model-default',
   models: {},
+  completionEnabled: false,
   ...over
 })
 
