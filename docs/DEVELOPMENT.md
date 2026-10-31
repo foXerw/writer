@@ -101,7 +101,7 @@
 > 代际令牌封死迟到复活/错误全 kind 静默+冷却，dismiss 即 cancel 省 token，零新增 IPC）；
 > T6 真 key CDP 总冒烟 + 收尾（冒烟揪出视口底部采纳长灰字后不回显缺陷→`insertAtCursor` 补
 > revealPositionInCenterIfOutsideViewport，修复后 auto 续弹链回归）。
-> 验证：typecheck 0 错、lint 0 error（1 既有 warning）、`npm run test` 819 用例全绿、build 通过；
+> 验证：typecheck 0 错、lint 0 error（1 既有 warning）、`npm run test` 820 用例全绿（终审修复波 +1 bookName 守卫例）、build 通过；
 > CDP 真机总冒烟九条全过：开关渲染/切换/保存/reload 持久（T3 UI 首渲染）→ 章尾输入意图行停笔
 > 首灰字 ≤2.5s 预算（实测 1.33–1.69s）→ 流到一半 Tab 只采纳已到达（172ms 处掐流、后续 chunk
 > no-op）→ 再触发 Esc 撤不插入 → 段中停笔不弹 → compositionstart 不发火（正对照复弹）→
@@ -698,4 +698,4 @@
 | 2026-10-28 | 4.0a (M4a) | **里程碑 M4a AI 服务层完成**：安全硬化（T1）；设置保险库+掩码 IPC 契约（T2）；双协议流式 provider 适配器（T3，密钥回显脱敏不变量）；`chatService` 流式通道+按书 token 账本+`useAI`（T4，`[kind]` 前缀跨 IPC 协议）；分层上下文装配器+wordCount CJK 码点修正（T5）；连接测试真接线/清除密钥/StatsPanel 错误态/feature 白名单/文档收口（T6）。typecheck 0 错/lint 0 错/449 测试全绿/build 通过 + CDP 真机冒烟（假 baseUrl→网络分类中文 toast 跨真实 IPC 边界） |
 | 2026-10-28 | 4.0b (M4b) | **里程碑 M4b 整理闭环完成**：空闲超时语义收口（T0）；提案 schema+组合表单一权威（T1）；organize 提示词契约（T2）；提案仓库+origin 守卫采纳引擎+`proposal:*` 通道（T3）；「整理本章」触发链+徽章+`book:readAiData`（T4）；差异审阅面板（T5）；端到端离线链路证明+`PROPOSAL_DUPLICATE` 闸门+`.ai/` 三件套文档正式化+收尾（T6）。typecheck 0 错/lint 0 error/627 测试全绿/build 通过 + CDP 真机冒烟（手工提案→徽章→面板橙警默认不勾→采纳落盘→图谱刷新→徽章清零，console 零报错） |
 | 2026-10-29 | 4.0c (M4c-2) | **里程碑 M4c-2 叙事 UI + 图谱五视图完成**：`aiSource` create 幂等令牌关双胞胎窗（T1）；实体→章节引用并集纯函数（T2）；graphModel 三新 builder（T3）；GraphView 五视图+跳章菜单+arc 选择器+坏台账图谱侧降级（T4）；NarrativePanel 三段录入+narrativeErrors 词表（T5）；viewState 按章配对+整理取消 UI+结转小批清零（T6）；收尾裁定「台账坏值两副面孔」落码+文档对表（T7）。typecheck 0 错/lint 0 error/736 测试全绿/build 通过 + CDP 真机总冒烟（真实 DeepSeek key 首次闭环：连接测试→整理取消→整理跑通→差异面板可见，五视图/跳章/CRUD/坏台账全过，console 应用可归因零报错——两类上游 dev-only 噪声单列不判负，见 closeout 裁定 10）。收尾记录见 [2026-10-28-m4c2-closeout.md](./superpowers/plans/2026-10-28-m4c2-closeout.md) |
-| 2026-10-31 | 5.0 (M5) | **里程碑 M5 实时补全完成**：completion 旁路装配器（卡投影+章反查，organize 装配器零变动）（T1）；纯触发状态机 IME/修订/冷却硬闸门（T2）；设置页补全开关默认关三态 patch（T3）；monaco 流式灰字层+捕获相 Tab/Esc+IME/就绪/blur 信号+includeComments carry-in（T4）；useCompletion 编排代际令牌+全 kind 静默（T5）；真 key CDP 九条总冒烟+收尾文档+采纳回显 reveal 修复（T6）。typecheck 0 错/lint 0 error/**819 测试全绿**/build 通过 + CDP 真机总冒烟九条全过（开关持久→停笔首灰字实测 1.3–1.7s→流半 Tab 只采纳已到达→Esc 撤→修订/合成静默→坏配置恰一条 warn→流中切章账本零新增→completion 分账行实发模型），应用可归因 console 零报错。收尾记录见 [2026-10-31-m5-closeout.md](./superpowers/plans/2026-10-31-m5-closeout.md) |
+| 2026-10-31 | 5.0 (M5) | **里程碑 M5 实时补全完成**：completion 旁路装配器（卡投影+章反查，organize 装配器零变动）（T1）；纯触发状态机 IME/修订/冷却硬闸门（T2）；设置页补全开关默认关三态 patch（T3）；monaco 流式灰字层+捕获相 Tab/Esc+IME/就绪/blur 信号+includeComments carry-in（T4）；useCompletion 编排代际令牌+全 kind 静默（T5）；真 key CDP 九条总冒烟+收尾文档+采纳回显 reveal 修复（T6）。typecheck 0 错/lint 0 error/**820 测试全绿**/build 通过 + CDP 真机总冒烟九条全过（开关持久→停笔首灰字实测 1.3–1.7s→流半 Tab 只采纳已到达→Esc 撤→修订/合成静默→坏配置恰一条 warn→流中切章账本零新增→completion 分账行实发模型），应用可归因 console 零报错。收尾记录见 [2026-10-31-m5-closeout.md](./superpowers/plans/2026-10-31-m5-closeout.md) |

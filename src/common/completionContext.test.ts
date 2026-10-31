@@ -127,6 +127,16 @@ describe('entitiesForChapter', () => {
 })
 
 describe('buildCompletionPrompt', () => {
+  it('bookName 空/纯空白：【书名】块整块省略（终审 chore——不留「【书名】」悬空头）', () => {
+    const empty = buildCompletionPrompt(baseArgs({ bookName: '' }))
+    expect(empty.user).not.toContain('【书名】')
+    expect(empty.user.startsWith('【梗概】')).toBe(true)
+    const blank = buildCompletionPrompt(baseArgs({ bookName: ' \t ' }))
+    expect(blank.user).not.toContain('【书名】')
+    // trim 后照常带上书名本体
+    expect(buildCompletionPrompt(baseArgs({ bookName: ' 测试书 ' })).user).toContain('【书名】测试书')
+  })
+
   it('system 含想象力兜底句：无卡时自由续写但不违设定', () => {
     const out = buildCompletionPrompt(baseArgs({ cards: [] }))
     expect(out.system).toContain('无卡时依正文语气自由续写，但不得与已给设定矛盾')

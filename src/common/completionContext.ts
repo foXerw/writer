@@ -91,10 +91,13 @@ const COMPLETION_TAIL_INSTRUCTION = '请接续光标处写 ≤3 句（≤120 字
 /**
  * 装配补全 prompt：system 固定「合写者人格」骨架；user 依序
  * 书名→梗概→相关设定卡→光标前（保尾 maxChars）→光标后（保头 200）→指令句。
- * 卡块永远排在正文块之前；空块省略；段间以空行分隔。纯函数，同入参两次装配逐字段相等。
+ * 卡块永远排在正文块之前；空块省略（书名同样——终审 chore：空白书名不留悬空【书名】头）；
+ * 段间以空行分隔。纯函数，同入参两次装配逐字段相等。
  */
 export function buildCompletionPrompt(args: CompletionPromptArgs): CompletionPrompt {
-  const blocks: string[] = [`【书名】${args.bookName}`]
+  const blocks: string[] = []
+  const bookName = args.bookName.trim()
+  if (bookName !== '') blocks.push(`【书名】${bookName}`)
   const synopsis = args.synopsis.trim()
   if (synopsis !== '') blocks.push(`【梗概】${synopsis}`)
   if (args.cards.length > 0) blocks.push(`【相关设定】\n${args.cards.join('\n')}`)

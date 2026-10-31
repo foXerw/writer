@@ -546,9 +546,10 @@ body {
 
 /* M5 实时补全 ghost 灰字（MonacoEditor after-content 装饰的 inlineClassName，Task 4）：
    .75 透明度与正文拉开层级；纯 token，主题切换由 monaco 装饰重绘自然跟随、无 !important。
-   颜色走 -webkit-text-fill-color 而非 color——monaco 给注入文本 span 内联 style 写死主题
-   foreground（内联样式压过任何类选择器），text-fill-color 是 Chromium 内唯一在级联之外、
-   又能跟随 var() 主题 token 的文字上色通道（Electron 环境恒可用）。 */
+   颜色走 -webkit-text-fill-color 而非 color——monaco 给注入文本 span 压上主题 foreground
+   使类选择器 color 失效（证据口径=真机 DOM 观察实证，0.55.1 源码坐标未逐行定位，终审勘正）；
+   text-fill-color 是 Chromium 内唯一在级联之外、又能跟随 var() 主题 token 的文字上色通道
+   （Electron 环境恒可用）。monaco 升级时须复核本定律（closeout 裁定 9）。 */
 .completion-ghost {
   -webkit-text-fill-color: var(--color-text-tertiary);
   opacity: 0.75;
