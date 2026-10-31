@@ -13,7 +13,7 @@
 //   保证组件只见一种错误形状（AiErrorEvent.kind + 纯文本 message）；
 // - 受理后失败 = ai:error 事件。已 reject 的 id 会被同步从登记表删除，不会二次触发。
 import { useCallback, useEffect, useRef } from 'react'
-import type { AiChatRequest, AiErrorEvent } from '@/common/ai-types'
+import { AI_ERROR_KINDS, type AiChatRequest, type AiErrorEvent } from '@/common/ai-types'
 import { notifyUsageChanged } from '../services/entityEvents'
 
 export interface AIChatHandlers {
@@ -27,7 +27,9 @@ export interface AIChatHandlers {
 
 export type AIChatRequestWithoutId = Omit<AiChatRequest, 'requestId'>
 
-const KIND_PREFIX_RE = /^\[(not-configured|auth|network|timeout|provider|cancelled|busy)\]\s+/
+// kind 前缀正则单源派生自 AI_ERROR_KINDS（M5 Task 5）：手抄表一旦漏新 kind，
+// 该 kind 的错误会被静默误路由成 'provider'——由派生彻底杜绝。kind 全是 [a-z-]，无需转义。
+const KIND_PREFIX_RE = new RegExp(`^\\[(${AI_ERROR_KINDS.join('|')})\\]\\s+`)
 
 /**
  * electron ipcMain.handle 的 reject 到渲染层永远裹一层

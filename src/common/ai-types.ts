@@ -104,6 +104,21 @@ export interface AiUsageSummary {
   total: AiUsageCounter
   byModel: Record<string, { prompt: number; completion: number }>
 }
+/**
+ * 错误 kind 全集（单源名单，M5 Task 5）：AiErrorEvent.kind 的字面量联合、useAI 的 `[kind] `
+ * 前缀正则、补全的静默策略表（useCompletion.completionSilentKinds）三处全部由本表派生/对照——
+ * 新增 kind 落在这里，补全策略单测即红，强制对「补全对新 kind 静默还是打扰」显式表态。
+ */
+export const AI_ERROR_KINDS = [
+  'not-configured',
+  'auth',
+  'network',
+  'timeout',
+  'provider',
+  'cancelled',
+  'busy'
+] as const
+export type AiErrorKind = typeof AI_ERROR_KINDS[number]
 export interface AiChunkEvent {
   requestId: string
   text: string
@@ -114,14 +129,7 @@ export interface AiDoneEvent {
 }
 export interface AiErrorEvent {
   requestId: string
-  kind:
-    | 'not-configured'
-    | 'auth'
-    | 'network'
-    | 'timeout'
-    | 'provider'
-    | 'cancelled'
-    | 'busy'
+  kind: AiErrorKind
   message: string
 }
 

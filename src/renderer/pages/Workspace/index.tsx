@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Badge, Layout, Button, Typography, App, Segmented } from 'antd'
 import { PlusOutlined, BookOutlined, SaveOutlined } from '@ant-design/icons'
@@ -24,6 +24,7 @@ import { useEditorStore, useShortcutStore } from '../../stores'
 import { useEditorSession } from './hooks/useEditorSession'
 import { useWritingStats } from './hooks/useWritingStats'
 import { useAutoSave } from './hooks/useAutoSave'
+import { useCompletion } from './hooks/useCompletion'
 import { useOrganize } from './hooks/useOrganize'
 import { bookChangeTouchesCurrentChapter, decideConflict } from './hooks/bookChangeConflict'
 import type { Chapter, ProjectConfig, ProjectData } from '@/common/ipc'
@@ -118,6 +119,35 @@ function Workspace() {
     loadChapters, openChapter, closeChapter, createChapter, mergeUpdatedChapters, save, flushIfDirty, handleEditorChange,
     isDirtyNow, setFlushPaused, discardEdits, lastSavedContent, markSavedContent } = session
 
+  // -------------------------------------------------------------------------
+  // M5 实时补全接线（Task 5）：编排全在 useCompletion（状态机驱动、装配、ghost 生命周期、
+  // 静默策略），Workspace 只喂信号、只转回调。书序表与 GraphView 同款防御自持
+  //（仓库 listChapters 本已按 order 升序，这里仍以 order 为准，不赌上游）。
+  // -------------------------------------------------------------------------
+  const orderedChapterIds = useMemo(
+    () => [...chapters].sort((a, b) => a.order - b.order).map((c) => c.id),
+    [chapters]
+  )
+  const completion = useCompletion({
+    projectPath,
+    bookName: projectName,
+    currentChapterId: currentChapter?.id ?? null,
+    orderedChapterIds,
+    editorRef
+  })
+  // 内容变更先给会话（置 dirty/回灌缓冲），再转补全层（900ms 停笔钟在 hook 内）。
+  // MonacoEditor 的 onChange 只在编辑器创建 effect 捕获一次：本回调与 handleEditorChange/
+  // completion.onEditorContentChanged 一样只引用稳定闭包，挂载期捕获与每渲染新引用等效。
+  // 解构出稳定回调再入依赖（exhaustive-deps 只认根对象；completion 每渲染新壳会把依赖打回原形）
+  const { onEditorContentChanged } = completion
+  const handleEditorChangeWithCompletion = useCallback(
+    (value: string) => {
+      handleEditorChange(value)
+      onEditorContentChanged()
+    },
+    [handleEditorChange, onEditorContentChanged]
+  )
+
   // viewState 跨切换（M4c-2 Task 6，裁定 3）：写作→图谱离开编辑器前把视图态（光标/滚动）存入 ref；
   // 切回后编辑器重挂载——脏 CONTENT 已有 useEditorSession 保证，这里只补视图态。restore 走
   // MonacoEditor handle：monaco 异步创建未就绪时由 handle 暂存、创建完成即应用（同一提交内不丢光标）。
@@ -130,6 +160,8 @@ function Workspace() {
     if (next === 'graph') {
       const st = editorRef.current?.saveViewState() ?? null
       viewStateRef.current = st === null || !currentChapter ? null : { chapterId: currentChapter.id, state: st }
+      // M5 补全：编辑器即将随写作视图卸载——在途请求必掐、ghost 必灭、布防终结（viewSwitch）
+      completion.onLeaveWriteView()
     }
     setViewMode(next)
   }
@@ -516,9 +548,16 @@ function Workspace() {
           {currentChapter ? (
             <MonacoEditor
               ref={editorRef} value={editorContent}
-              onChange={handleEditorChange} onSave={handleSave}
+              onChange={handleEditorChangeWithCompletion} onSave={handleSave}
               focusMode={focusMode} typewriterMode={typewriterMode}
               fontSize={fontSize} wordWrap={wordWrap} showLineNumbers={showLineNumbers}
+              onAcceptGhost={completion.onAcceptGhost}
+              onDismissGhost={completion.onDismissGhost}
+              onCompositionStart={completion.onCompositionStart}
+              onCompositionEnd={completion.onCompositionEnd}
+              onCursorChange={completion.onCursorMoved}
+              onEditorReady={completion.onEditorReady}
+              onEditorBlur={completion.onEditorBlur}
             />
           ) : awaitingOpen ? (
             // A-seam：路径直达挂载正在补开（迁移/自检/watcher 接线尚未返回）——

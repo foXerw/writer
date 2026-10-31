@@ -112,6 +112,22 @@ interface MonacoEditorProps {
   onDismissGhost?: () => void
   /** 编辑器内输入法 compositionstart 信号——Task 5 用它中止/抑制补全，防 IME 合成期串字。 */
   onCompositionStart?: () => void
+  /**
+   * 输入法 compositionend（上屏/取消组合窗）信号。Task 5 必须消费它来解禁 composing 闸门：
+   * 状态机「compositionEnd 只解禁不复臂」，缺这条腿 composing 会永久为真——第一次用输入法
+   * 之后补全就死了。与 onCompositionStart 成对出现不是冗余，是闸门的两半。
+   */
+  onCompositionEnd?: () => void
+  /**
+   * 光标位置变化信号（Task 5 消费）：suffixEmpty = 光标后是否已无正文（文末判定）。
+   * 纯键入同样会触发本回调（光标前移），消费方自己按相位甄别（布防链以 contentChanged 为准）。
+   */
+  onCursorChange?: (suffixEmpty: boolean) => void
+  /** 编辑器就绪信号（monaco 实例创建完成、ghost 装饰层可用）。Task 5 用它放行布防——
+   *  异步创建窗口期句柄已在但 handle 全为空操作，此时起补全会装配出空上下文。 */
+  onEditorReady?: () => void
+  /** 焦点离开编辑器（focusout 且新焦点不在容器内）。Task 5 用它 dismiss：鬼影不该跨焦点存活。 */
+  onEditorBlur?: () => void
 }
 
 export interface MonacoEditorHandle {
@@ -157,7 +173,11 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   maxWidthPx = 760,
   onAcceptGhost,
   onDismissGhost,
-  onCompositionStart
+  onCompositionStart,
+  onCompositionEnd,
+  onCursorChange,
+  onEditorReady,
+  onEditorBlur
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
@@ -170,6 +190,15 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   const [isLoading, setIsLoading] = useState(true)
   // 底部状态条字数（countWords 口径），从初始 value 起算，编辑/切章时更新
   const [currentWordCount, setCurrentWordCount] = useState(() => countWords(value))
+  // 就绪/光标信号的「每渲染镜像 ref」：这两个回调在 deps-[] 的编辑器创建 effect 内被调用，
+  // 直接引用 props 会吃挂载期闭包旧值——镜像后监听器恒读最新回调（Workspace saveRef 惯用法）。
+  // （键位/IME 监听不吃镜像：键位 effect 本就随回调标识重挂，见下方。）
+  const onCursorChangeRef = useRef(onCursorChange)
+  onCursorChangeRef.current = onCursorChange
+  const onEditorReadyRef = useRef(onEditorReady)
+  onEditorReadyRef.current = onEditorReady
+  const onEditorBlurRef = useRef(onEditorBlur)
+  onEditorBlurRef.current = onEditorBlur
   const themeMode = useSettingsStore((s) => s.themeMode)
 
   useImperativeHandle(ref, () => ({
@@ -241,16 +270,26 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
       if (!instance || !text) return
       const selection = instance.getSelection()
       if (!selection) return
+      // T4 评审 carry-in (a)：原实现把 range 设为整个选区——「在光标插入」在选区非折叠时
+      // 会把选中正文换成 ghost（吞字）且落点计算用 end* 端点，反向选区下算错。
+      // ghost 采纳语义 = 在光标（选区活动端）插入、绝不动选中内容：先折叠到 getPosition()。
+      const caret = selection.getPosition()
+      const range = {
+        startLineNumber: caret.lineNumber,
+        startColumn: caret.column,
+        endLineNumber: caret.lineNumber,
+        endColumn: caret.column
+      }
       // executeEdits 走 monaco 正常编辑管线：undo 栈保留（一次插入一条撤销记录）
       instance.executeEdits('m5-completion', [{
-        range: selection,
+        range,
         text,
         forceMoveMarkers: true
       }])
       // executeEdits 的光标映射不保证落在插入文本之后，显式定位（补全采纳的直觉语义：光标到词尾）
       const lines = text.split('\n')
-      const endLineNumber = lines.length === 1 ? selection.endLineNumber : selection.startLineNumber + lines.length - 1
-      const endColumn = lines.length === 1 ? selection.endColumn + lines[0].length : lines[lines.length - 1].length + 1
+      const endLineNumber = lines.length === 1 ? caret.lineNumber : caret.lineNumber + lines.length - 1
+      const endColumn = lines.length === 1 ? caret.column + lines[0].length : lines[lines.length - 1].length + 1
       instance.setPosition({ lineNumber: endLineNumber, column: endColumn })
     }
   }), [])
@@ -413,7 +452,20 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
           setCurrentWordCount(countWords(newValue))
         })
 
+        // 光标位置变化 → Task 5 的 cursorMoved 信号（M5 Task 5 接线）：
+        // suffixEmpty = 文末判定（光标后无任何正文才可出 ghost——修订态拦截在状态机一侧，
+        // 这里只提供事实）。恒经镜像 ref 调用：本 effect deps 为 []，直引 props 会吃挂载期旧闭包。
+        editor.onDidChangeCursorPosition((e) => {
+          const model = editor.getModel()
+          if (!model) return
+          const offset = model.getOffsetAt(e.position)
+          onCursorChangeRef.current?.(offset >= model.getValueLength())
+        })
+
         setIsLoading(false)
+        // 就绪信号最后发：ghost 装饰集合/监听器都已就位，Task 5 从此刻起才允许布防
+        // （carry-in (c)：未就绪窗口不起补全）。
+        onEditorReadyRef.current?.()
       } catch (error) {
         console.error('Failed to load Monaco:', error)
       }
@@ -488,6 +540,10 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
     if (!el) return
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!ghostTextRef.current) return
+      // T4 评审 carry-in (b)：只接管裸键——Shift+Tab（反向缩进）、Ctrl/Cmd 组合、Alt/AltGr
+      // 输入等一律放行（行业 ghost 约定只绑裸 Tab/Esc，吞掉组合键是回归事故源）。
+      // 放行时不 preventDefault/stopPropagation，monaco 键位分发与全局快捷键照常。
+      if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return
       if (event.key === 'Tab') {
         event.preventDefault()
         event.stopPropagation()
@@ -501,13 +557,28 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
     const handleCompositionStart = () => {
       onCompositionStart?.()
     }
+    // compositionend（上屏/取消）与 start 成对：Task 5 的状态机 composing 闸门必须有解禁腿
+    const handleCompositionEnd = () => {
+      onCompositionEnd?.()
+    }
+    // focusout 冒泡到容器即「焦点离开编辑器」候选；monaco 内部节点间转焦（textarea↔滚动条）
+    // 不算离开——relatedTarget 仍在容器内就放行，否则打字中途都会误 dismiss。
+    const handleFocusOut = (event: FocusEvent) => {
+      const next = event.relatedTarget
+      if (next instanceof Node && el.contains(next)) return
+      onEditorBlurRef.current?.()
+    }
     el.addEventListener('keydown', handleKeyDown, true)
     el.addEventListener('compositionstart', handleCompositionStart)
+    el.addEventListener('compositionend', handleCompositionEnd)
+    el.addEventListener('focusout', handleFocusOut)
     return () => {
       el.removeEventListener('keydown', handleKeyDown, true)
       el.removeEventListener('compositionstart', handleCompositionStart)
+      el.removeEventListener('compositionend', handleCompositionEnd)
+      el.removeEventListener('focusout', handleFocusOut)
     }
-  }, [onAcceptGhost, onDismissGhost, onCompositionStart])
+  }, [onAcceptGhost, onDismissGhost, onCompositionStart, onCompositionEnd])
 
   return (
     <div className="editor-shell" style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--color-paper)' }}>
