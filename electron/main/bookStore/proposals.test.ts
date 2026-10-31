@@ -482,4 +482,21 @@ describe('appendProposalChanges（M6 T3 尾部追加）', () => {
     expect(out.changes).toEqual(f.changes)
     expect(() => appendProposalChanges(p, '../evil', [mkChange()])).toThrow(/BAD_PROPOSAL_ID/)
   })
+
+  it('changes 非数组 → PROPOSAL_BAD_PARAMS 在任何处理前抛穿（adoptChanges changeKeys 守卫同款；盘字节恒等）', () => {
+    const p = mkTmpBook()
+    const f = mkFile()
+    writeProposal(p, f)
+    const abs = proposalPath(p, f.id)
+    const before = readFileSync(abs, 'utf8')
+    // 字符串带 length——若无前置守卫会溜进 forEach 在逐条校验处炸出错误码不稳定的消息
+    expect(() =>
+      appendProposalChanges(p, f.id, 'oops' as unknown as ProposalChange[])
+    ).toThrow(/PROPOSAL_BAD_PARAMS/)
+    expect(() =>
+      appendProposalChanges(p, 'prop-nope-4', undefined as unknown as ProposalChange[])
+    ).toThrow(/PROPOSAL_BAD_PARAMS/)
+    expect(readFileSync(abs, 'utf8')).toBe(before)
+    expect(existsSync(proposalPath(p, 'prop-nope-4'))).toBe(false)
+  })
 })

@@ -184,6 +184,11 @@ export function appendProposalChanges(
   id: string,
   changes: ProposalChange[]
 ): ProposalFile {
+  // T3 评审 minor 结转：非数组入参在任何处理前显式拒（镜像 adoptChanges 的 changeKeys 守卫——
+  // 通道层 IPC 反序列化后不保证类型，字符串也带 length，进 forEach 才炸错误码不稳定）。
+  if (!Array.isArray(changes)) {
+    throw new Error('PROPOSAL_BAD_PARAMS: changes 必须是数组')
+  }
   const existing = getProposal(p, id)
   if (existing === null || !isUnsettled(existing)) {
     throw new Error(`PROPOSAL_APPEND_TARGET: ${id}`)
