@@ -9,7 +9,9 @@
 // - runningRef 并发门：在途期间第二次 runReview 直接返回 {kind:'busy'}（一书架一审阅）；
 // - activeRequestIdRef 只存「当前在途一个」：取消按钮的唯一句柄，终态即清空；
 // - cancel() = 停循环（cancelRef，后续章不再发起）+ cancel 在途 requestId；已完成的章留存
-//   （saveRun 每章成功即落账本，天然部分成功）。
+//   （saveRun 每章成功即落账本，天然部分成功）；
+// - 取消口径（T6 carry-in 1）：被取消的章计入 cancelledChapters、**不**入 failed——
+//   「失败 N 章」只报真失败，取消章由对话框以「已取消 N 章」单独呈报。
 //
 // 预算（carry-in a，T2 评审结转）：buildReviewPrompt 的 maxTokens 入参身兼输出上限+输入闸门
 // 双职，直接传输出上限会误拒大章。编排侧自算：estimateReviewTokens 逐章与 REVIEW_INPUT_TOKEN_CAP
@@ -149,7 +151,15 @@ export interface ReviewDeps {
 
 /** runReview 整体结果（逐章进度走回调；本返回值给调用方收尾/对话框错误节呈现）。 */
 export type ReviewRunResult =
-  | { kind: 'ok'; reviewed: string[]; failed: string[]; cancelled: boolean }
+  | {
+      kind: 'ok'
+      reviewed: string[]
+      /** 真失败章（不含取消章——carry-in 1）。 */
+      failed: string[]
+      /** 被取消的在途章（onError kind='cancelled'）；与 failed 互斥。 */
+      cancelledChapters: string[]
+      cancelled: boolean
+    }
   /** 并发门：已有审阅在途。 */
   | { kind: 'busy' }
   | { kind: 'no-project' }
@@ -179,8 +189,6 @@ export interface ReviewController {
   dismiss: (opinion: ReviewOpinion) => Promise<ReviewOpinion[]>
   /** 转化（仅 hard+open 非 stale）；overrideTargetId = need-target 选择器回填重走。 */
   convert: (opinion: ReviewOpinion, overrideTargetId?: string) => Promise<ReviewConvertOutcome>
-  /** 工具栏徽标：全书 open（含 stale）计数（review:get 无 chapterId 聚合，已实证 listAllReviews）。 */
-  openCount: () => Promise<number>
 }
 
 /** AiSettingsView → 实发模型名：复刻 chatService 解析序（feature 槽 > 默认模型）。 */
@@ -223,8 +231,7 @@ export function useReview(deps: ReviewDeps): ReviewController {
   const { getForeshadowLedger } = useNarrative()
   const { readAiData } = useAiData()
   const { getAllProposals, saveProposal, appendProposalChanges } = useProposal()
-  const { getReviewOpinions, saveReviewRun, dismissReviewOpinion, markReviewConverted } =
-    useReviewIPC()
+  const { saveReviewRun, dismissReviewOpinion, markReviewConverted } = useReviewIPC()
 
   const [reviewing, setReviewing] = useState(false)
 
@@ -261,9 +268,10 @@ export function useReview(deps: ReviewDeps): ReviewController {
       projectPath: string,
       chapterId: string,
       prompt: { system: string; user: string }
-    ): Promise<{ ok: true; text: string } | { ok: false }> => {
+    ): Promise<{ ok: true; text: string } | { ok: false; cancelled: boolean }> => {
       let text = ''
       let terminal: 'done' | 'error' | null = null
+      let cancelledTerminal = false
       await new Promise<void>((resolve) => {
         void chat(
           {
@@ -289,10 +297,11 @@ export function useReview(deps: ReviewDeps): ReviewController {
             },
             onError: (kind, detail) => {
               terminal = 'error'
+              cancelledTerminal = kind === 'cancelled'
               activeRequestIdRef.current = null
               fireChapterError(
                 chapterId,
-                kind === 'cancelled' ? 'cancelled' : 'ai',
+                cancelledTerminal ? 'cancelled' : 'ai',
                 aiErrorToast(kind, detail)
               )
               resolve()
@@ -303,7 +312,7 @@ export function useReview(deps: ReviewDeps): ReviewController {
           if (terminal === null) activeRequestIdRef.current = requestId
         })
       })
-      return terminal === 'done' ? { ok: true, text } : { ok: false }
+      return terminal === 'done' ? { ok: true, text } : { ok: false, cancelled: cancelledTerminal }
     },
     [chat, fireChapterError]
   )
@@ -318,6 +327,7 @@ export function useReview(deps: ReviewDeps): ReviewController {
       setReviewing(true)
       const reviewed: string[] = []
       const failed: string[] = []
+      const cancelledChapters: string[] = [] // carry-in 1：取消章不入 failed，「失败 N 章」只报真失败
       try {
         const view = await getAISettings()
         if (!isConfiguredView(view)) return { kind: 'not-configured' }
@@ -386,7 +396,9 @@ export function useReview(deps: ReviewDeps): ReviewController {
           }
           const out = await runChapterChat(projectPath, t.id, built)
           if (!out.ok) {
-            failed.push(t.id) // 错误节已在 onError 发出（ai/cancelled）
+            // 错误节已在 onError 发出（ai/cancelled）；取消章单列不入 failed（carry-in 1）
+            if (out.cancelled) cancelledChapters.push(t.id)
+            else failed.push(t.id)
             continue
           }
           const parsed = parseReviewOpinions(out.text, t.id)
@@ -424,7 +436,7 @@ export function useReview(deps: ReviewDeps): ReviewController {
             failed.push(t.id)
           }
         }
-        return { kind: 'ok', reviewed, failed, cancelled: cancelRef.current }
+        return { kind: 'ok', reviewed, failed, cancelledChapters, cancelled: cancelRef.current }
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err)
         console.error('[useReview] 审阅流程异常:', err)
@@ -590,14 +602,7 @@ export function useReview(deps: ReviewDeps): ReviewController {
     [getAllCharacters, getAllSettings, getAllProposals, appendProposalChanges, saveNewProposal, stampConverted]
   )
 
-  const openCount = useCallback(async (): Promise<number> => {
-    const { projectPath } = argsRef.current
-    if (!projectPath) return 0
-    const list = await getReviewOpinions(projectPath) // 省略 chapterId = 全书聚合（listAllReviews）
-    return countOpenOpinions(list)
-  }, [getReviewOpinions])
-
-  return { reviewing, runReview, cancel, dismiss, convert, openCount }
+  return { reviewing, runReview, cancel, dismiss, convert }
 }
 
 // AI 错误 kind 形状引用（runChapterChat onError 形参由 useAI 回调推导，此处仅钉类型可读性）

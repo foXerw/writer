@@ -192,6 +192,11 @@ function ReviewDialog({
     },
     onChapterDone: (chapterId, done) => {
       streamAccumRef.current.delete(chapterId)
+      // 「本次新入库 N 条」= 合并后全集里 id 不在 run 前快照的条数（对账）。
+      // T5 评审 minor 3：这是纯展示口径，非账本真相——若该章 run 前快照未预加载成功
+      // （prevIds 为空集，如 loadLedger 尚未回或读失败），N 会把整章旧意见都算作「新入库」而虚高。
+      // 落账的真相以 review:get 重读为准；此处只在快照存在时对账，不改盘、不驱动任何写路径，
+      // 故快照缺位时宁可虚高也不误报「0 条」，保持「N 进」显示（display-only，不加数据门）。
       const prevIds = prevIdsRef.current.get(chapterId) ?? new Set<string>()
       const added = done.opinions.filter((o) => !prevIds.has(o.id)).length
       setOpinions((p) => ({ ...p, [chapterId]: done.opinions }))
@@ -307,9 +312,12 @@ function ReviewDialog({
     switch (res.kind) {
       case 'ok': {
         if (res.cancelled) {
+          // carry-in 1：取消章（cancelledChapters）不计入「失败」——它们是被主动掐断的在途章，
+          // 不是审阅失败；真失败章另算，两者分列。
+          const failedTxt = res.failed.length > 0 ? `、失败 ${res.failed.length} 章` : ''
           setRunNotice({
             type: 'info',
-            text: `审阅已取消：完成 ${res.reviewed.length} 章、失败 ${res.failed.length} 章（已完成章的意见已留存账本）`
+            text: `审阅已取消：完成 ${res.reviewed.length} 章、已取消 ${res.cancelledChapters.length} 章${failedTxt}（已完成章的意见已留存账本）`
           })
         } else if (res.failed.length > 0) {
           setRunNotice({ type: 'warning', text: `审阅结束：${res.reviewed.length} 章成功、${res.failed.length} 章失败（各章错误节可见）` })
