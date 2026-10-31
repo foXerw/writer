@@ -31,6 +31,13 @@ const PROTOCOL_OPTIONS: { value: AiProtocol; label: string }[] = [
   { value: 'anthropic', label: 'Anthropic' }
 ]
 
+// M5 spec §控制器拍板「首开一次性 toast」（T6-R1 落地，spec:84 文案逐字）：
+// 控制器裁定「一次性」= 会话级——模块级 flag，页面 reload 即复位；刻意不落盘
+// （一个 UX 提示不值得扩 settings schema/迁移面，spec:21 禁的正是这种膨胀）。
+// 出手点唯一：保存成功后、且本次保存使开关 false→true；同会话再次开关翻转不重复弹。
+// 纯谓词 `!prev && next` 是 tautology 级逻辑（T1 minor 同口径），不立单测，语义由本注释钉死。
+let firstEnableToastShown = false
+
 /** Base URL 占位符随协议切换（M4b Task 0）：两协议的合法形状本就不同 */
 const BASE_URL_PLACEHOLDER: Record<AiProtocol, string> = {
   openai: '例如 https://api.openai.com/v1',
@@ -79,6 +86,9 @@ const AiSettingsSection: React.FC = () => {
     const values = await form.validateFields().catch(() => null)
     if (!values) return
     setSaving(true)
+    // 保存前的已落盘开关态（view 只在加载/保存成功时更新，即「上一次真值」）；
+    // false→true 迁移 + 会话未弹过 → 首开一次性提示（spec 控制器拍板，裁定见上方注释）
+    const wasEnabled = view?.completionEnabled ?? false
     try {
       const next = await setAISettings({
         protocol: values.protocol,
@@ -97,12 +107,16 @@ const AiSettingsSection: React.FC = () => {
       setView(next)
       form.setFieldValue('apiKey', undefined)
       message.success('AI 设置已保存')
+      if (!firstEnableToastShown && !wasEnabled && next.completionEnabled) {
+        firstEnableToastShown = true
+        message.info('补全已开启：停笔浮现灰字、Tab 采纳、Esc 撤', 6)
+      }
     } catch (err) {
       message.error(`保存失败：${err instanceof Error ? err.message : String(err)}`, 8)
     } finally {
       setSaving(false)
     }
-  }, [form, setAISettings, message])
+  }, [form, setAISettings, message, view])
 
   const handleTest = useCallback(async () => {
     setTesting(true)
