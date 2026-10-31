@@ -31,9 +31,10 @@ const PROTOCOL_OPTIONS: { value: AiProtocol; label: string }[] = [
   { value: 'anthropic', label: 'Anthropic' }
 ]
 
-// M5 spec §控制器拍板「首开一次性 toast」（T6-R1 落地，spec:84 文案逐字）：
-// 控制器裁定「一次性」= 会话级——模块级 flag，页面 reload 即复位；刻意不落盘
-// （一个 UX 提示不值得扩 settings schema/迁移面，spec:21 禁的正是这种膨胀）。
+// M5 spec G3+控制器拍板「首开一次性 toast」（T6-R1 落地；文案逐字取 spec:84
+// 「补全已开启：停笔浮现灰字，Tab 采纳，Esc 撤」）。spec 只说「一次性」未钉语义范围，
+// 控制器裁定按**会话级**实现——模块级 flag、reload 即复位、刻意不加持久化字段：
+// 这是比例判断（一个纯 UX 提示不值得扩 settings schema/迁移面），非 spec 禁令。
 // 出手点唯一：保存成功后、且本次保存使开关 false→true；同会话再次开关翻转不重复弹。
 // 纯谓词 `!prev && next` 是 tautology 级逻辑（T1 minor 同口径），不立单测，语义由本注释钉死。
 let firstEnableToastShown = false
@@ -109,7 +110,7 @@ const AiSettingsSection: React.FC = () => {
       message.success('AI 设置已保存')
       if (!firstEnableToastShown && !wasEnabled && next.completionEnabled) {
         firstEnableToastShown = true
-        message.info('补全已开启：停笔浮现灰字、Tab 采纳、Esc 撤', 6)
+        message.info('补全已开启：停笔浮现灰字，Tab 采纳，Esc 撤', 6)
       }
     } catch (err) {
       message.error(`保存失败：${err instanceof Error ? err.message : String(err)}`, 8)
