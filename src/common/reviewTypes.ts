@@ -276,12 +276,21 @@ export function suppressionKey(o: {
 // relocateAnchor：锚重定位（渲染期逐条决「命中/锚已失」，G3 跳转高亮的唯一算法权威）
 // ---------------------------------------------------------------------------
 
-/** 段 = { 原文文本, 在 body 中的起始码元下标 }；空行（连续 ≥2 个换行单元）分段。 */
-function paragraphsOf(body: string): { text: string; start: number }[] {
+/**
+ * 段 = { 原文文本, 在 body 中的起始码元下标 }；空行（连续 ≥2 个换行单元）分段。
+ * 导出（M6 T2 结转裁定）：relocateAnchor、审阅 prompt 的 paraIndex 编号（reviewContext）、
+ * export.ts 的段落切分**必须共用这一条规则**——各自声明正则会致段号系统性漂移
+ * （CRLF 书对 /\n{2,}/ 整体失配即前车之鉴），分段口径单一权威在此。
+ */
+export function paragraphsOf(body: string): { text: string; start: number }[] {
   const out: { text: string; start: number }[] = []
   // 换行单元 = \r\n | \r | \n，连续 ≥2 个即空行分段（CRLF 书的 `\r\n\r\n` 是两个单元——
-  // 刻意不用 /\r?\n{2,}/：那要求连续裸 \n，对 CRLF 正文整体失配）
-  const sep = /(?:\r\n|\r|\n){2,}/g
+  // 刻意不用 /\r?\n{2,}/：那要求连续裸 \n，对 CRLF 正文整体失配）。
+  // T2 加固：分支改互斥（\r(?!\n)、裸 \n）钉死「一次迭代 = 一个完整换行单元」——原版的
+  // {2,} 会回溯把同一个 `\r\n` 拆成 \r+\n 两单元，CRLF 书的每次段内软换行都被误判为
+  // 空行（段号翻倍、锚全面错位）。互斥分支使回溯无从歧义（等价于原子组 (?>…){2,}，
+  // 但避开构建链 rollup/esbuild 对 ES2018 原子组字面量的解析限制）。
+  const sep = /(?:\r\n|\r(?!\n)|\n){2,}/g
   let start = 0
   let m: RegExpExecArray | null
   while ((m = sep.exec(body)) !== null) {

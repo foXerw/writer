@@ -238,6 +238,21 @@ describe('relocateAnchor：三态（段内命中 / 跨段全文命中 / 缺失�
     expect(r.paraIndex).toBe(1)
     expect(crlf.slice(r.startOffset, r.endOffset)).toBe('第二段文字。')
   })
+  it('段内软换行 \r\n 是一个换行单元，不裂段（T2 加固：原子组防回溯拆单元）', () => {
+    // 旧 /(?:\r\n|\r|\n){2,}/ 会在 {2,} 驱动下把同一处 \r\n 回溯成 \r+\n 两个单元——
+    // CRLF 书的每一次行内折行都被误判为空行、段号系统性翻倍。
+    const body = '甲行前半\r\n乙行后半。\r\n\r\n丙段独立。'
+    const r = relocateAnchor(body, { quote: '甲行前半乙行后半。', paraIndex: 0 })
+    expect(r.found).toBe(true)
+    if (!r.found) return
+    expect(r.paraIndex).toBe(0)
+    // offsets 覆盖含折行的完整段跨度
+    expect(body.slice(r.startOffset, r.endOffset)).toBe('甲行前半\r\n乙行后半。')
+    const r2 = relocateAnchor(body, { quote: '丙段独立。', paraIndex: 0 })
+    expect(r2.found).toBe(true)
+    if (!r2.found) return
+    expect(r2.paraIndex).toBe(1) // 只有真空行才分段：全文恰两段
+  })
   it('段内优先于全文：引文同时存在于段 0 与段 2，paraIndex=2 → 命中段 2（不漂移）', () => {
     const dup = '回声。\n\n别的段落。\n\n回声。'
     const r = relocateAnchor(dup, { quote: '回声。', paraIndex: 2 })

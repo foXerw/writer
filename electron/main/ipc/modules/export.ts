@@ -4,6 +4,14 @@ import * as path from 'path'
 import * as os from 'os'
 import * as url from 'url'
 import { ExportParams } from '../../../../src/common/ipc'
+import { paragraphsOf } from '../../../../src/common/reviewTypes'
+
+// 空行分段（CRLF 宽容）：共用 reviewTypes.paragraphsOf 单一权威规则（/(?:\r\n|\r|\n){2,}/）。
+// 原先本文件两处 /\n{2,}/ 对 CRLF 正文整体失配——整章塌成单段（word 单 Paragraph、
+// pdf/epub 单 <p>），T1 评审确认的既存产品 bug，就此修复（export.test.ts 钉回归）。
+function paragraphBlocks(text: string): string[] {
+  return paragraphsOf(text).map((p) => p.text)
+}
 
 // ==================== 文档导出（word/pdf/epub） ====================
 
@@ -21,9 +29,9 @@ function stripLeadingTitle(content: string): string {
 }
 
 // 极简 md→html：按空行分段 <p>；识别 #/##/### 子标题；段内换行 <br/>
-function markdownToHtml(md: string): string {
-  return stripLeadingTitle(md)
-    .split(/\n{2,}/)
+// （导出仅为测试可见性——export.test.ts 钉 CRLF 分段回归，产物路径行为不变）
+export function markdownToHtml(md: string): string {
+  return paragraphBlocks(stripLeadingTitle(md))
     .map(b => b.trim())
     .filter(Boolean)
     .map(block => {
@@ -61,7 +69,7 @@ export function registerExportHandlers(): void {
       if (p.options.addToc) p.chapters.forEach((c: { title: string; content: string }, i: number) => children.push(new Paragraph(`${i + 1}. ${c.title}`)))
       for (const c of p.chapters) {
         children.push(new Paragraph({ text: c.title, heading: HeadingLevel.HEADING_1 }))
-        for (const block of stripLeadingTitle(c.content).split(/\n{2,}/)) {
+        for (const block of paragraphBlocks(stripLeadingTitle(c.content))) {
           const t = block.trim()
           if (t) children.push(new Paragraph(t))
         }
