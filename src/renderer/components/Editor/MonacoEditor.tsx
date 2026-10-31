@@ -103,6 +103,15 @@ interface MonacoEditorProps {
   showLineNumbers?: boolean
   /** 可编辑排印列最大宽度（px），正文在此列内居中 */
   maxWidthPx?: number
+  /**
+   * ghost 存在时按 Tab（已拦截默认缩进）→ 采纳补全。无 ghost 时本回调不触发、Tab 行为原样。
+   * （M5 Task 4 只提供键位表面，采纳语义由 Task 5 编排层实现。）
+   */
+  onAcceptGhost?: () => void
+  /** ghost 存在时按 Esc（已拦截）→ 关闭 ghost。无 ghost 时 Esc 不受任何影响（命令面板等照常）。 */
+  onDismissGhost?: () => void
+  /** 编辑器内输入法 compositionstart 信号——Task 5 用它中止/抑制补全，防 IME 合成期串字。 */
+  onCompositionStart?: () => void
 }
 
 export interface MonacoEditorHandle {
@@ -114,6 +123,22 @@ export interface MonacoEditorHandle {
    * 创建完成即应用（同一提交内不丢光标；跨视图切换的恢复语义见 Workspace 裁定 3）。
    */
   restoreViewState: (viewState: unknown) => void
+  /**
+   * 在光标位设置/更新 ghost 灰字（M5 实时补全，Task 4）。流式追加就反复调本方法：
+   * 单 decoration 复用、只改其内容，不动真实光标、不滚动、不重建编辑器。空串 = 清除。
+   */
+  setGhost: (text: string) => void
+  /** 移除 ghost 灰字（幂等，无 ghost 时为空操作）。 */
+  clearGhost: () => void
+  /** 当前 ghost 文本，无 ghost 返回空串——Tab/Esc 键位判定的唯一依据。 */
+  getGhost: () => string
+  /**
+   * 以光标切开的正文窗口：before/after 为全文两段、cursorOffset 为 UTF-16 偏移。
+   * 码点安全切片由上层（Task 1/5）负责，这里只给裸偏移；编辑器未就绪 → 全空窗口。
+   */
+  getProseWindow: () => { before: string; after: string; cursorOffset: number }
+  /** 在光标（或选区）处插入文本，executeEdits 保留 undo 栈；插入后光标落在插入文本之后。 */
+  insertAtCursor: (text: string) => void
 }
 
 // Monaco Editor 容器组件
@@ -129,12 +154,19 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   fontSize = 16,
   wordWrap = true,
   showLineNumbers = false,
-  maxWidthPx = 760
+  maxWidthPx = 760,
+  onAcceptGhost,
+  onDismissGhost,
+  onCompositionStart
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   // 未就绪期的恢复暂存（restoreViewState 的异步补丁通道；应用一次即清）
   const pendingViewStateRef = useRef<editor.ICodeEditorViewState | null>(null)
+  // ghost 文本缓存（'' = 无 ghost）：Tab/Esc 键位判定与 getGhost 的唯一依据，与 decoration 同步维护
+  const ghostTextRef = useRef('')
+  // ghost 单元素装饰集合：随编辑器创建一次，流式更新只改这一条的内容（键位/滚动全程不动）
+  const ghostDecorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   // 底部状态条字数（countWords 口径），从初始 value 起算，编辑/切章时更新
   const [currentWordCount, setCurrentWordCount] = useState(() => countWords(value))
@@ -149,6 +181,77 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
       const vs = viewState as editor.ICodeEditorViewState
       if (editorRef.current) editorRef.current.restoreViewState(vs)
       else pendingViewStateRef.current = vs
+    },
+    setGhost: (text: string) => {
+      // ghostText 先行更新：即便编辑器尚未就绪，键位判定（捕获层读 ghostTextRef）也与后续 decoration 一致
+      ghostTextRef.current = text
+      const instance = editorRef.current
+      const collection = ghostDecorationsRef.current
+      if (!instance || !collection) return
+      if (!text) {
+        collection.set([])
+        return
+      }
+      const position = instance.getPosition()
+      if (!position) {
+        collection.set([])
+        return
+      }
+      // 单 decoration 复用：对同一集合反复 set，monaco 原地 diff 更新 after 内容——
+      // 真实光标与滚动位置全程不动、编辑器绝不重建（流式逐 token 调本方法的两个不变量）
+      collection.set([{
+        range: {
+          startLineNumber: position.lineNumber,
+          startColumn: position.column,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column
+        },
+        options: {
+          // 光标后置灰字，样式走 global.css .completion-ghost（token 色，双主题天然自适应）。
+          // showIfCollapsed 必开（0.55.1 源码 textModel.js 实锤）：ghost 的锚定 range 是光标位
+          // 零宽折叠区间，而 injected-text 装饰树的全部查询（getInjectedTextInInterval/
+          // getAllInjectedText）都带 `.filter(i => i.options.showIfCollapsed || !i.range.isEmpty())`
+          // ——不加此键，折叠 range 的 after 内容永远进不了 viewModel 投影，灰字整层不渲染。
+          showIfCollapsed: true,
+          after: { content: text, inlineClassName: 'completion-ghost' }
+        }
+      }])
+    },
+    clearGhost: () => {
+      ghostTextRef.current = ''
+      ghostDecorationsRef.current?.set([])
+    },
+    getGhost: () => ghostTextRef.current,
+    getProseWindow: () => {
+      const instance = editorRef.current
+      const model = instance?.getModel()
+      const position = instance?.getPosition()
+      if (!model || !position) return { before: '', after: '', cursorOffset: 0 }
+      const full = model.getValue()
+      // 裸 UTF-16 偏移切片（码点安全由 Task 1/5 上层处理）：before/after 拼回恒等全文
+      const cursorOffset = model.getOffsetAt(position)
+      return {
+        before: full.slice(0, cursorOffset),
+        after: full.slice(cursorOffset),
+        cursorOffset
+      }
+    },
+    insertAtCursor: (text: string) => {
+      const instance = editorRef.current
+      if (!instance || !text) return
+      const selection = instance.getSelection()
+      if (!selection) return
+      // executeEdits 走 monaco 正常编辑管线：undo 栈保留（一次插入一条撤销记录）
+      instance.executeEdits('m5-completion', [{
+        range: selection,
+        text,
+        forceMoveMarkers: true
+      }])
+      // executeEdits 的光标映射不保证落在插入文本之后，显式定位（补全采纳的直觉语义：光标到词尾）
+      const lines = text.split('\n')
+      const endLineNumber = lines.length === 1 ? selection.endLineNumber : selection.startLineNumber + lines.length - 1
+      const endColumn = lines.length === 1 ? selection.endColumn + lines[0].length : lines[lines.length - 1].length + 1
+      instance.setPosition({ lineNumber: endLineNumber, column: endColumn })
     }
   }), [])
 
@@ -234,10 +337,13 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
           //   markdown 的 ```/~~~ 围栏、四空格代码块、链接目标等 string 作用域成零宽字符盲区）。
           //   删键后 includeStrings 恢复默认 true，字符串盲区闭合；注意 includeComments 的默认值
           //   是 inUntrustedWorkspace 哨兵、standalone 恒 trusted 下解析为 false（HTML 注释/
-          //   引用标记等注释作用域仍豁免），彻底闭合需显式 includeComments: true，另行裁定。
+          //   引用标记等注释作用域仍豁免）。M4c-2 裁定的「显式 includeComments: true」本批
+          //   （M5 Task 4 carry-in）落地：注释域零宽字符盲区就此闭合；ambiguous/nonBasic 维持
+          //   false 不动，CJK 黄框不回退。
           unicodeHighlight: {
             nonBasicASCII: false,
-            ambiguousCharacters: false
+            ambiguousCharacters: false,
+            includeComments: true
           },
           // 滚动条对齐应用观感（UI 验收批次 #4）：悬停/滚动才出现、更细、无阴影箭头
           scrollbar: {
@@ -253,6 +359,9 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
         })
 
         editorRef.current = editor
+
+        // ghost 单元素装饰集合随编辑器创建一次（M5 Task 4）：此后 setGhost/clearGhost 只更新这一条
+        ghostDecorationsRef.current = editor.createDecorationsCollection([])
 
         // 跨视图切换的延迟恢复：挂载完成前 restoreViewState 暂存的视图态，创建即应用（一次即清）
         if (pendingViewStateRef.current) {
@@ -317,6 +426,9 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
       if (editorRef.current) {
         editorRef.current.dispose()
       }
+      // 装饰集合随编辑器同归（monaco 在 editor.dispose 里销毁），这里只掐引用防悬挂
+      ghostDecorationsRef.current = null
+      ghostTextRef.current = ''
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 编辑器仅挂载时初始化一次
   }, [])
@@ -362,6 +474,40 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
       monaco.editor.setTheme(themeMode === 'light' ? 'novel-light' : 'novel-dark')
     }
   }, [themeMode])
+
+  // ghost 键位 + IME 信号（M5 Task 4；消费方为 Task 5 编排层）：
+  // - keydown 挂容器**捕获相**——monaco 的键位分发（StandaloneKeybindingService）监听同一容器的
+  //   冒泡相，捕获相 stopPropagation 即让它完整收不到 Tab/Esc，比 addCommand 更干净：addCommand
+  //   注册即顶掉内置 Tab，无 ghost 时反而要手工复现默认缩进。无 ghost 一律放行（缩进、命令面板
+  //   的 Esc 等全局行为原样保留，绝不吞键）。
+  // - Tab/Esc 只回调不清理 ghost：去留是编排层的职责（采纳要插字、关闭要冷却）。
+  // - compositionstart 冒泡至容器即上报：输入法开合成窗时 Task 5 中止/抑制补全，防合成串字。
+  // 依赖含三个回调：props 换引用即重挂监听，捕获层始终读到最新回调（不吃挂载期闭包旧值）。
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!ghostTextRef.current) return
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        event.stopPropagation()
+        onAcceptGhost?.()
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        onDismissGhost?.()
+      }
+    }
+    const handleCompositionStart = () => {
+      onCompositionStart?.()
+    }
+    el.addEventListener('keydown', handleKeyDown, true)
+    el.addEventListener('compositionstart', handleCompositionStart)
+    return () => {
+      el.removeEventListener('keydown', handleKeyDown, true)
+      el.removeEventListener('compositionstart', handleCompositionStart)
+    }
+  }, [onAcceptGhost, onDismissGhost, onCompositionStart])
 
   return (
     <div className="editor-shell" style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--color-paper)' }}>

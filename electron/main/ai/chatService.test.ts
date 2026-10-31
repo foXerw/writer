@@ -22,7 +22,10 @@ const holder = vi.hoisted(() => ({
     baseUrl: 'https://api.test',
     apiKey: 'sk-test-key',
     defaultModel: 'D',
-    models: {}
+    models: {},
+    // M5 Task 3 起 AiSettings 必填字段；本 fixture 曾靠 as-unknown 绕过类型逃过补齐，
+    // 此处规范化（补全开关关——chatService 走的是对话链路，与补全无关）
+    completionEnabled: false
   } as unknown
 }))
 vi.mock('./settings', () => ({
@@ -36,6 +39,7 @@ function resetSettings(over: Partial<AiSettings> = {}): void {
     apiKey: 'sk-test-key',
     defaultModel: 'D',
     models: {},
+    completionEnabled: false, // 与上方 hoisted fixture 同步规范化（T3 必填字段）
     ...over
   }
 }
