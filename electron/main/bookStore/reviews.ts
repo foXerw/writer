@@ -11,7 +11,8 @@
 //
 // 合并矩阵（spec Q4/G4，重审按章替换的单一权威）：
 // - 旧 dismissed/converted 原样保留（converted 携 proposalId 转化指针）；
-// - 旧 open 与新意见同抑制键 → 被新替换（旧条目出局，新条目 open/stale 照输入）；
+// - 旧 open 与**实际入档**的新意见同抑制键 → 被新替换（旧条目出局，新条目 open/stale 照输入；
+//   被 dismissed 抑制键丢弃的新条目不具替换资格——T1 评审发现①修复）；
 // - 旧 open 未重现 → 保留且 stale=true（「上次未重现」是标记非删除——徽标仍计、可驳回）；
 //   已 stale 者再未重现 → 仍 stale（幂等不叠加）；已 stale 者重现 → 被新替换（恢复新鲜）；
 // - 新意见命中旧 dismissed 抑制键 → 丢弃（同章防复读，spec Q6：键含 chapterId，跨章不抑制）。
@@ -129,14 +130,18 @@ export function saveRun(
   const dismissedKeys = new Set(
     old.filter((o) => o.status === 'dismissed').map((o) => suppressionKey(o))
   )
-  const newKeys = new Set(incoming.map((o) => suppressionKey(o)))
+  const additions = incoming.filter((o) => !dismissedKeys.has(suppressionKey(o)))
+  // newKeys 必须取自 additions（真正入档的新意见）而非全量 incoming（T1 评审发现①）：
+  // dismissed 状态的新条目若与旧 dismissed 同键会被抑制丢弃，又恰与某条旧 open 同键——
+  // 取自全量则它「替换」旧 open 自己却不入档，旧意见出局新意见没进 = 静默消失。
+  // 「替换」的权威只延伸到真正落账的意见。
+  const newKeys = new Set(additions.map((o) => suppressionKey(o)))
 
   const kept = old.map((o) => {
     if (o.status !== 'open') return o // dismissed/converted 原样保留（converted 携转化指针）
-    // open：与新 run 同抑制键 → 被替换（出局）；未重现 → stale=true（重跑幂等）
+    // open：与入档新意见同抑制键 → 被替换（出局）；未重现 → stale=true（重跑幂等）
     return newKeys.has(suppressionKey(o)) ? null : { ...o, stale: true }
   })
-  const additions = incoming.filter((o) => !dismissedKeys.has(suppressionKey(o)))
 
   const merged: ReviewOpinion[] = [...kept.filter((o): o is ReviewOpinion => o !== null), ...additions]
   writeReviews(projectPath, chapterId, merged)

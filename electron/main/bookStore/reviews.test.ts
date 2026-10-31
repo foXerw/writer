@@ -157,6 +157,27 @@ describe('saveRun：合并矩阵四路（spec Q4 + G4 重审替换/驳回抑制�
     expect(hit?.stale).toBe(false)
   })
 
+  it('newKeys 取自抑制后 additions：dismissed 新条目被抑制丢弃 → 不得顺手替换旧 open（防静默消失）', () => {
+    // 理论边界（T1 评审发现①）：同键 dismissed 新条目被 dismissedKeys 抑制（不入 additions），
+    // 若 newKeys 取自全量 incoming，旧 open 仍会被这条「永远不会入档」的意见替换——双向出局，
+    // 意见静默消失。修复后 newKeys 只看真正入档的 additions：旧 open 保留并标 stale。
+    const { p, a } = twoChapterIds()
+    const openOld = mkOp(a, { anchor: { quote: '天气描写三连', paraIndex: 2 } })
+    const dismissedSame = mkOp(a, { anchor: { quote: '天气描写三连', paraIndex: 5 }, status: 'dismissed' })
+    saveRun(p, a, [openOld, dismissedSame], MODEL)
+    const rerun = mkOp(a, {
+      anchor: { quote: ' 天气描写三连 ', paraIndex: 0 }, // 归一化后同键
+      status: 'dismissed'
+    })
+    const merged = saveRun(p, a, [rerun], MODEL)
+    const keptOpen = merged.find((o) => o.id === openOld.id)
+    expect(keptOpen?.status).toBe('open') // 没被一条不入档的意见顶掉
+    expect(keptOpen?.stale).toBe(true) // 本轮未入档 → 按「未重现」标 stale
+    expect(merged.find((o) => o.id === dismissedSame.id)?.status).toBe('dismissed')
+    expect(merged.find((o) => o.id === rerun.id)).toBeUndefined() // 抑制照常生效
+    expect(loadReviews(p, a)).toEqual(merged)
+  })
+
   it('旧 converted 原样保留（含 proposalId 指针），不参与抑制也不被替换', () => {
     const { p, a } = twoChapterIds()
     const conv = mkOp(a, {

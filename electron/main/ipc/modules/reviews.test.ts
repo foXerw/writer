@@ -112,6 +112,35 @@ describe('review:* 四通道注册 + 薄委托', () => {
     expect(loadReviews(p, a)).toEqual([])
   })
 
+  it('review:saveRun 单 run 意见数帽：201 条 → REVIEW_TOO_MANY，账本零落盘（PROPOSAL_TOO_LARGE 先例同款）', async () => {
+    const p = mkTmpBook()
+    const a = createChapter(p, '第一章').id
+    const many = Array.from({ length: 201 }, (_, i) =>
+      mkOp(a, { anchor: { quote: `第${i}处问题`, paraIndex: i } })
+    )
+    await expect(
+      Promise.resolve().then(() =>
+        getHandler('review:saveRun')(null, { projectPath: p, chapterId: a, opinions: many, model: 'm' })
+      )
+    ).rejects.toThrow('REVIEW_TOO_MANY: 201 > 200')
+    expect(existsSync(reviewFile(p, a))).toBe(false)
+  })
+
+  it('review:saveRun 数帽边界：恰好 200 条放行（>帽才拦，同 proposal 口径）', async () => {
+    const p = mkTmpBook()
+    const a = createChapter(p, '第一章').id
+    const exact = Array.from({ length: 200 }, (_, i) =>
+      mkOp(a, { anchor: { quote: `第${i}处问题`, paraIndex: i } })
+    )
+    const merged = (await getHandler('review:saveRun')(null, {
+      projectPath: p,
+      chapterId: a,
+      opinions: exact,
+      model: 'm'
+    })) as ReviewOpinion[]
+    expect(merged).toHaveLength(200)
+  })
+
   it('review:dismiss / review:markConverted 委托返回更新后全集', async () => {
     const p = mkTmpBook()
     const a = createChapter(p, '第一章').id
