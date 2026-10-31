@@ -171,7 +171,7 @@ describe('opinionToChange：setting-conflict → update world', () => {
 })
 
 describe('opinionToChange：motivation-break → update character', () => {
-  it('target 命中 character → ok；after = 整卡拷贝 + goals 追加段（文本无「动机/性格」）', () => {
+  it('target 命中 character → ok；after = 整卡拷贝 + goals 追加段（默认路由：文本不涉「性格/缺陷/弱点」）', () => {
     const ch = mkCharacter()
     const o = mkOpinion({ category: 'motivation-break', targetEntityId: ch.id, text: '主角放弃了追查线索。', suggestion: '补一段内心摇摆。' })
     const c = okChange(o, { characters: [ch], world: [] })
@@ -188,20 +188,41 @@ describe('opinionToChange：motivation-break → update character', () => {
     }
     expect(validateChange(c)).toEqual([])
   })
-  it('路由规则：text 或 suggestion 提及「动机」/「性格」→ 追加 flaws，goals 不动', () => {
+  // 裁定翻转（M6 T5 控制器代裁，reviewer 提请）：动机=为何行动=目标维度，
+  // 「动机」不再指向 flaws——默认落 goals，仅 text/suggestion 明提「性格/缺陷/弱点」才落 flaws。
+  it('路由规则（翻转后）：仅提「动机」→ goals；明提「性格」→ flaws', () => {
     const ch = mkCharacter()
     const byText = afterOf(okChange(
       mkOpinion({ category: 'motivation-break', targetEntityId: ch.id, text: '此处动机断裂明显。' }),
       { characters: [ch], world: [] }
     ))
-    expect(byText.flaws).toBe(`${ch.flaws}\n\n可在结尾让名字应有回声。`)
-    expect(byText.goals).toBe(ch.goals)
+    expect(byText.goals).toBe(`${ch.goals}\n\n可在结尾让名字应有回声。`) // 动机→目标维度
+    expect(byText.flaws).toBe(ch.flaws)
     const ch2 = mkCharacter()
     const bySuggestion = afterOf(okChange(
       mkOpinion({ category: 'motivation-break', targetEntityId: ch2.id, text: '行为无来由。', suggestion: '强化性格铺垫。' }),
       { characters: [ch2], world: [] }
     ))
     expect(bySuggestion.flaws).toBe(`${ch2.flaws}\n\n强化性格铺垫。`)
+    expect(bySuggestion.goals).toBe(ch2.goals)
+  })
+  it('路由规则（翻转后）：「缺陷」「弱点」也指向 flaws；其余一律 goals 兜底', () => {
+    for (const kw of ['缺陷', '弱点']) {
+      const ch = mkCharacter()
+      const after = afterOf(okChange(
+        mkOpinion({ category: 'motivation-break', targetEntityId: ch.id, text: `这里的${kw}暴露得太突兀。`, suggestion: undefined }),
+        { characters: [ch], world: [] }
+      ))
+      expect(after.flaws).toBe(`${ch.flaws}\n\n这里的${kw}暴露得太突兀。`)
+      expect(after.goals).toBe(ch.goals)
+    }
+    const ch = mkCharacter()
+    const after = afterOf(okChange(
+      mkOpinion({ category: 'motivation-break', targetEntityId: ch.id, text: '他忽然改变了主意。', suggestion: '补一段铺垫。' }),
+      { characters: [ch], world: [] }
+    ))
+    expect(after.goals).toBe(`${ch.goals}\n\n补一段铺垫。`)
+    expect(after.flaws).toBe(ch.flaws)
   })
   it('goals/flaws 缺席时播种单段；空串字段等价缺席', () => {
     const ch = mkCharacter({ goals: undefined, flaws: undefined })

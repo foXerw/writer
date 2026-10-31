@@ -9,9 +9,9 @@
 // - setting-conflict → update×world：target=o.targetEntityId 且必须命中 ctx.world；
 //   after=整卡拷贝 + content 追加建议段（\n\n 分段——同 reviewTypes 分段口径的写侧镜像）。
 // - motivation-break → update×character：target 必须命中 ctx.characters；
-//   after=整卡拷贝 + goals 或 flaws 追加建议段。路由规则（裁定钉死）：意见 text 或 suggestion
-//   提及「动机」/「性格」→ flaws（人物缺陷维度），否则 → goals（动机维度）；两字段缺席/空串
-//   时追加段独占字段（无前置换行）。
+//   after=整卡拷贝 + goals 或 flaws 追加建议段。路由规则（T5 裁定翻转后钉死）：默认 goals
+//   （动机=为何行动=目标维度），仅意见 text 或 suggestion 明提「性格/缺陷/弱点」→ flaws
+//   （人物缺陷维度）；两字段缺席/空串时追加段独占字段（无前置换行）。
 // - targetEntityId 缺失/空串/错域（指向另一域的 id）→ need-target + 对应域全列表候选
 //   （setting-conflict→world 列表 name=title；motivation-break→character 列表 name=name；
 //   一律按 name 码元字典序升序——刻意不用 localeCompare：默认 locale 随机器漂移，见 byName 注）。
@@ -68,10 +68,14 @@ function appendParagraph(base: string | undefined, addition: string): string {
   return `${base}${PARA_SEP}${addition}`
 }
 
-/** 动机断裂的字段路由（规则见文件头注）：text/suggestion 提及「动机」「性格」→ flaws。 */
+/**
+ * 动机断裂的字段路由（裁定翻转，M6 T5 控制器代裁）：默认 goals——动机=为何行动=目标维度；
+ * 仅意见文本明提「性格/缺陷/弱点」（人物缺陷词）才落 flaws。「动机」本身不再指向 flaws
+ * （旧规则把「动机断裂」记进缺陷栏，语义拧反——终验汇报留发起人否决口）。
+ */
 function motivationField(o: ReviewOpinion): 'goals' | 'flaws' {
   const pool = `${o.text}${o.suggestion ?? ''}`
-  return pool.includes('动机') || pool.includes('性格') ? 'flaws' : 'goals'
+  return pool.includes('性格') || pool.includes('缺陷') || pool.includes('弱点') ? 'flaws' : 'goals'
 }
 
 /**
