@@ -249,23 +249,28 @@ describe('场景切换与总开关', () => {
   })
 })
 
-describe('在途请求期间继续打字（brief 字面「contentChanged→armed」的病态角落，补闸）', () => {
-  it('streaming 中再输入：不再布防（防同一次在途 fetch 二次发火），照记前缀与时刻', () => {
+describe('在途请求期间继续打字（终审 minor1 裁定反转 T2「保持在途」：键入=作者接管笔，掐在途+重布防）', () => {
+  it('streaming 中再输入：abort 在途 + 新文即时重布防，下一次静默可发新请求', () => {
     const s = streaming()
     const r = run(s, { type: 'contentChanged', prefix: Q, suffixEmpty: true, at: T0 + 2000 })
-    expect(r.fire).toBeUndefined()
-    expect(r.state.phase).toBe('streaming')
+    expect(r.fire).toBe('abort')
+    expect(r.state.phase).toBe('armed')
     expect(r.state.pendingPrefix).toBe(Q)
     expect(r.state.lastChangeAt).toBe(T0 + 2000)
-    // 即便静默满，也绝不发第二次请求
-    expect(run(r.state, { type: 'pauseTick', at: T0 + 2900 }).fire).toBeUndefined()
+    // 掐流后不留活体：旧请求经 fire:'abort' 已死，静默满后合法发的是【新】请求（单一在途不变量仍在）
+    const after = run(r.state, { type: 'pauseTick', at: T0 + 2900 })
+    expect(after.fire).toBe('request')
+    expect(after.state.phase).toBe('requesting')
   })
 
-  it('requesting 中再输入：保持在途，firstChunk 到达仍正常转 streaming', () => {
-    let s = run(armed(), { type: 'pauseTick', at: T0 + 900 }).state
-    s = run(s, { type: 'contentChanged', prefix: Q, suffixEmpty: true, at: T0 + 1200 }).state
-    expect(s.phase).toBe('requesting')
-    expect(run(s, { type: 'firstChunk' }).state.phase).toBe('streaming')
+  it('requesting 中再输入：与 streaming 对称——abort + armed；迟到首包不改相', () => {
+    const s = run(armed(), { type: 'pauseTick', at: T0 + 900 }).state
+    const r = run(s, { type: 'contentChanged', prefix: Q, suffixEmpty: true, at: T0 + 1200 })
+    expect(r.fire).toBe('abort')
+    expect(r.state.phase).toBe('armed')
+    // 被掐请求的迟到 firstChunk 进不了 streaming（armed 下 firstChunk 是陈旧包）
+    expect(run(r.state, { type: 'firstChunk' }).state.phase).toBe('armed')
+    expect(run(r.state, { type: 'pauseTick', at: T0 + 2100 }).fire).toBe('request')
   })
 
   it('streaming 中转入修订态（光标后有文）：结果已注定无处可插 → abort + idle', () => {

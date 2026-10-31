@@ -322,7 +322,9 @@ export function useCompletion(deps: CompletionDeps): CompletionBinding {
     refreshSettings()
     const { before, after } = editor.getProseWindow()
     if (before === '' && after === '') return // 空文档（或未就绪同形窗口）：无文可续
-    // 流式期键入 = 作者自己接管这支笔（ghost 锚点还钉在旧光标位）→ 先 dismiss 再按新文布防
+    // 流式期键入 = 作者自己接管这支笔（ghost 锚点还钉在旧光标位）→ 先 dismiss 再按新文布防；
+    // requesting 腿由机器对称裁定直接 fire:'abort'（终审 minor1，掐在途+重布防免 cooldown），
+    // 本层不再特判——两条腿都保证「在途不叠活体」。
     if (stateRef.current.phase === 'streaming') dismissNow()
     feed({ type: 'contentChanged', prefix: before, suffixEmpty: after === '', at: Date.now() })
     clearPauseTimer()

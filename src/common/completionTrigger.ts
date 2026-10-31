@@ -22,8 +22,10 @@
 // contentChanged 的前缀，armed 的候选文案）与 lastChangeAt（最近一次改动时刻）。
 // 对 Task 5 无破坏：状态只经 initialCompletionState() 创建、由事件流转，从不手写字面量。
 // 勘误二：brief「contentChanged→armed」未区分在途相位——照字面会在一次 fetch 未完时
-// 叠发第二次请求。实现改为：requesting/streaming 期间 contentChanged 只更新记账不重新布防；
-// 若在途时撞上硬闸门（转入修订态/被禁用）则 fire abort（结果已无处可插，不留活体）。
+// 叠发第二次请求。T2 原裁定「在途只记账不重布防」；**终审 minor1 裁定已反转其处置方向**
+// （never re-litigate，理由见 closeout 裁定 13 与下方 contentChanged 注释）：在途键入一律
+// fire:'abort' 掐在途，新文即时重布防（硬闸门下收回 idle）——单一在途不变量同样由
+// 「abort 先行、下一次 pauseTick 才发新火」守住。
 
 /** 触发状态机的相位：idle=没打算请求；armed=已布防待静默；requesting=请求在途；streaming=首包已到。 */
 export type CompletionPhase = 'idle' | 'armed' | 'requesting' | 'streaming'
@@ -98,10 +100,13 @@ export function nextCompletionState(
       // 三条硬闸门（disabled/composing/修订态）先到：违例时「armed 也撤」，
       // 但前缀与时刻照记——它们是正文事实，不影响发火判定（phase 已非 armed 即无从发火）。
       const blocked = !cfg.enabled || s.composing || !e.suffixEmpty
-      // brief 字面「contentChanged→armed」没看在途相位：一次 fetch 未完就再布防，
-      // 等于允许同屏两个请求叠发火（比冷却刷屏更吵），故在途时不重新布防、只更新记账
-      // （requesting→streaming 的正常链路不受影响）；若在途时还撞上硬闸门（改到修订态/
-      // 被禁用），结果已无处可插或不许呈现，直接 abort——切场景要掐，改稿子更要掐。
+      // 在途相位（requesting/streaming）再键入 = 作者自己接管这支笔——终审 minor1 裁定
+      // （反转 T2 勘误二的「保持在途」）：与流动态对称，一律 abort 掐在途 + 用新文即时
+      // 重布防。ghost 锚定发火瞬间的光标位，再键入注定让它落在陈旧语境里；掐掉一个 <1s
+      // 的在途请求 token 成本可忽略，留着它等首包再撤则是写作流里一次实打实的灰字闪现
+      // （反目标）。单一在途不变量不破：abort 先行，下一次 pauseTick 才可能发新请求。
+      // 撞硬闸门（修订态/被禁/组字中）时同样 abort，但收回 idle 不重布防。
+      // （冷却/lastPrefix 不在此记账：键入不是拒绝，dismiss 语义归 dismiss 事件自己。）
       if (isLive(s.phase)) {
         if (blocked) {
           return {
@@ -109,7 +114,10 @@ export function nextCompletionState(
             fire: 'abort'
           }
         }
-        return { state: { ...s, pendingPrefix: e.prefix, lastChangeAt: e.at } }
+        return {
+          state: { ...s, phase: 'armed', pendingPrefix: e.prefix, lastChangeAt: e.at },
+          fire: 'abort'
+        }
       }
       return {
         state: {
