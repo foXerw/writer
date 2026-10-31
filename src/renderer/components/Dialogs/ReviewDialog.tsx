@@ -317,12 +317,13 @@ function ReviewDialog({
       case 'ok': {
         if (res.cancelled) {
           // carry-in 1：取消章（cancelledChapters）不计入「失败」——它们是被主动掐断的在途章，
-          // 不是审阅失败；真失败章另算，两者分列。
-          const failedTxt = res.failed.length > 0 ? `、失败 ${res.failed.length} 章` : ''
-          setRunNotice({
-            type: 'info',
-            text: `审阅已取消：完成 ${res.reviewed.length} 章、已取消 ${res.cancelledChapters.length} 章${failedTxt}（已完成章的意见已留存账本）`
-          })
+          // 不是审阅失败；真失败章另算，两者分列。计数为 0 的段整段省略（毫秒窗竞态下
+          // 「最后一章恰在取消到达前已完成」会出 cancelledChapters=[]，此时不该报「已取消 0 章」）。
+          const parts = [`完成 ${res.reviewed.length} 章`]
+          if (res.cancelledChapters.length > 0) parts.push(`已取消 ${res.cancelledChapters.length} 章`)
+          else parts.push('取消时最后一章的在途请求已完成')
+          if (res.failed.length > 0) parts.push(`失败 ${res.failed.length} 章`)
+          setRunNotice({ type: 'info', text: `审阅已取消：${parts.join('、')}（已完成章的意见已留存账本）` })
         } else if (res.failed.length > 0) {
           setRunNotice({ type: 'warning', text: `审阅结束：${res.reviewed.length} 章成功、${res.failed.length} 章失败（各章错误节可见）` })
         } else if (res.reviewed.length > 0) {
