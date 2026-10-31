@@ -290,7 +290,12 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
       const lines = text.split('\n')
       const endLineNumber = lines.length === 1 ? caret.lineNumber : caret.lineNumber + lines.length - 1
       const endColumn = lines.length === 1 ? caret.column + lines[0].length : lines[lines.length - 1].length + 1
-      instance.setPosition({ lineNumber: endLineNumber, column: endColumn })
+      const end = { lineNumber: endLineNumber, column: endColumn }
+      instance.setPosition(end)
+      // M5 T6 冒烟实证缺陷：视口底部采纳较长 ghost（≥一行换行增量）后，executeEdits/setPosition
+      // 都不触发滚动——光标连同下一发自动再布的 ghost 装饰落在视口外，monaco 虚拟渲染直接不画
+      // （用户视角=「采纳后再也不弹」）。采纳即所见：仅在-outsider 时 reveal，绝不抢已有焦点视图的滚动。
+      instance.revealPositionInCenterIfOutsideViewport(end)
     }
   }), [])
 
