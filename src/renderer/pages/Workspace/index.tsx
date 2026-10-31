@@ -139,7 +139,7 @@ function Workspace() {
   // MonacoEditor 的 onChange 只在编辑器创建 effect 捕获一次：本回调与 handleEditorChange/
   // completion.onEditorContentChanged 一样只引用稳定闭包，挂载期捕获与每渲染新引用等效。
   // 解构出稳定回调再入依赖（exhaustive-deps 只认根对象；completion 每渲染新壳会把依赖打回原形）
-  const { onEditorContentChanged } = completion
+  const { onEditorContentChanged, onLeaveWriteView } = completion
   const handleEditorChangeWithCompletion = useCallback(
     (value: string) => {
       handleEditorChange(value)
@@ -498,6 +498,14 @@ function Workspace() {
   // 专注模式是写作专属态：focusMode 开启时降级为写作视图（菜单/快捷键/命令面板从图谱态进入专注
   // 同样生效，退专注自动回图谱），切换条同步隐藏——编辑器 fragment 由此保持一字未动（零回归约束）。
   const effectiveViewMode = focusMode ? 'write' : viewMode
+  // M5 终审 Important 1：编辑器随 effectiveViewMode 挂载/卸载，但 switchViewMode 只盖住
+  // Segmented 一条腿——「图谱态进专注（编辑器被挂载、补全活了）→ 退专注回图谱（编辑器被卸载）」
+  // 这条 focusMode 路径无人喂 viewSwitch：在途请求不掐（白烧 token）、readyRef 滞留 true、
+  // 迟到 chunk 可把 ghost 画到下次重挂的编辑器上。收口=视图离开写作态的单一事实源本效应，
+  // 两路（Segmented/专注）都覆盖；onLeaveWriteView 对 idle 机器幂等（重复喂无害，终审确认）。
+  useEffect(() => {
+    if (effectiveViewMode !== 'write') onLeaveWriteView()
+  }, [effectiveViewMode, onLeaveWriteView])
   const renderMainView = () => {
     if (effectiveViewMode === 'graph') {
       // 宿主容器契约（Task 2 坑 a；编辑器 e000148 同款教训）：GraphView 根为 absolute;inset:0，
