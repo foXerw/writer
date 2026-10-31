@@ -71,6 +71,12 @@ const projectAPI: RendererToMainRequests = {
   'proposal:adopt': (params) => ipcRenderer.invoke('proposal:adopt', params),
   'proposal:reject': (params) => ipcRenderer.invoke('proposal:reject', params),
 
+  // 章节审阅（M6 T1；参数一律 {projectPath, …} 对象形状，契约见 src/common/ipc.ts）
+  'review:get': (params) => ipcRenderer.invoke('review:get', params),
+  'review:saveRun': (params) => ipcRenderer.invoke('review:saveRun', params),
+  'review:dismiss': (params) => ipcRenderer.invoke('review:dismiss', params),
+  'review:markConverted': (params) => ipcRenderer.invoke('review:markConverted', params),
+
   'dialog:openDirectory': () => ipcRenderer.invoke('dialog:openDirectory'),
   'dialog:openFile': (filters) => ipcRenderer.invoke('dialog:openFile', filters),
   'dialog:saveFile': (params) => ipcRenderer.invoke('dialog:saveFile', params),
@@ -200,6 +206,14 @@ const novelWriter: NovelWriterApi = {
     save: projectAPI['proposal:save'],
     adopt: projectAPI['proposal:adopt'],
     reject: projectAPI['proposal:reject']
+  },
+
+  // 章节审阅（M6 T1）
+  review: {
+    get: projectAPI['review:get'],
+    saveRun: projectAPI['review:saveRun'],
+    dismiss: projectAPI['review:dismiss'],
+    markConverted: projectAPI['review:markConverted']
   },
 
   // 对话框

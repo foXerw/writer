@@ -9,6 +9,7 @@ import { registerCharacterHandlers } from './modules/character'
 import { registerSettingHandlers } from './modules/setting'
 import { registerNarrativeHandlers } from './modules/narrative'
 import { registerProposalHandlers } from './modules/proposal'
+import { registerReviewHandlers } from './modules/reviews'
 import { registerStatsHandlers } from './modules/stats'
 import { registerExportHandlers } from './modules/export'
 import { registerAiHandlers } from './modules/ai'
@@ -28,6 +29,7 @@ export function registerAllIpcHandlers(): void {
   registerSettingHandlers()
   registerNarrativeHandlers()
   registerProposalHandlers()
+  registerReviewHandlers()
   registerStatsHandlers()
   registerExportHandlers()
   registerAiHandlers()

@@ -20,6 +20,7 @@ import type {
   WorldEntryV2
 } from './schema'
 import type { ProposalAdoptResult, ProposalFile } from './proposal'
+import type { ReviewOpinion } from './reviewTypes'
 
 // 主进程 -> 渲染进程 事件
 export type MainToRendererEvents = {
@@ -184,6 +185,31 @@ export type RendererToMainRequests = {
     changeKeys: string[]
   }) => Promise<void>
 
+  // 章节审阅相关（M6 T1：.ai/reviews/<chapterId>.json = ReviewOpinion[] 单文件 JSON 账本。
+  // 新通道组纪律同 proposal：参数一律 {projectPath, …} 对象形状；错误是 REVIEW_*: 前缀平文
+  // （REVIEW_INVALID/REVIEW_MISSING/REVIEW_NOT_OPEN/REVIEW_CHAPTER_MISSING/BAD_REVIEW_CHAPTER_ID，
+  // 定义见 electron/main/bookStore/reviews.ts），渲染层在审阅对话框内原样展示。
+  // saveRun 按章替换合并（矩阵语义在存储层）并返回合并后全集；dismiss/markConverted
+  // 是状态迁移唯一写入口（幂等驳回 / 转化指针唯一），均返回更新后全集。
+  'review:get': (params: { projectPath: string; chapterId?: string }) => Promise<ReviewOpinion[]>
+  'review:saveRun': (params: {
+    projectPath: string
+    chapterId: string
+    opinions: ReviewOpinion[]
+    model: string
+  }) => Promise<ReviewOpinion[]>
+  'review:dismiss': (params: {
+    projectPath: string
+    chapterId: string
+    opinionId: string
+  }) => Promise<ReviewOpinion[]>
+  'review:markConverted': (params: {
+    projectPath: string
+    chapterId: string
+    opinionId: string
+    proposalId: string
+  }) => Promise<ReviewOpinion[]>
+
   // 系统相关
   'dialog:openDirectory': () => Promise<string | null>
   'dialog:openFile': (filters: FileFilter[]) => Promise<string | null>
@@ -293,6 +319,13 @@ export interface NovelWriterApi {
     save: RendererToMainRequests['proposal:save']
     adopt: RendererToMainRequests['proposal:adopt']
     reject: RendererToMainRequests['proposal:reject']
+  }
+  // 章节审阅（M6 T1；契约见 RendererToMainRequests 上方注释）
+  review: {
+    get: RendererToMainRequests['review:get']
+    saveRun: RendererToMainRequests['review:saveRun']
+    dismiss: RendererToMainRequests['review:dismiss']
+    markConverted: RendererToMainRequests['review:markConverted']
   }
   dialog: {
     openDirectory: RendererToMainRequests['dialog:openDirectory']

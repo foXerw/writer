@@ -103,6 +103,16 @@ export function aiIndexFile(p: string): string {
   return join(p, '.ai', 'index.json')
 }
 
+/** 审阅意见目录 `.ai/reviews/`（M6：每章一个账本，watcher 对 .ai/ 本就忽略 → domainOf null）。 */
+export function reviewsDir(p: string): string {
+  return join(p, '.ai', 'reviews')
+}
+
+/** 单章审阅账本 `.ai/reviews/<chapterId>.json`（chapterId 必须先过仓库层 UUID 门）。 */
+export function reviewFile(p: string, chapterId: string): string {
+  return join(reviewsDir(p), `${chapterId}.json`)
+}
+
 /**
  * 备份目录的相对路径（相对书根）：`.migration-backup/<消毒后的 tsIso>`。
  * 消毒 = 把 Windows/POSIX 文件名非法或易碎的字符（`:` `/`）替换为 `-`，
