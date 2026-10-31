@@ -11,7 +11,8 @@ import type {
   StatsData,
   ExportParams
 } from '@/common/ipc'
-import type { ProposalAdoptResult, ProposalFile } from '@/common/proposal'
+import type { ProposalAdoptResult, ProposalChange, ProposalFile } from '@/common/proposal'
+import type { ReviewOpinion } from '@/common/reviewTypes'
 import type {
   CharacterV2,
   ChoiceNodeV2,
@@ -458,6 +459,15 @@ export function useProposal() {
     return ipc.proposal.save({ projectPath, file })
   }, [ipc])
 
+  // M6 T3 additive 通道的门面（useReview 转化并入走这一路；薄包装一通道一函数，零语义）
+  const appendProposalChanges = useCallback(async (
+    projectPath: string,
+    proposalId: string,
+    changes: ProposalChange[]
+  ): Promise<ProposalFile> => {
+    return ipc.proposal.appendChanges({ projectPath, proposalId, changes })
+  }, [ipc])
+
   const adoptProposalChanges = useCallback(async (
     projectPath: string,
     proposalId: string,
@@ -479,8 +489,57 @@ export function useProposal() {
     getAllProposals,
     getProposalById,
     saveProposal,
+    appendProposalChanges,
     adoptProposalChanges,
     rejectProposalChanges
+  }
+}
+
+// 章节审阅账本 Hook（M6 T5）：review:* 四通道的薄包装（一通道一函数，对齐 useProposal 纪律）。
+// get 的 chapterId 省略 = 全书聚合（主进程 listAllReviews，徽标计数用）；给出 = 单章账本点读。
+// saveRun/dismiss/markConverted 返回**合并/更新后的全集**（合并矩阵与状态守卫在主进程存储层），
+// 拒绝语义为 REVIEW_* 平文前缀（词表见 electron/main/bookStore/reviews.ts 头注），渲染层原样展示。
+export function useReview() {
+  const ipc = getIPC()
+
+  const getReviewOpinions = useCallback(async (
+    projectPath: string,
+    chapterId?: string
+  ): Promise<ReviewOpinion[]> => {
+    return ipc.review.get({ projectPath, chapterId })
+  }, [ipc])
+
+  const saveReviewRun = useCallback(async (
+    projectPath: string,
+    chapterId: string,
+    opinions: ReviewOpinion[],
+    model: string
+  ): Promise<ReviewOpinion[]> => {
+    return ipc.review.saveRun({ projectPath, chapterId, opinions, model })
+  }, [ipc])
+
+  const dismissReviewOpinion = useCallback(async (
+    projectPath: string,
+    chapterId: string,
+    opinionId: string
+  ): Promise<ReviewOpinion[]> => {
+    return ipc.review.dismiss({ projectPath, chapterId, opinionId })
+  }, [ipc])
+
+  const markReviewConverted = useCallback(async (
+    projectPath: string,
+    chapterId: string,
+    opinionId: string,
+    proposalId: string
+  ): Promise<ReviewOpinion[]> => {
+    return ipc.review.markConverted({ projectPath, chapterId, opinionId, proposalId })
+  }, [ipc])
+
+  return {
+    getReviewOpinions,
+    saveReviewRun,
+    dismissReviewOpinion,
+    markReviewConverted
   }
 }
 
