@@ -13,10 +13,11 @@ import type { GraphKind } from '../../components/Graph/graphModel'
 import CommandPalette from '../../components/Dialogs/CommandPalette'
 import ExportDialog, { type ExportOptions } from '../../components/Dialogs/ExportDialog'
 import ProposalReviewDialog from '../../components/Dialogs/ProposalReviewDialog'
+import ReviewDialog from '../../components/Dialogs/ReviewDialog'
 import { useMenu } from '../../hooks/useMenu'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import { useBookEvents } from '../../hooks/useBookEvents'
-import { useChapter, useDialog, useExport, useFile, useProject } from '../../hooks/useIPC'
+import { useChapter, useDialog, useExport, useFile, useProject, useReview as useReviewIpc } from '../../hooks/useIPC'
 import { assembleMarkdown, sanitizeFilename } from '../../services/exportService'
 import { reportMigration } from '../../services/migrationReport'
 import { describeBookError } from '../../services/bookErrors'
@@ -26,6 +27,7 @@ import { useWritingStats } from './hooks/useWritingStats'
 import { useAutoSave } from './hooks/useAutoSave'
 import { useCompletion } from './hooks/useCompletion'
 import { useOrganize } from './hooks/useOrganize'
+import { countOpenOpinions } from './hooks/useReview'
 import { bookChangeTouchesCurrentChapter, decideConflict } from './hooks/bookChangeConflict'
 import type { Chapter, ProjectConfig, ProjectData } from '@/common/ipc'
 import { countWords } from '@/common/wordCount'
@@ -180,19 +182,73 @@ function Workspace() {
   // 自动保存：按项目配置间隔静默 flush（取代原 services/autoSave.ts）
   useAutoSave({ enabled: autoSaveEnabled, intervalMs: autoSaveInterval, chapterId: currentChapter?.id ?? null, flush: flushIfDirty })
 
+  // 「此刻」章缓冲视图（M4b 整理 + M6 审阅共用同一函数、同一口径）：当前章 = 编辑器实时
+  // 缓冲（未保存编辑所见即所审——anchor quote 逐字铁律要求出处与作者眼前一致），
+  // 非当前章/无缓冲 → null 由调用方回落磁盘内容。
+  const getBufferChapter = useCallback(
+    (chapterId: string): { title: string; body: string } | null =>
+      currentChapter && currentChapter.id === chapterId
+        ? { title: chapterTitle, body: isDirtyNow() ? editorContent : currentChapter.content }
+        : null,
+    [currentChapter, chapterTitle, editorContent, isDirtyNow]
+  )
+
   // 整理本章（M4b Task 4）：buffer 优先（用户所见即所整理——quote 逐字铁律要求出处
   // 对齐编辑器缓冲），非当前章/无缓冲回落磁盘内容。并发门与徽章刷新全在 hook 内。
   const organize = useOrganize({
     projectPath,
     projectName,
     config,
-    getBufferChapter: (chapterId) =>
-      currentChapter && currentChapter.id === chapterId
-        ? { title: chapterTitle, body: isDirtyNow() ? editorContent : currentChapter.content }
-        : null
+    getBufferChapter
   })
   const organizeDisabled =
     !projectPath || !currentChapter || organize.pendingChapterIds.has(currentChapter.id)
+
+  // -------------------------------------------------------------------------
+  // M6 T5 审阅接线：useReview 单实例住在 ReviewDialog（审阅在途不随 Modal 关闭陪葬，
+  // 工具栏按钮的「在途禁用」经 onReviewingChange 回传）。Workspace 只喂三样：缓冲源、
+  // 跳转执行、徽标计数。徽标直连 useReviewIpc + countOpenOpinions——与 controller.openCount()
+  // 同一口径同一谓词，刻意不起第二个 useReview 实例（runningRef 并发门按实例隔离，
+  // 双实例=两个互不知情的「一书架一审阅」）。
+  // -------------------------------------------------------------------------
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [reviewReviewing, setReviewReviewing] = useState(false)
+  const [reviewBadge, setReviewBadge] = useState(0)
+  const { getReviewOpinions } = useReviewIpc()
+  const refreshReviewBadge = useCallback(async (): Promise<void> => {
+    if (!projectPath) return
+    try {
+      setReviewBadge(countOpenOpinions(await getReviewOpinions(projectPath)))
+    } catch (err) {
+      // 失败保旧值、console 留痕（organize.refreshPending 同款纪律，徽章绝不误跳水为 0）
+      console.error('[Workspace] 审阅徽标刷新失败:', err)
+    }
+  }, [projectPath, getReviewOpinions])
+  useEffect(() => {
+    void refreshReviewBadge()
+  }, [refreshReviewBadge])
+
+  // 跳转执行：目标章非当前章时先 openChapter——selectChapter 以该章对象的磁盘 content
+  // 回灌 editorContent，而对话框对非当前章的锚坐标正是按同一字符串算的（relocateAnchor
+  // 原始 body 坐标系）；随后 value effect 生效（顺带清旧高亮），延一拍再上新高亮。
+  // 当前章即时应用（缓冲=坐标源，零竞态）。
+  const handleReviewReveal = useCallback(
+    (chapterId: string, startOffset: number, endOffset: number): void => {
+      const target = chapters.find((c) => c.id === chapterId)
+      if (!target) {
+        message.warning('该章节已不存在，可能刚被删除')
+        return
+      }
+      if (currentChapter?.id === chapterId) {
+        editorRef.current?.revealAndHighlight(startOffset, endOffset)
+        return
+      }
+      openChapter(target)
+      viewStateRef.current = null // 刻意跳章：旧章视图态绝不复活到目标章（同图谱跳章裁定）
+      window.setTimeout(() => editorRef.current?.revealAndHighlight(startOffset, endOffset), 150)
+    },
+    [chapters, currentChapter, message, openChapter]
+  )
 
   // save/createChapter 每次渲染刷新镜像 ref（同 useEditorSession 的 flushIfDirtyStable 惯用法）：
   // 供被 memo 的事件回调（命令面板）与异步决议回调（Task 9 冲突弹窗）调用最新闭包，
@@ -547,6 +603,10 @@ function Workspace() {
             onOrganize={() => { if (currentChapter) void organize.organize(currentChapter.id) }}
             organizing={organize.organizing} organizeDisabled={organizeDisabled}
             onCancelOrganize={() => void organize.cancel()}
+            onReview={() => setReviewOpen(true)}
+            reviewing={reviewReviewing}
+            reviewDisabled={!projectPath || !currentChapter || reviewReviewing}
+            reviewBadgeCount={reviewBadge}
           />
         )}
       </Header>
@@ -604,6 +664,21 @@ function Workspace() {
         onClose={() => setProposalReviewOpen(false)}
         projectPath={projectPath}
         chapters={chapters}
+      />
+      {/* 审阅对话框常驻挂载（Modal open 只控显隐）：useReview 单实例活在内部，
+          在途审阅不随关闭中断；关对话框即新起点（open 效应重置范围/拉新鲜账本） */}
+      <ReviewDialog
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        projectPath={projectPath}
+        bookName={projectName}
+        chapters={chapters}
+        currentChapterId={currentChapter?.id ?? null}
+        getBufferChapter={getBufferChapter}
+        onReveal={handleReviewReveal}
+        onReviewingChange={setReviewReviewing}
+        onLedgerChanged={() => void refreshReviewBadge()}
+        onProposalsChanged={() => void organize.refreshPending()}
       />
       {/* 左侧边栏 */}
       <SidebarPanel

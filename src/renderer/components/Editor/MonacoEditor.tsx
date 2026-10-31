@@ -155,6 +155,14 @@ export interface MonacoEditorHandle {
   getProseWindow: () => { before: string; after: string; cursorOffset: number }
   /** 在光标（或选区）处插入文本，executeEdits 保留 undo 栈；插入后光标落在插入文本之后。 */
   insertAtCursor: (text: string) => void
+  /**
+   * 审阅跳转高亮（M6 T5）：把 [startOffset, endOffset)（原始正文 UTF-16 码元区间，
+   * relocateAnchor 的坐标系）打成临时装饰 `.review-highlight` 并滚入视野。
+   * 越界/倒序/编辑器未就绪一律静默 no-op（宁可不亮，绝不错位高亮）。
+   */
+  revealAndHighlight: (startOffset: number, endOffset: number) => void
+  /** 清除审阅高亮（幂等）。下一次跳转自动替换；切章/卸载另行清理。 */
+  clearReviewHighlight: () => void
 }
 
 // Monaco Editor 容器组件
@@ -187,6 +195,8 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   const ghostTextRef = useRef('')
   // ghost 单元素装饰集合：随编辑器创建一次，流式更新只改这一条的内容（键位/滚动全程不动）
   const ghostDecorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null)
+  // 审阅跳转高亮单元素集合（M6 T5）：同一时刻至多一个高亮，新跳转原地替换旧区间
+  const reviewDecorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   // 底部状态条字数（countWords 口径），从初始 value 起算，编辑/切章时更新
   const [currentWordCount, setCurrentWordCount] = useState(() => countWords(value))
@@ -296,6 +306,25 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
       // 都不触发滚动——光标连同下一发自动再布的 ghost 装饰落在视口外，monaco 虚拟渲染直接不画
       // （用户视角=「采纳后再也不弹」）。采纳即所见：仅在-outsider 时 reveal，绝不抢已有焦点视图的滚动。
       instance.revealPositionInCenterIfOutsideViewport(end)
+    },
+    revealAndHighlight: (startOffset: number, endOffset: number) => {
+      const instance = editorRef.current
+      const model = instance?.getModel()
+      const collection = reviewDecorationsRef.current
+      if (!instance || !model || !collection) return
+      // 坐标门（宁可不亮绝不错位）：整数、非倒序、半开区间、不越过模型长度。
+      // 模型长度用 getValueLength()（UTF-16 码元）——与 relocateAnchor 的原始 body 坐标系同制。
+      const len = model.getValueLength()
+      if (!Number.isInteger(startOffset) || !Number.isInteger(endOffset)) return
+      if (startOffset < 0 || endOffset <= startOffset || endOffset > len) return
+      const s = model.getPositionAt(startOffset)
+      const e = model.getPositionAt(endOffset)
+      const range = { startLineNumber: s.lineNumber, startColumn: s.column, endLineNumber: e.lineNumber, endColumn: e.column }
+      collection.set([{ range, options: { className: 'review-highlight' } }])
+      instance.revealRangeInCenterIfOutsideViewport(range)
+    },
+    clearReviewHighlight: () => {
+      reviewDecorationsRef.current?.set([])
     }
   }), [])
 
@@ -406,6 +435,8 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
 
         // ghost 单元素装饰集合随编辑器创建一次（M5 Task 4）：此后 setGhost/clearGhost 只更新这一条
         ghostDecorationsRef.current = editor.createDecorationsCollection([])
+        // 审阅跳转高亮集合随编辑器创建一次（M6 T5）：revealAndHighlight 单条替换、清除幂等
+        reviewDecorationsRef.current = editor.createDecorationsCollection([])
 
         // 跨视图切换的延迟恢复：挂载完成前 restoreViewState 暂存的视图态，创建即应用（一次即清）
         if (pendingViewStateRef.current) {
@@ -486,6 +517,7 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
       // 装饰集合随编辑器同归（monaco 在 editor.dispose 里销毁），这里只掐引用防悬挂
       ghostDecorationsRef.current = null
       ghostTextRef.current = ''
+      reviewDecorationsRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 编辑器仅挂载时初始化一次
   }, [])
@@ -494,6 +526,8 @@ const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(function 
   useEffect(() => {
     if (editorRef.current && value !== editorRef.current.getValue()) {
       editorRef.current.setValue(value)
+      // 切章/外部刷新导致整段换文：审阅高亮的旧坐标即刻作废（spec「章节切换清除」）
+      reviewDecorationsRef.current?.set([])
     }
   }, [value])
 

@@ -1,4 +1,4 @@
-import { Space, Button, Tooltip, Dropdown } from 'antd'
+import { Space, Button, Tooltip, Dropdown, Badge } from 'antd'
 import {
   BoldOutlined,
   ItalicOutlined,
@@ -11,7 +11,8 @@ import {
   EditOutlined,
   DownloadOutlined,
   ScanOutlined,
-  StopOutlined
+  StopOutlined,
+  FileSearchOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import ThemeToggle from '../ThemeToggle'
@@ -39,6 +40,13 @@ interface EditorToolbarProps {
   organizing?: boolean
   organizeDisabled?: boolean
   onCancelOrganize?: () => void
+  // 章节审阅（M6 Task 5）：打开审阅对话框的入口。reviewDisabled = 无当前章/审阅在途
+  // （在途期间对话框已持有的流程不重入）；reviewBadgeCount = 全书 open 意见数（含 stale），
+  // count=0 时 Badge 自动隐身（图谱入口提案徽章先例）。
+  onReview?: () => void
+  reviewing?: boolean
+  reviewDisabled?: boolean
+  reviewBadgeCount?: number
 }
 
 function EditorToolbar({
@@ -60,7 +68,11 @@ function EditorToolbar({
   onOrganize,
   organizing = false,
   organizeDisabled = false,
-  onCancelOrganize
+  onCancelOrganize,
+  onReview,
+  reviewing = false,
+  reviewDisabled = false,
+  reviewBadgeCount = 0
 }: EditorToolbarProps) {
   // 标题级别菜单
   const headingItems: MenuProps['items'] = [
@@ -229,6 +241,30 @@ function EditorToolbar({
             </Button>
           </Tooltip>
         )}
+
+        {/* 审阅入口（M6 T5）：徽标 = 全书未处理意见数；审阅在途或无当前章时禁用
+            （在途的可取消入口在对话框内）。窄窗折叠口径同「整理本章」。 */}
+        <Badge count={reviewBadgeCount} size="small" offset={[2, -2]}>
+          <Tooltip
+            title={
+              reviewing
+                ? '审阅进行中——到审阅对话框查看进度或取消'
+                : reviewDisabled
+                  ? '审阅暂不可用：需有当前章节'
+                  : '章节审阅（AI 通读本章，产出可跳转/驳回/转提案的意见）'
+            }
+          >
+            <Button
+              type="text"
+              icon={<FileSearchOutlined />}
+              onClick={onReview}
+              disabled={reviewDisabled}
+              style={{ color: 'var(--color-text)' }}
+            >
+              <span className="editor-toolbar-review-label">审阅</span>
+            </Button>
+          </Tooltip>
+        </Badge>
 
         {/* 导出按钮 */}
         <Tooltip title="导出 (Ctrl+E)">
