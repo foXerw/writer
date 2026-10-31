@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { mkTmpBook } from '../../../tests/tmp'
 import {
+  appendProposalChanges,
   computeProposalStatus,
   deleteProposal,
   getProposal,
@@ -21,6 +22,7 @@ import {
 } from './proposals'
 import { changeKey, newProposalId, proposalPath } from '../../../src/common/proposal'
 import type { ProposalChange, ProposalFile } from '../../../src/common/proposal'
+import { UUID_PATTERN } from '../../../src/common/schema'
 
 const CH1 = '3f2b6c1a-9d4e-4a7b-8c5d-1e6f7a8b9c0d'
 
@@ -377,5 +379,107 @@ describe('loadProposalRaw', () => {
     const h = mkFile({ changes: [mkChange()] })
     plantRaw(p, { ...h, appliedCids: [], appliedIndexes: [0] })
     expect(loadProposalRaw(p, h.id).proposal.appliedCids).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// appendProposalChanges（M6 T3 additive 引擎口：审阅转化意见并入本章未消化提案，
+// 尾部追加——既有 cid/位置回退键/applied 双账不动，DUPLICATE 闸门语义不受影响）
+// ---------------------------------------------------------------------------
+
+const CID_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const CID_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+const CID_C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+
+describe('appendProposalChanges（M6 T3 尾部追加）', () => {
+  it('unsettled 目标：cid 缺省盖 UUID + 给定 cid 原样 + 尾部追加既有键稳定 + 返回更新后全文（与盘上读回一致）', () => {
+    const p = mkTmpBook()
+    const f = mkFile({ changes: [mkChange(), mkChange({ cid: CID_A })] })
+    writeProposal(p, f)
+    const keysBefore = f.changes.map((c, i) => changeKey(c, i)) // 首条 = 位置回退键（changeKey 派生，grep 门禁内联字面量）
+    const out = appendProposalChanges(p, f.id, [
+      mkChange({ op: 'update', entity: 'world', targetId: 'w-1', after: { name: '新设定' } }), // 无 cid → 盖章
+      mkChange({ cid: CID_B }) // 给定 cid → 原样
+    ])
+    expect(out.changes).toHaveLength(4)
+    // 尾部追加：前两条逐字原样、既有键域不动（回退键与 cid 键前后恒等——index 稳定）
+    expect(out.changes.slice(0, 2)).toEqual(f.changes)
+    expect(out.changes.slice(0, 2).map((c, i) => changeKey(c, i))).toEqual(keysBefore)
+    // cid 缺省盖 randomUUID（UUID 形状，非 idx: 前缀）；给定 cid 原样保留
+    expect(out.changes[2]?.cid).toMatch(UUID_PATTERN)
+    expect(changeKey(out.changes[2], 2)).toBe(out.changes[2]?.cid)
+    expect(out.changes[3]?.cid).toBe(CID_B)
+    // 信封不变：id/chapterId/createdAt/aiModel/status 原样，返回全文 == 盘上读回
+    expect(out.id).toBe(f.id)
+    expect(out.chapterId).toBe(f.chapterId)
+    expect(out.createdAt).toBe(f.createdAt)
+    expect(out.aiModel).toBe(f.aiModel)
+    expect(out.status).toBe('pending')
+    expect(getProposal(p, f.id)).toEqual(out)
+  })
+
+  it('partial 目标：applied 双账原样、追加条目未采纳、status 仍 partial（追加不改记账）', () => {
+    const p = mkTmpBook()
+    const f = mkFile({ changes: [mkChange({ cid: CID_A }), mkChange({ cid: CID_B })] })
+    writeProposal(p, f)
+    expect(markSettled(p, f.id, [CID_A])).toBe('partial')
+    const out = appendProposalChanges(p, f.id, [mkChange({ cid: CID_C })])
+    expect(out.status).toBe('partial')
+    expect(out.appliedCids).toEqual([CID_A])
+    expect(out.appliedIndexes).toEqual([0])
+    expect(out.changes).toHaveLength(3)
+    expect(out.changes[2]?.cid).toBe(CID_C)
+  })
+
+  it('settled / 缺失目标 → PROPOSAL_APPEND_TARGET: <id>（settled 盘字节不变；缺失不造文件）', () => {
+    const p = mkTmpBook()
+    const settled = mkFile({ status: 'settled' })
+    writeProposal(p, settled)
+    const abs = proposalPath(p, settled.id)
+    const before = readFileSync(abs, 'utf8')
+    expect(() => appendProposalChanges(p, settled.id, [mkChange()])).toThrow(
+      `PROPOSAL_APPEND_TARGET: ${settled.id}`
+    )
+    expect(readFileSync(abs, 'utf8')).toBe(before)
+    expect(() => appendProposalChanges(p, 'prop-nope-3', [mkChange()])).toThrow(
+      'PROPOSAL_APPEND_TARGET: prop-nope-3'
+    )
+    expect(existsSync(proposalPath(p, 'prop-nope-3'))).toBe(false)
+  })
+
+  it('任一坏形状条目 → 整拒零写（PROPOSAL_INVALID 带 append.changes[i] 路径；盘字节恒等）', () => {
+    const p = mkTmpBook()
+    const f = mkFile()
+    writeProposal(p, f)
+    const abs = proposalPath(p, f.id)
+    const before = readFileSync(abs, 'utf8')
+    expect(() =>
+      appendProposalChanges(p, f.id, [
+        mkChange({ cid: CID_A }), // 好条目也被整拒——不留半套
+        mkChange({ op: 'delete', entity: 'character', targetId: CH1, after: undefined }) // 组合表禁 delete×character
+      ])
+    ).toThrow(/PROPOSAL_INVALID: .*append\.changes\[1\]/)
+    expect(readFileSync(abs, 'utf8')).toBe(before)
+  })
+
+  it('追加条目 cid 与既有条目重复 → 整拒（merged 复跑 validateProposal 的文件级判重）', () => {
+    const p = mkTmpBook()
+    const f = mkFile({ changes: [mkChange({ cid: CID_A })] })
+    writeProposal(p, f)
+    const abs = proposalPath(p, f.id)
+    const before = readFileSync(abs, 'utf8')
+    expect(() => appendProposalChanges(p, f.id, [mkChange({ cid: CID_A })])).toThrow(
+      /PROPOSAL_INVALID: .*duplicate cid/
+    )
+    expect(readFileSync(abs, 'utf8')).toBe(before)
+  })
+
+  it('空追加 = 恒等重写（无条目可拒、既有内容与键不变）；坏 id 走 BAD_PROPOSAL_ID 路径门', () => {
+    const p = mkTmpBook()
+    const f = mkFile({ changes: [mkChange({ cid: CID_A })] })
+    writeProposal(p, f)
+    const out = appendProposalChanges(p, f.id, [])
+    expect(out.changes).toEqual(f.changes)
+    expect(() => appendProposalChanges(p, '../evil', [mkChange()])).toThrow(/BAD_PROPOSAL_ID/)
   })
 })

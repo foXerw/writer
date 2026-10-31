@@ -4,11 +4,16 @@
 // chapterId 盖章（不是现存章 → PROPOSAL_CHAPTER_MISSING 拒落）；引擎语义本身在
 // bookStore/adopt.test.ts 全量钉死，这里只测委托与通道级错误。
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { mkTmpBook } from '../../../../tests/tmp'
 import { changeKey, newProposalId, proposalPath } from '../../../../src/common/proposal'
-import type { ProposalAdoptResult, ProposalFile } from '../../../../src/common/proposal'
+import type {
+  ProposalAdoptResult,
+  ProposalChange,
+  ProposalFile
+} from '../../../../src/common/proposal'
+import { UUID_PATTERN } from '../../../../src/common/schema'
 import { createChapter } from '../../bookStore/chapters'
 import { listCharacters } from '../../bookStore/characters'
 
@@ -72,6 +77,17 @@ function mkFile(chapterId: string): ProposalFile {
         source: { chapterId, quote: '她望向远山，低声念出一个名字。' }
       }
     ]
+  }
+}
+
+/** 合法的待追加条目（无 cid——appendChanges 负责盖 randomUUID；审阅转化形状的代表）。 */
+function mkAppendChange(chapterId: string): ProposalChange {
+  return {
+    op: 'update',
+    entity: 'summary',
+    targetId: chapterId,
+    after: { text: '审阅转化：摘要补充。' },
+    source: { chapterId, quote: '审阅意见引文：节奏拖沓。' }
   }
 }
 
@@ -193,5 +209,111 @@ describe('proposal:adopt / reject 委托（M4c-1 键域参数）', () => {
     })
     expect(existsSync(proposalPath(p, file.id))).toBe(false)
     expect(await getHandler('proposal:getAll')(null, { projectPath: p })).toEqual([])
+  })
+})
+
+// M6 T3 additive：审阅转化意见并入本章既有未消化提案（尾部追加、cid 盖章、闸门不动）。
+describe('proposal:appendChanges（M6 T3 additive 合并）', () => {
+  it('append 到 unsettled → 返回更新后全文：尾部追加（首条逐字、位置键稳定）+ 追加条 cid 盖章 UUID', async () => {
+    const p = mkTmpBook()
+    const ch = createChapter(p, '第一章')
+    const file = mkFile(ch.id)
+    await getHandler('proposal:save')(null, { projectPath: p, file })
+    const updated = (await getHandler('proposal:appendChanges')(null, {
+      projectPath: p,
+      proposalId: file.id,
+      changes: [mkAppendChange(ch.id)]
+    })) as ProposalFile
+    expect(updated.changes).toHaveLength(2)
+    expect(updated.changes[0]).toEqual(file.changes[0]) // 头部的既有位置回退键 idx:0 不动
+    expect(updated.changes[1]?.cid).toMatch(UUID_PATTERN) // 缺 cid → 引擎盖 randomUUID
+    expect(updated.status).toBe('pending')
+    const stored = (await getHandler('proposal:get')(null, {
+      projectPath: p,
+      id: file.id
+    })) as ProposalFile | null
+    expect(stored).toEqual(updated) // 返回值 = 盘上全文
+  })
+
+  it('目标 settled（全量采纳后）→ 拒 PROPOSAL_APPEND_TARGET: <id>，盘字节不变', async () => {
+    const p = mkTmpBook()
+    const ch = createChapter(p, '第一章')
+    const file = mkFile(ch.id)
+    await getHandler('proposal:save')(null, { projectPath: p, file })
+    await getHandler('proposal:adopt')(null, {
+      projectPath: p,
+      proposalId: file.id,
+      changeKeys: [changeKey(file.changes[0], 0)],
+      confirmedOverwrite: []
+    })
+    const abs = proposalPath(p, file.id)
+    const before = readFileSync(abs, 'utf8')
+    await expect(
+      Promise.resolve().then(() =>
+        getHandler('proposal:appendChanges')(null, {
+          projectPath: p,
+          proposalId: file.id,
+          changes: [mkAppendChange(ch.id)]
+        })
+      )
+    ).rejects.toThrow(`PROPOSAL_APPEND_TARGET: ${file.id}`)
+    expect(readFileSync(abs, 'utf8')).toBe(before)
+  })
+
+  it('目标缺文件 → 拒 PROPOSAL_APPEND_TARGET: <id> 且不造文件', async () => {
+    const p = mkTmpBook()
+    const ch = createChapter(p, '第一章')
+    await expect(
+      Promise.resolve().then(() =>
+        getHandler('proposal:appendChanges')(null, {
+          projectPath: p,
+          proposalId: 'prop-nope-7',
+          changes: [mkAppendChange(ch.id)]
+        })
+      )
+    ).rejects.toThrow('PROPOSAL_APPEND_TARGET: prop-nope-7')
+    expect(existsSync(proposalPath(p, 'prop-nope-7'))).toBe(false)
+  })
+
+  it('坏形状条目混在好条目里 → 整拒零写（PROPOSAL_INVALID 带 append.changes[1] 路径，原文件字节恒等）', async () => {
+    const p = mkTmpBook()
+    const ch = createChapter(p, '第一章')
+    const file = mkFile(ch.id)
+    await getHandler('proposal:save')(null, { projectPath: p, file })
+    const abs = proposalPath(p, file.id)
+    const before = readFileSync(abs, 'utf8')
+    const bad: ProposalChange = {
+      op: 'delete',
+      entity: 'character', // 组合表禁 delete×character（AI 无权删人写法）
+      targetId: 'x-1',
+      source: { chapterId: ch.id, quote: '坏条目。' }
+    }
+    await expect(
+      Promise.resolve().then(() =>
+        getHandler('proposal:appendChanges')(null, {
+          projectPath: p,
+          proposalId: file.id,
+          changes: [mkAppendChange(ch.id), bad]
+        })
+      )
+    ).rejects.toThrow(/PROPOSAL_INVALID: .*append\.changes\[1\]/)
+    expect(readFileSync(abs, 'utf8')).toBe(before)
+  })
+
+  it('闸门回归：appendChanges 存在不放宽 proposal:save 的 DUPLICATE 闸门（append 后同章第二份仍拒）', async () => {
+    const p = mkTmpBook()
+    const ch = createChapter(p, '第一章')
+    const first = mkFile(ch.id)
+    await getHandler('proposal:save')(null, { projectPath: p, file: first })
+    await getHandler('proposal:appendChanges')(null, {
+      projectPath: p,
+      proposalId: first.id,
+      changes: [mkAppendChange(ch.id)]
+    })
+    const second = mkFile(ch.id)
+    await expect(
+      Promise.resolve().then(() => getHandler('proposal:save')(null, { projectPath: p, file: second }))
+    ).rejects.toThrow(`PROPOSAL_DUPLICATE: ${ch.id}`)
+    expect(existsSync(proposalPath(p, second.id))).toBe(false)
   })
 })

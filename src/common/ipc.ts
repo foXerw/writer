@@ -19,7 +19,7 @@ import type {
   PlotlineV2,
   WorldEntryV2
 } from './schema'
-import type { ProposalAdoptResult, ProposalFile } from './proposal'
+import type { ProposalAdoptResult, ProposalChange, ProposalFile } from './proposal'
 import type { ReviewOpinion } from './reviewTypes'
 
 // 主进程 -> 渲染进程 事件
@@ -173,6 +173,15 @@ export type RendererToMainRequests = {
   'proposal:getAll': (params: { projectPath: string }) => Promise<ProposalFile[]>
   'proposal:get': (params: { projectPath: string; id: string }) => Promise<ProposalFile | null>
   'proposal:save': (params: { projectPath: string; file: ProposalFile }) => Promise<ProposalFile>
+  // M6 T3 additive：审阅转化意见并入本章既有未消化提案（尾部追加、缺 cid 引擎盖 randomUUID、
+  // 既有键域稳定）。目标缺失/settled → `PROPOSAL_APPEND_TARGET: <proposalId>`；坏条目任一
+  // 整拒零写（`PROPOSAL_INVALID: <id>: append.changes[i]: …`）。save 的 DUPLICATE 闸门不受本
+  // 通道影响——「一章至多一份未消化提案」不变量由二者共同维持。返回并入后的全文 ProposalFile。
+  'proposal:appendChanges': (params: {
+    projectPath: string
+    proposalId: string
+    changes: ProposalChange[]
+  }) => Promise<ProposalFile>
   'proposal:adopt': (params: {
     projectPath: string
     proposalId: string
@@ -317,6 +326,7 @@ export interface NovelWriterApi {
     getAll: RendererToMainRequests['proposal:getAll']
     get: RendererToMainRequests['proposal:get']
     save: RendererToMainRequests['proposal:save']
+    appendChanges: RendererToMainRequests['proposal:appendChanges']
     adopt: RendererToMainRequests['proposal:adopt']
     reject: RendererToMainRequests['proposal:reject']
   }

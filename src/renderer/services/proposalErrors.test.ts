@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { proposalErrorText } from './proposalErrors'
 
-describe('proposalErrorText × 词表（七个通道前缀各归一中）', () => {
+describe('proposalErrorText × 词表（八个通道前缀各归一中）', () => {
   it('每个前缀独立归一、互不撞文案；detail 保留在冒号后', () => {
     const probes: Array<[string, string]> = [
       ['PROPOSAL_INVALID: /b/.ai/proposals/x.yaml: proposal.changes: expected array', '/b/.ai/proposals/x.yaml: proposal.changes: expected array'],
@@ -18,11 +18,12 @@ describe('proposalErrorText × 词表（七个通道前缀各归一中）', () =
       ['PROPOSAL_DUPLICATE: 3f2b6c1a-9d4e-4a7b-8c5d-1e6f7a8b9c0d', '3f2b6c1a-9d4e-4a7b-8c5d-1e6f7a8b9c0d'],
       ['PROPOSAL_CHAPTER_MISSING: 3f2b6c1a', '3f2b6c1a'],
       ['PROPOSAL_MISSING: prop-3f2b6c1a-m0z8k1x', 'prop-3f2b6c1a-m0z8k1x'],
+      ['PROPOSAL_APPEND_TARGET: prop-3f2b6c1a-m0z8k1x', 'prop-3f2b6c1a-m0z8k1x'],
       ['PROPOSAL_BAD_PARAMS: changeKeys 必须是数组', 'changeKeys 必须是数组'],
       ['BAD_PROPOSAL_ID: ../../evil', '../../evil']
     ]
     const labels = probes.map(([raw]) => proposalErrorText(raw).split('：')[0])
-    expect(new Set(labels).size).toBe(7)
+    expect(new Set(labels).size).toBe(8)
     for (const [raw, detail] of probes) {
       const t = proposalErrorText(raw)
       expect(t, raw).not.toBe('操作失败')
@@ -76,9 +77,11 @@ describe('proposalErrorText × 词表全覆盖（防主进程新增 throw 前缀
       // 只收 `前缀:` 形态的 proposal 通道词（BAD_CHARACTER_ID 等实体域错误属逐条 REFUSED，不在本表）
       for (const m of text.matchAll(/((?:PROPOSAL_[A-Z0-9_]+|BAD_PROPOSAL_ID))(?=:)/g)) thrown.add(m[1])
     }
-    // 词表 7 键全在场（漏键 = 该错误会裸回落「操作失败：」，用户看不到归因）
+    // 词表 8 键全在场（漏键 = 该错误会裸回落「操作失败：」，用户看不到归因；
+    // PROPOSAL_APPEND_TARGET = M6 T3 appendChanges 目标缺失/已 settled）
     expect([...thrown].sort()).toEqual([
       'BAD_PROPOSAL_ID',
+      'PROPOSAL_APPEND_TARGET',
       'PROPOSAL_BAD_PARAMS',
       'PROPOSAL_CHAPTER_MISSING',
       'PROPOSAL_DUPLICATE',

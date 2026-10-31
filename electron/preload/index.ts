@@ -68,6 +68,7 @@ const projectAPI: RendererToMainRequests = {
   'proposal:getAll': (params) => ipcRenderer.invoke('proposal:getAll', params),
   'proposal:get': (params) => ipcRenderer.invoke('proposal:get', params),
   'proposal:save': (params) => ipcRenderer.invoke('proposal:save', params),
+  'proposal:appendChanges': (params) => ipcRenderer.invoke('proposal:appendChanges', params),
   'proposal:adopt': (params) => ipcRenderer.invoke('proposal:adopt', params),
   'proposal:reject': (params) => ipcRenderer.invoke('proposal:reject', params),
 
@@ -204,6 +205,7 @@ const novelWriter: NovelWriterApi = {
     getAll: projectAPI['proposal:getAll'],
     get: projectAPI['proposal:get'],
     save: projectAPI['proposal:save'],
+    appendChanges: projectAPI['proposal:appendChanges'],
     adopt: projectAPI['proposal:adopt'],
     reject: projectAPI['proposal:reject']
   },

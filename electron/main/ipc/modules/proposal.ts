@@ -1,24 +1,38 @@
-// proposal:* IPC 层（M4b T3）：5 通道薄委托到 bookStore/proposals + bookStore/adopt，
+// proposal:* IPC 层（M4b T3；M6 T3 增 appendChanges 后 6 通道）：薄委托到 bookStore/proposals + bookStore/adopt，
 // 本文件零文件系统直操（对齐 chapter/character/narrative 纪律）。参数一律对象形状
 // {projectPath, …}（控制器裁定，与 getAll 系旧通道的裸 string 参数刻意不同——新通道组新纪律）。
 //
 // 错误语义（裁定：不复用 AI 路径的 [kind] 词表——proposal 通道错误是 PROPOSAL_*: 前缀的
 // 平文消息，CHAPTER_MISSING 先例同款，渲染层原样展示）：
-// - PROPOSAL_INVALID: <id|abs>: …   文件级校验失败（save 双保险 / 点读坏档抛穿）
+// - PROPOSAL_INVALID: <id|abs>: …   文件级校验失败（save 双保险 / 点读坏档抛穿 /
+//                                   appendChanges 坏条目整拒零写——append.changes[i] 路径）
 // - PROPOSAL_TOO_LARGE: <n> > 200   save 条目数上限（通道级策略——validateProposal 不关心数量，
 //                                   病理输出/手滑巨型文件在门口拦；存储层/引擎不设限，存量文件可读可采纳）
 // - PROPOSAL_DUPLICATE: <id>        save 同章去重闸门（Task 6 P2）：该章已有未消化提案
 //                                   （pending/partial）→ 拒落第二份——跨窗口双开/在途竞态的
-//                                   引擎侧唯一权威（UI 侧 pendingChapterIds 禁按钮只是防呆）
+//                                   引擎侧唯一权威（UI 侧 pendingChapterIds 禁按钮只是防呆）。
+//                                   appendChanges（M6 T3）不放宽此闸门：转化意见并入既有提案，
+//                                   仍是「一章至多一份未消化提案」
+// - PROPOSAL_APPEND_TARGET: <id>    appendChanges（M6 T3 additive）目标不可追加：提案不存在，
+//                                   或已 settled（未消化谓词 isUnsettled 单源）
 // - PROPOSAL_CHAPTER_MISSING: <id>  save 盖章：提案出处章不是现存章（幻觉/过期章 id 拒落）
 // - PROPOSAL_MISSING: <id>          adopt/reject 目标提案不存在
 // - BAD_PROPOSAL_ID: <id>           id 路径安全门（join 重定向封死）
 // 逐条拒绝不是通道错误：adopt 的 REFUSED: 条目在结果对象 refused[] 里按 key 返回
 // （M4c-1 键域：adopt/reject 参数 = changeKey 键集——cid ?? 位置回退键，单源 proposal.ts）。
 import { ipcMain } from 'electron'
-import type { ProposalAdoptResult, ProposalFile } from '../../../../src/common/proposal'
+import type {
+  ProposalAdoptResult,
+  ProposalChange,
+  ProposalFile
+} from '../../../../src/common/proposal'
 import { isUnsettled, validateProposal } from '../../../../src/common/proposal'
-import { getProposal, listProposals, writeProposal } from '../../bookStore/proposals'
+import {
+  appendProposalChanges,
+  getProposal,
+  listProposals,
+  writeProposal
+} from '../../bookStore/proposals'
 import { adoptChanges, rejectChanges } from '../../bookStore/adopt'
 import { listChapters } from '../../bookStore/chapters'
 
@@ -64,6 +78,17 @@ export function registerProposalHandlers(): void {
       }
       return writeProposal(projectPath, file) // 存储层第三道 validateProposal（writeProposal 前置）
     }
+  )
+
+  // M6 T3 additive：审阅转化意见并入本章既有未消化提案（一键转化在「已有 pending」的章恒可用，
+  // 而 DUPLICATE 闸门一字不动——语义/校验/尾部追加纪律全在存储层 appendProposalChanges，薄委托）。
+  ipcMain.handle(
+    'proposal:appendChanges',
+    (
+      _e,
+      params: { projectPath: string; proposalId: string; changes: ProposalChange[] }
+    ): ProposalFile =>
+      appendProposalChanges(params.projectPath, params.proposalId, params.changes)
   )
 
   ipcMain.handle(

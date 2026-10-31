@@ -6,6 +6,8 @@
 // - 点读分工同实体仓库：getProposal 缺失 → null、坏档/结构非法 → `PROPOSAL_INVALID: <abs>: …` 抛穿；
 //   list 侧才容错。writeProposal 写前一律 validateProposal（坏形状 → `PROPOSAL_INVALID: <id>: …`，
 //   整份拒落零字节——「不落半套」全局约束）；
+// - appendProposalChanges 是 M6 T3 additive 追加口（审阅转化意见并入既有未消化提案）：
+//   只动 changes 尾部，信封字段与 applied 双账不碰（详见函数注释）；
 // - 路径安全门：提案 id 不是 UUID（`prop-<chapterId前8>-<ts36>`，T1 newProposalId 生产者），
 //   但同样经 join 拼路径——`../` 重定向风险与实体仓库一致。凡 id 含路径分隔符/控制字符、
 //   或为 '.'/'..'/空串 → `BAD_PROPOSAL_ID: <id>` 抛（deleteProposal 按幂等契约返回 false 不抛，
@@ -22,14 +24,21 @@
 // - R2 纪律（__proto__ 加固）：信封一律显式字段重建（rebuildEnvelope），绝不 spread 解析产物；
 //   js-yaml load 对 `__proto__:` 键产生 own property（实验证实不污染原型），显式重建 + 引擎侧
 //   allowlist 双保险把该键挡在任何落盘对象之外。
+import { randomUUID } from 'node:crypto'
 import { existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import type { ProposalFile, ProposalStatus } from '../../../src/common/proposal'
+import type {
+  ProposalChange,
+  ProposalFile,
+  ProposalStatus
+} from '../../../src/common/proposal'
 import {
   PROPOSAL_STATUSES,
   appliedKeySet,
   changeKey,
+  isUnsettled,
   proposalPath,
+  validateChange,
   validateProposal
 } from '../../../src/common/proposal'
 import { proposalsDir } from './paths'
@@ -155,7 +164,53 @@ export function writeProposal(p: string, file: ProposalFile): ProposalFile {
   return file
 }
 
-/** 删除提案：坏形状/缺失 → false 不抛（幂等契约镜像 deleteCharacter）；真实删除失败抛穿。 */
+/**
+ * M6 T3 additive 尾部追加（proposal:appendChanges 引擎口——审阅转化意见并入本章既有
+ * 未消化提案，「一章一份未消化提案」不变量与 proposal:save 的 DUPLICATE 闸门零改动）：
+ * - 目标必须存在且未消化（isUnsettled 单源谓词——同章第二份仍走 save 被拒的通道不在此放行），
+ *   否则 `PROPOSAL_APPEND_TARGET: <id>`（坏 id 由 getProposal 先抛 BAD_PROPOSAL_ID，同款路径门）；
+ * - 逐条 validateChange：任一坏 = 整拒零写，错误 `PROPOSAL_INVALID: <id>: append.changes[i]: …`
+ *   （好条目也不留半套——save 双保险的同款平文词表，渲染层原样展示）；
+ * - cid 缺省盖 randomUUID（盖章产出恒 UUID 形状；给定 cid 原样保留——追加发生在尾部，
+ *   既有条目的 cid 与位置回退键 idx:<i> 一律不动，M4c-1 键域记账稳定）；
+ * - 追加条目未采纳：appliedCids/appliedIndexes/status 原样透传（status 唯一写入口仍是
+ *   markSettled/reject——pending 保持 pending，partial 保持 partial）；aiSource 盖章归采纳期
+ *   （M4c-2 纪律：save/append 不碰来源标记，追加条目照常走 adopt 路径）；
+ * - 落盘复用 writeProposal：validateProposal 对 merged 整档复跑（追加 cid 与既有 cid 重复等
+ *   文件级歧义在这里拦），坏形状零字节。空追加 = 恒等重写（无条目可拒、既有内容不变）。
+ */
+export function appendProposalChanges(
+  p: string,
+  id: string,
+  changes: ProposalChange[]
+): ProposalFile {
+  const existing = getProposal(p, id)
+  if (existing === null || !isUnsettled(existing)) {
+    throw new Error(`PROPOSAL_APPEND_TARGET: ${id}`)
+  }
+  const errors: string[] = []
+  changes.forEach((c, i) => {
+    const inner = validateChange(c)
+    if (inner.length > 0) errors.push(`append.changes[${i}]: ${inner.join('; ')}`)
+  })
+  if (errors.length > 0) {
+    throw new Error(`PROPOSAL_INVALID: ${id}: ${errors.join('; ')}`)
+  }
+  const stamped: ProposalChange[] = changes.map((c) =>
+    c.cid === undefined ? { ...c, cid: randomUUID() } : c
+  )
+  const merged: ProposalFile = {
+    id: existing.id,
+    chapterId: existing.chapterId,
+    createdAt: existing.createdAt,
+    aiModel: existing.aiModel,
+    status: existing.status,
+    changes: [...existing.changes, ...stamped]
+  }
+  if (existing.appliedIndexes !== undefined) merged.appliedIndexes = existing.appliedIndexes
+  if (existing.appliedCids !== undefined) merged.appliedCids = existing.appliedCids
+  return writeProposal(p, merged)
+}
 export function deleteProposal(p: string, id: string): boolean {
   if (isUnsafeProposalId(id)) return false
   const abs = proposalPath(p, id)

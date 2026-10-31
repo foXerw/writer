@@ -1,9 +1,10 @@
-// 提案通道（proposal:save/adopt/reject/get/getAll）错误前缀 → 中文文案的单一权威表
+// 提案通道（proposal:save/appendChanges/adopt/reject/get/getAll）错误前缀 → 中文文案的单一权威表
 //（M4c-2 Task 6 结转；姿态镜像 services/aiErrorText 与 narrativeErrors——词表一处维护、
 // 面板/hook 只引它，不再各自抄翻译，未映射一律回落「操作失败：<原文>」绝不吞真实原因）。
 // 词表来源 = electron 侧的实际 throw 点（Task 8 起收口核对）：
-//   proposals.ts —— PROPOSAL_INVALID（坏档/结构非法抛穿）、BAD_PROPOSAL_ID（路径安全门）、
-//                   PROPOSAL_MISSING（点读缺失）；
+//   proposals.ts —— PROPOSAL_INVALID（坏档/结构非法抛穿 + appendChanges 坏条目整拒）、
+//                   BAD_PROPOSAL_ID（路径安全门）、PROPOSAL_MISSING（点读缺失）、
+//                   PROPOSAL_APPEND_TARGET（M6 T3：appendChanges 目标缺失/已 settled）；
 //   ipc/modules/proposal.ts —— PROPOSAL_TOO_LARGE（200 条上限）、PROPOSAL_CHAPTER_MISSING
 //                   （盖章章不存在）、PROPOSAL_DUPLICATE（同章去重闸门，Task 6 P2）；
 //   adopt.ts —— PROPOSAL_BAD_PARAMS（changeKeys 非数组，通道级抛穿）。
@@ -19,6 +20,7 @@ const PROPOSAL_ERROR_TEXT: Record<string, string> = {
   PROPOSAL_DUPLICATE: '该章已有待处理的提案（请先在审阅面板消化后再次整理）',
   PROPOSAL_CHAPTER_MISSING: '提案的出处章节已不存在',
   PROPOSAL_MISSING: '提案不存在（可能已被他端消化或删除）',
+  PROPOSAL_APPEND_TARGET: '要追加的提案不存在或已消化完毕（请刷新提案列表后重试）',
   PROPOSAL_BAD_PARAMS: '提案操作参数不合法',
   BAD_PROPOSAL_ID: '提案 id 非法（请刷新列表后重试）'
 }
