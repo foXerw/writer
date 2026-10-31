@@ -1,6 +1,6 @@
 # Novel Writer 开发路线图
 
-> 更新时间: 2026-10-29
+> 更新时间: 2026-10-31
 
 ## 里程碑进度
 
@@ -12,7 +12,7 @@
 | M4a | AI 服务层（设置保险库/双协议 provider/流式通道/token 账本/上下文装配器/连接测试闭环） | ✅ 完成 | 2026-10-28 |
 | M4b | 整理闭环（整理本章→提案落盘→差异确认→采纳引擎，origin 人写保护；消费 M4a 服务层） | ✅ 完成 | 2026-10-28 |
 | M4 | AI 维护闭环总目标（剧情线/选项/伏笔录入 UI、图谱 3-5 视图、章节审阅等余下 M4c+ 范围） | 🔄 进行中（M4a/M4b/M4c 录入+五视图+跳章片已交付；章节审阅归 M6） | - |
-| M5 | 实时补全（ghost text，Tab 采纳） | ⏳ 规划中 | - |
+| M5 | 实时补全（ghost text，Tab 采纳；opt-in 开关默认关） | ✅ 完成 | 2026-10-31 |
 | M6 | 章节审阅（AI 读者视角结构化意见） | ⏳ 规划中 | - |
 
 > M2 交付：`src/common/schema.ts` v2 模型+校验器；`electron/main/bookStore/`（paths/docStore 原子写/
@@ -90,6 +90,24 @@
 > **真 key（DeepSeek Anthropic 兼容端点）首次闭环**：连接测试通过 → 整理在途取消成功 →
 > 整理完整跑通、差异面板条目可见，全程 console 应用可归因零报错——两类上游 dev-only 噪声单列不判负，见 closeout 裁定 10。裁定/结转/人工验证清单见
 > [2026-10-28-m4c2-closeout.md](./superpowers/plans/2026-10-28-m4c2-closeout.md)。
+>
+> M5 交付（实时补全 ghost text）：T1 `src/common/completionContext.ts` 补全专用旁路装配器（角色卡
+> 五字段/词条卡三字段投影 + entityRefs 章反查 + 散文写手 system 人格；organize 装配器 ai-context.ts
+> 一字未动，M4b 回归零变动）；T2 `completionTrigger.ts` 纯触发状态机（停笔发火 + IME/修订态/
+> 同前缀冷却硬闸门——「不打扰」宪法层）；T3 设置页「写作补全（默认关）」开关（completionEnabled
+> 三态 patch、旧文件迁移默认关）；T4 monaco 单 decoration `after.content` 灰字流式层 + 容器捕获相
+> Tab/Esc 裸键键位 + IME/blur/就绪信号腿（两定律 showIfCollapsed 与 -webkit-text-fill-color 源码级
+> 钉注释；includeComments carry-in 落地）；T5 `useCompletion` 编排（900ms 停笔钟/4s 首字看门狗/
+> 代际令牌封死迟到复活/错误全 kind 静默+冷却，dismiss 即 cancel 省 token，零新增 IPC）；
+> T6 真 key CDP 总冒烟 + 收尾（冒烟揪出视口底部采纳长灰字后不回显缺陷→`insertAtCursor` 补
+> revealPositionInCenterIfOutsideViewport，修复后 auto 续弹链回归）。
+> 验证：typecheck 0 错、lint 0 error（1 既有 warning）、`npm run test` 819 用例全绿、build 通过；
+> CDP 真机总冒烟九条全过：开关渲染/切换/保存/reload 持久（T3 UI 首渲染）→ 章尾输入意图行停笔
+> 首灰字 ≤2.5s 预算（实测 1.33–1.97s）→ 流到一半 Tab 只采纳已到达（172ms 处掐流、后续 chunk
+> no-op）→ 再触发 Esc 撤不插入 → 段中停笔不弹 → compositionstart 不发火（正对照复弹）→
+> 坏 baseUrl 全静默（无 ghost/无 toast/`[useCompletion]` warn 恰一条）→ 流中切章 ghost 即清且
+> 账本零新增 → usage.jsonl 末行 feature=completion、model=补全槽解析实发值；应用可归因 console
+> 零错误。裁定/结转/人工验证清单见 [2026-10-31-m5-closeout.md](./superpowers/plans/2026-10-31-m5-closeout.md)。
 >
 > 非 SPEC 里程碑的可选储备（backlog，不进上表）：多书管理与工作台扩展、存量老书批量回填（M6 后另设计）。
 
@@ -680,3 +698,4 @@
 | 2026-10-28 | 4.0a (M4a) | **里程碑 M4a AI 服务层完成**：安全硬化（T1）；设置保险库+掩码 IPC 契约（T2）；双协议流式 provider 适配器（T3，密钥回显脱敏不变量）；`chatService` 流式通道+按书 token 账本+`useAI`（T4，`[kind]` 前缀跨 IPC 协议）；分层上下文装配器+wordCount CJK 码点修正（T5）；连接测试真接线/清除密钥/StatsPanel 错误态/feature 白名单/文档收口（T6）。typecheck 0 错/lint 0 错/449 测试全绿/build 通过 + CDP 真机冒烟（假 baseUrl→网络分类中文 toast 跨真实 IPC 边界） |
 | 2026-10-28 | 4.0b (M4b) | **里程碑 M4b 整理闭环完成**：空闲超时语义收口（T0）；提案 schema+组合表单一权威（T1）；organize 提示词契约（T2）；提案仓库+origin 守卫采纳引擎+`proposal:*` 通道（T3）；「整理本章」触发链+徽章+`book:readAiData`（T4）；差异审阅面板（T5）；端到端离线链路证明+`PROPOSAL_DUPLICATE` 闸门+`.ai/` 三件套文档正式化+收尾（T6）。typecheck 0 错/lint 0 error/627 测试全绿/build 通过 + CDP 真机冒烟（手工提案→徽章→面板橙警默认不勾→采纳落盘→图谱刷新→徽章清零，console 零报错） |
 | 2026-10-29 | 4.0c (M4c-2) | **里程碑 M4c-2 叙事 UI + 图谱五视图完成**：`aiSource` create 幂等令牌关双胞胎窗（T1）；实体→章节引用并集纯函数（T2）；graphModel 三新 builder（T3）；GraphView 五视图+跳章菜单+arc 选择器+坏台账图谱侧降级（T4）；NarrativePanel 三段录入+narrativeErrors 词表（T5）；viewState 按章配对+整理取消 UI+结转小批清零（T6）；收尾裁定「台账坏值两副面孔」落码+文档对表（T7）。typecheck 0 错/lint 0 error/736 测试全绿/build 通过 + CDP 真机总冒烟（真实 DeepSeek key 首次闭环：连接测试→整理取消→整理跑通→差异面板可见，五视图/跳章/CRUD/坏台账全过，console 应用可归因零报错——两类上游 dev-only 噪声单列不判负，见 closeout 裁定 10）。收尾记录见 [2026-10-28-m4c2-closeout.md](./superpowers/plans/2026-10-28-m4c2-closeout.md) |
+| 2026-10-31 | 5.0 (M5) | **里程碑 M5 实时补全完成**：completion 旁路装配器（卡投影+章反查，organize 装配器零变动）（T1）；纯触发状态机 IME/修订/冷却硬闸门（T2）；设置页补全开关默认关三态 patch（T3）；monaco 流式灰字层+捕获相 Tab/Esc+IME/就绪/blur 信号+includeComments carry-in（T4）；useCompletion 编排代际令牌+全 kind 静默（T5）；真 key CDP 九条总冒烟+收尾文档+采纳回显 reveal 修复（T6）。typecheck 0 错/lint 0 error/**819 测试全绿**/build 通过 + CDP 真机总冒烟九条全过（开关持久→停笔首灰字实测 1.3–2.0s→流半 Tab 只采纳已到达→Esc 撤→修订/合成静默→坏配置恰一条 warn→流中切章账本零新增→completion 分账行实发模型），应用可归因 console 零报错。收尾记录见 [2026-10-31-m5-closeout.md](./superpowers/plans/2026-10-31-m5-closeout.md) |
