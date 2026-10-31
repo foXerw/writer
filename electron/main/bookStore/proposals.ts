@@ -216,6 +216,8 @@ export function appendProposalChanges(
   if (existing.appliedCids !== undefined) merged.appliedCids = existing.appliedCids
   return writeProposal(p, merged)
 }
+
+/** 删除提案：坏形状/缺失 → false 不抛（幂等契约镜像 deleteCharacter）；真实删除失败抛穿。 */
 export function deleteProposal(p: string, id: string): boolean {
   if (isUnsafeProposalId(id)) return false
   const abs = proposalPath(p, id)

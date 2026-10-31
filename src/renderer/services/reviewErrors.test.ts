@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { reviewErrorText } from './reviewErrors'
+import { reviewErrorText, reviewInvalidText } from './reviewErrors'
 
 describe('reviewErrorText × 词表（六个通道前缀各归一中）', () => {
   it('每个前缀独立归一、互不撞文案；detail 保留在冒号后', () => {
@@ -92,5 +92,36 @@ describe('reviewErrorText × 词表全覆盖（防主进程新增 throw 前缀�
         `词表漏键: ${prefix}`
       ).toBe(true)
     }
+  })
+})
+
+describe('reviewInvalidText × convert 拒绝原因（终审 sweep：不泄内部 not-open 码）', () => {
+  it('软类与三种 not-open 状态各归一中，互不撞文案', () => {
+    const probes: Array<[string, string]> = [
+      ['soft-not-convertible', '软性感受'],
+      ['not-open:dismissed', '已驳回'],
+      ['not-open:converted', '已转化'],
+      ['not-open:open+stale', '上次未重现']
+    ]
+    const texts = probes.map(([reason]) => reviewInvalidText(reason))
+    expect(new Set(texts).size).toBe(4)
+    for (const i of probes.keys()) {
+      // 绝不含原始 not-open/soft-not-convertible 内部码（中文归一，不泄码）
+      expect(texts[i]).not.toMatch(/not-open|soft-not-convertible/)
+      expect(texts[i]).toContain(probes[i][1])
+    }
+  })
+
+  it('soft-not-convertible 带尾缀仍命中软类分支（startsWith 前缀匹配）', () => {
+    expect(reviewInvalidText('soft-not-convertible:extra')).toContain('软性感受')
+  })
+
+  it('未知 not-open 状态回落可诊断中文（保留状态、不 throw）', () => {
+    expect(reviewInvalidText('not-open:weird')).toContain('该意见当前状态不可转化')
+    expect(reviewInvalidText('not-open:weird')).toContain('weird')
+  })
+
+  it('完全未知原因保留平文可诊断（绝不吞真因）', () => {
+    expect(reviewInvalidText('unknown-category:xyz')).toBe('该意见不可转化：unknown-category:xyz')
   })
 })

@@ -206,10 +206,10 @@ function Workspace() {
 
   // -------------------------------------------------------------------------
   // M6 T5 审阅接线：useReview 单实例住在 ReviewDialog（审阅在途不随 Modal 关闭陪葬，
-  // 工具栏按钮的「在途禁用」经 onReviewingChange 回传）。Workspace 只喂三样：缓冲源、
-  // 跳转执行、徽标计数。徽标直连 useReviewIpc + countOpenOpinions——与 controller.openCount()
-  // 同一口径同一谓词，刻意不起第二个 useReview 实例（runningRef 并发门按实例隔离，
-  // 双实例=两个互不知情的「一书架一审阅」）。
+  // 在途标志经 onReviewingChange 回传只喂 tooltip/开始钮 loading）。Workspace 只喂三样：
+  // 缓冲源、跳转执行、徽标计数。徽标直连 useReviewIpc + countOpenOpinions 谓词
+  //（controller 不再挂 openCount，T6 carry-in 删）——刻意不起第二个 useReview 实例
+  //（runningRef 并发门按实例隔离，双实例=两个互不知情的「一书架一审阅」）。
   // -------------------------------------------------------------------------
   const [reviewOpen, setReviewOpen] = useState(false)
   const [reviewReviewing, setReviewReviewing] = useState(false)
@@ -605,7 +605,11 @@ function Workspace() {
             onCancelOrganize={() => void organize.cancel()}
             onReview={() => setReviewOpen(true)}
             reviewing={reviewReviewing}
-            reviewDisabled={!projectPath || !currentChapter || reviewReviewing}
+            // 在途**不**禁用入口（终审 Important 1）：关对话框不掐流程，而本按钮是唯一重入口
+            // （徽章无 onClick）——禁用会把用户锁死在「取消不了也回不去」的死路（最长 5×180s
+            // 烧钱窗）。重开的双保险：开始钮 loading=reviewing（antd 源码级吞 click）+ hook
+            // runningRef 并发门（busy 返回值面呈），误触不可能重入 runReview。
+            reviewDisabled={!projectPath || !currentChapter}
             reviewBadgeCount={reviewBadge}
           />
         )}

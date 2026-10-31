@@ -40,9 +40,11 @@ interface EditorToolbarProps {
   organizing?: boolean
   organizeDisabled?: boolean
   onCancelOrganize?: () => void
-  // 章节审阅（M6 Task 5）：打开审阅对话框的入口。reviewDisabled = 无当前章/审阅在途
-  // （在途期间对话框已持有的流程不重入）；reviewBadgeCount = 全书 open 意见数（含 stale），
-  // count=0 时 Badge 自动隐身（图谱入口提案徽章先例）。
+  // 章节审阅（M6 Task 5）：打开审阅对话框的入口（唯一重入口，徽章无 onClick——终审 I1：
+  // 在途不禁用本按钮，否则关闭对话框后用户够不到「取消审阅」，最长 5×180s 烧钱窗无退路；
+  // 重入防线在对话框侧：开始钮 loading + hook 并发门）。reviewDisabled = 无书/无当前章；
+  // reviewBadgeCount = 全书 open 意见数（含 stale），count=0 时 Badge 自动隐身
+  //（图谱入口提案徽章先例）。reviewing 仍下传：tooltip 文案与「进行中」提示用。
   onReview?: () => void
   reviewing?: boolean
   reviewDisabled?: boolean

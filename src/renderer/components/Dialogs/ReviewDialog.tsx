@@ -29,7 +29,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Empty, Modal, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd'
 import { useReview } from '../../pages/Workspace/hooks/useReview'
 import { useReview as useReviewIpc } from '../../hooks/useIPC'
-import { reviewErrorText } from '../../services/reviewErrors'
+import { reviewErrorText, reviewInvalidText } from '../../services/reviewErrors'
 import { relocateAnchor } from '@/common/reviewTypes'
 import type { ReviewOpinion } from '@/common/reviewTypes'
 import type { ReviewTargetCandidate } from '@/common/reviewConvert'
@@ -69,12 +69,6 @@ const CATEGORY_COLOR: Record<ReviewOpinion['category'], string> = {
 /** 可重试的错误 kind（'cancelled' 与账本读失败无 errorKind 者不出重试钮）。 */
 function isRetryable(kind: ReviewChapterErrorKind | undefined): boolean {
   return kind === 'ai' || kind === 'parse' || kind === 'save' || kind === 'not-found'
-}
-
-/** invalid 原因的中文归一（soft-not-convertible 是恒常见路；未知原因保留平文）。 */
-function invalidText(reason: string): string {
-  if (reason.startsWith('soft-not-convertible')) return '软性感受类意见只可驳回，不能转化为提案'
-  return `该意见不可转化：${reason}`
 }
 
 interface ChapterProgress {
@@ -418,7 +412,7 @@ function ReviewDialog({
       return
     }
     if (res.kind === 'invalid') {
-      setRowErrors((prev) => ({ ...prev, [o.id]: invalidText(res.reason) }))
+      setRowErrors((prev) => ({ ...prev, [o.id]: reviewInvalidText(res.reason) }))
       return
     }
     // 顾虑 3：提案已落盘、markConverted 失败——专属文案，绝不与通用错误混同。

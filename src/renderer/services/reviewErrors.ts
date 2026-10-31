@@ -42,3 +42,22 @@ export function reviewErrorText(raw: string): string {
   }
   return unwrapped ? `操作失败：${unwrapped}` : '操作失败'
 }
+
+// convert invalid 原因表（终审 sweep）：`not-open:<status>` / `soft-not-convertible` /
+// `unknown-category:*` 是渲染层内部返回值（useReview/reviewConvert 产出），**不是** electron
+// 平文抛——不走 reviewErrorText 通道形态，UI 面也不该漏内部码。
+const INVALID_REASON_TEXT: Record<string, string> = {
+  'not-open:dismissed': '该意见已驳回，不能转化（如需再看请重审产出新意见）',
+  'not-open:converted': '该意见已转化过，不可重复转化（提案指针见该行）',
+  'not-open:open+stale': '「上次未重现」的意见需先重审确认后再转化',
+  'soft-not-convertible': '软性感受类意见只可驳回，不能转化为提案'
+}
+
+/** 转化拒绝原因 → 中文（未知形态保留原文可诊断，绝不 throw）。 */
+export function reviewInvalidText(reason: string): string {
+  const exact = INVALID_REASON_TEXT[reason]
+  if (exact) return exact
+  if (reason.startsWith('soft-not-convertible')) return INVALID_REASON_TEXT['soft-not-convertible']
+  if (reason.startsWith('not-open:')) return `该意见当前状态不可转化（${reason.slice('not-open:'.length)}）`
+  return `该意见不可转化：${reason}`
+}

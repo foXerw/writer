@@ -576,7 +576,8 @@ update/delete 路径**不注入也不查询**令牌（其幂等来自既有的�
 - **坏条目整拒零写**：逐条 `validateChange`，任一坏 → `PROPOSAL_INVALID: <id>:
   append.changes[i]: …` 整体拒绝（好条目不留半套）；落盘前对合并后**整档**复跑
   `validateProposal`（追加 cid 与既有 cid 重复等文件级歧义在此拦），坏形状零字节；
-- **头部字段透传**：`id/chapterId/createdAt/aiModel/status/appliedIndexes` 原样保留——
+- **头部字段透传**：`id/chapterId/createdAt/aiModel/status/appliedIndexes/appliedCids`
+  （后两者在场才拷）原样保留——
   追加不消化、不翻状态（pending 保持 pending、partial 保持 partial；status 唯一写入口
   仍是 adopt/reject）；追加条目未采纳，`appliedCids` 不为其说话；`aiSource` 盖章归采纳期
   （M4c-2 纪律，save/append 都不碰来源标记）；
