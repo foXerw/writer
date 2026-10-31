@@ -185,7 +185,7 @@ export interface ReviewController {
   runReview: (chapterIds: string[]) => Promise<ReviewRunResult>
   /** 取消：停循环 + cancel 在途 requestId（已完成章留存）。 */
   cancel: () => Promise<void>
-  /** 驳回（唯一写入口 review:dismiss）；返回该章更新后全集。REVIEW_* 平文原样抛穿（对话框展示）。 */
+  /** 驳回（唯一写入口 review:dismiss）；返回该章更新后全集。REVIEW_* 平文原样抛穿（对话框错误节经 reviewErrors 归一）。 */
   dismiss: (opinion: ReviewOpinion) => Promise<ReviewOpinion[]>
   /** 转化（仅 hard+open 非 stale）；overrideTargetId = need-target 选择器回填重走。 */
   convert: (opinion: ReviewOpinion, overrideTargetId?: string) => Promise<ReviewConvertOutcome>
@@ -428,8 +428,9 @@ export function useReview(deps: ReviewDeps): ReviewController {
             })
             reviewed.push(t.id)
           } catch (err) {
-            // REVIEW_TOO_MANY/REVIEW_CHAPTER_MISSING/REVIEW_INVALID 平文原样面呈（ipc.ts 契约：
-            // 审阅对话框内展示），旧账本因 saveRun 的「校验先于任何盘操作」天然留存
+            // REVIEW_TOO_MANY/REVIEW_CHAPTER_MISSING/REVIEW_INVALID 原样上抛（本层不翻译，保持
+            // kind='save' 语义纯正——对话框错误节按 carry-in 2 经 reviewErrors 词表归一），
+            // 旧账本因 saveRun 的「校验先于任何盘操作」天然留存
             const raw = err instanceof Error ? err.message : String(err)
             console.error('[useReview] 审阅账本落盘失败:', raw)
             fireChapterError(t.id, 'save', raw)
@@ -476,7 +477,7 @@ export function useReview(deps: ReviewDeps): ReviewController {
     async (opinion: ReviewOpinion): Promise<ReviewOpinion[]> => {
       const { projectPath } = argsRef.current
       if (!projectPath) throw new Error('未打开项目书，无法驳回意见')
-      // REVIEW_MISSING/REVIEW_NOT_OPEN 等平文原样抛穿——对话框错误节展示（无 toast 面）
+      // REVIEW_MISSING/REVIEW_NOT_OPEN 等平文原样抛穿——对话框错误节经 reviewErrors 归一（无 toast 面）
       return dismissReviewOpinion(projectPath, opinion.chapterId, opinion.id)
     },
     [dismissReviewOpinion]

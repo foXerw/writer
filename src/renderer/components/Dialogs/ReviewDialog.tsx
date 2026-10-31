@@ -10,7 +10,8 @@
 //   快照 id 集合对账）；
 // - onChapterError：'cancelled' 出取消节（无重试按钮），'ai'/'parse'/'save'/'not-found'
 //   出错误节+重试（重试=对该单章再 runReview，部分失败隔离语义）；
-// - REVIEW_* 通道错误（dismiss/账本读）无中文词表（逻辑半区顾虑 2）——平文原样展示；
+// - REVIEW_* 通道错误（dismiss/账本读/saveRun 落盘/markConverted）经 services/reviewErrors 中文词表
+//   归一展示（T6 carry-in 2，此前顾虑 2 的平文原样已由词表接管；proposal 域错误仍走 proposalErrors）；
 // - convert 'error'+proposalId = 「已入提案、账本未盖章」专属文案（顾虑 3，绝不与通用错误混同）；
 // - ≤5 连续章上限是本选择器的职责（hook 不设门禁，顾虑 1）：违规选择整次拒绝并给原因；
 // - need-target 候选显示序按 localeCompare('zh') 重排（carry-in e——纯函数层的码元序是
@@ -28,6 +29,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Empty, Modal, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd'
 import { useReview } from '../../pages/Workspace/hooks/useReview'
 import { useReview as useReviewIpc } from '../../hooks/useIPC'
+import { reviewErrorText } from '../../services/reviewErrors'
 import { relocateAnchor } from '@/common/reviewTypes'
 import type { ReviewOpinion } from '@/common/reviewTypes'
 import type { ReviewTargetCandidate } from '@/common/reviewConvert'
@@ -214,7 +216,9 @@ function ReviewDialog({
           phase: kind === 'cancelled' ? 'cancelled' : 'error',
           streamed: '',
           errorKind: kind,
-          errorMessage: message,
+          // carry-in 2：仅 'save' 节携带 REVIEW_* 平文（saveRun catch 原样）→ 中文词表归一；
+          // ai/cancelled 已是 aiErrorToast 中文、parse/not-found 是定稿散文，不可二次包裹。
+          errorMessage: kind === 'save' ? reviewErrorText(message) : message,
           droppedCount: 0,
           addedCount: 0
         }
@@ -234,7 +238,7 @@ function ReviewDialog({
     }
   }, [])
 
-  /** 读某章账本进面板（失败=该章错误节、REVIEW_* 平文原样——顾虑 2 无词表）。 */
+  /** 读某章账本进面板（失败=该章错误节，REVIEW_* 经 reviewErrorText 中文归一）。 */
   const loadLedger = useCallback(
     async (chapterId: string): Promise<void> => {
       if (!projectPath) return
@@ -256,7 +260,7 @@ function ReviewDialog({
         console.error('[ReviewDialog] 审阅账本读取失败:', msg)
         setProgress((prev) => ({
           ...prev,
-          [chapterId]: { phase: 'error', streamed: '', errorMessage: msg, droppedCount: 0, addedCount: 0 }
+          [chapterId]: { phase: 'error', streamed: '', errorMessage: reviewErrorText(msg), droppedCount: 0, addedCount: 0 }
         }))
       }
     },
@@ -344,7 +348,8 @@ function ReviewDialog({
         })
         break
       case 'error':
-        // REVIEW_*/台账上抛无中文词表（顾虑 2）：平文原样
+        // 装配期意外上抛（book/chapter/narrative 读盘、台账 fail-loud 等——非 review 通道，
+        // REVIEW_* 已在 saveRun/markConverted 各自的捕获里归一，不会到这）。平文原样。
         setRunNotice({ type: 'error', text: res.message })
         break
       default:
@@ -374,7 +379,7 @@ function ReviewDialog({
     if (busyOpinionId) return
     setBusyOpinionId(o.id)
     try {
-      const list = await review.dismiss(o) // REVIEW_* 平文原样抛穿（顾虑 2）
+      const list = await review.dismiss(o) // controller 抛穿原样，下方 catch 经 reviewErrorText 归一
       setOpinions((prev) => ({ ...prev, [o.chapterId]: list }))
       setRowErrors((prev) => {
         const next = { ...prev }
@@ -383,7 +388,9 @@ function ReviewDialog({
       })
       onLedgerChanged()
     } catch (err) {
-      setRowErrors((prev) => ({ ...prev, [o.id]: err instanceof Error ? err.message : String(err) }))
+      // carry-in 2：review:dismiss 抛穿的 REVIEW_*（MISSING/NOT_OPEN/BAD_REVIEW_CHAPTER_ID）中文归一
+      const raw = err instanceof Error ? err.message : String(err)
+      setRowErrors((prev) => ({ ...prev, [o.id]: reviewErrorText(raw) }))
     } finally {
       setBusyOpinionId(null)
     }
@@ -413,11 +420,13 @@ function ReviewDialog({
       setRowErrors((prev) => ({ ...prev, [o.id]: invalidText(res.reason) }))
       return
     }
-    // 顾虑 3：提案已落盘、markConverted 失败——专属文案，绝不与通用错误混同
+    // 顾虑 3：提案已落盘、markConverted 失败——专属文案，绝不与通用错误混同。
+    // carry-in 2：携 proposalId 的错误只来自 stampConverted（markConverted 抛 REVIEW_*），中文归一；
+    // 无 proposalId 者已在 useReview 经 proposalErrorText 归一（提案域散文），不可二次包裹。
     if (res.proposalId) {
       setRowErrors((prev) => ({
         ...prev,
-        [o.id]: `已入提案、账本未盖章（提案 ${res.proposalId}）：${res.message}——重试转化会重复并入该提案，请先刷新核对`
+        [o.id]: `已入提案、账本未盖章（提案 ${res.proposalId}）：${reviewErrorText(res.message)}——重试转化会重复并入该提案，请先刷新核对`
       }))
     } else {
       setRowErrors((prev) => ({ ...prev, [o.id]: res.message }))
