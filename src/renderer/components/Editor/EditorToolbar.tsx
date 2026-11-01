@@ -245,8 +245,12 @@ function EditorToolbar({
         )}
 
         {/* 审阅入口（M6 T5）：徽标 = 全书未处理意见数；审阅在途或无当前章时禁用
-            （在途的可取消入口在对话框内）。窄窗折叠口径同「整理本章」。 */}
-        <Badge count={reviewBadgeCount} size="small" offset={[2, -2]}>
+            （在途的可取消入口在对话框内）。窄窗折叠口径同「整理本章」。
+            offset y=+12（验收批次 #7-1）：本行有 overflow-x:auto（窄窗横向滚动兜底，global.css
+            .editor-toolbar），CSS 规范会把配对的 overflow-y 从 visible 强制折算为 auto——
+            行框上沿即裁切线。旧偏移 -2 时圆点上沿高出 10.3px（CDP 实测 dot.top=74.3 vs
+            row.top=84.7），只显示下半截；正值偏移把整个 14px 圆点压回行框内。 */}
+        <Badge count={reviewBadgeCount} size="small" offset={[2, 12]}>
           <Tooltip
             title={
               reviewing
