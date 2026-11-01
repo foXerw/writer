@@ -351,9 +351,19 @@ export function useCompletion(deps: CompletionDeps): CompletionBinding {
   }, [feed])
 
   const onCompositionEnd = useCallback(() => {
-    // 只解禁 composing，绝不复臂：上屏后的新 contentChanged 才是合法布防信号（机器宪法）
+    // 机器宪法不变：compositionEnd 事件本身仍「只解禁不复臂」。
+    // 但事件序要求补一枪（验收批次 #7-4，CDP 真序实锤）：monaco 的 compositionend
+    // 监听挂在内部 textarea 的 target 阶段，本回调挂容器 bubble 阶段——IME 上屏字的
+    // model 提交在 target 阶段就同步完成，随之触发的 contentChanged 进机器时
+    // composing 仍为 true（被闸门 block：只记前缀不布防）；等本 bubble 回调放行闸门
+    // 后，「上屏后的新 contentChanged」却永远不会再出现——中文作者整条 IME 路径
+    // 无从布防、ghost 死锁。放行后紧接喂一次真实正文快照：复用 onEditorContentChanged
+    // （现读 getProseWindow → contentChanged + 重排停笔钟），与 ASCII 键入完全同口径
+    // ——这是提交后的内容事实，不是凭空复臂；取消上屏（无提交）时快照前缀照走
+    // 同前缀/冷却闸门，行为与停笔观望一致。
     feed({ type: 'compositionEnd' })
-  }, [feed])
+    onEditorContentChanged()
+  }, [feed, onEditorContentChanged])
 
   const onEditorBlur = useCallback(() => {
     // 焦点离编辑器的鬼影/在途请求没有服役对象（Esc 键位也随焦点走了）→ dismiss
