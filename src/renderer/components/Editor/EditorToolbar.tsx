@@ -217,13 +217,14 @@ function EditorToolbar({
             点击 → useOrganize.cancel() → ai:cancel(requestId)；ai:cancel 返回 false（已自行收尾）
             时不打断正常完成路径，本按钮随终态自然回到「整理本章」。 */}
         {organizing ? (
-          <Tooltip title="停止本次整理（中止在途 AI 请求；已结束的请求无法撤回）">
+          <Tooltip placement="bottom" title="停止本次整理（中止在途 AI 请求；已结束的请求无法撤回）">
             <Button type="text" danger icon={<StopOutlined />} onClick={onCancelOrganize}>
               取消
             </Button>
           </Tooltip>
         ) : (
           <Tooltip
+            placement="bottom"
             title={
               organizeDisabled
                 ? '整理本章暂不可用：需有当前章节，且本章没有待处理的提案'
@@ -252,6 +253,13 @@ function EditorToolbar({
             row.top=84.7），只显示下半截；正值偏移把整个 14px 圆点压回行框内。 */}
         <Badge count={reviewBadgeCount} size="small" offset={[2, 12]}>
           <Tooltip
+            // placement=bottom（验收批次 #7-2）：窗口是 titleBarOverlay 无边框式，顶部 32px
+            // 为**原生**控件带（electron/main/window.ts，不透明底色+min/max/close），永远绘制
+            // 在网页内容之上——DOM z-index 无从取胜。本行两行高文案的 top 提示条顶进该带
+            //（CDP 实测 审阅 tooltip rect.top=16 < 32，首行右侧被原生控件盖住）。
+            // 整理/取消同规格长文案一并改底部弹出；单行短提示（保存/导出等）实测顶缘
+            // ≈42px 在带下方，不动。
+            placement="bottom"
             title={
               reviewing
                 ? '审阅进行中——到审阅对话框查看进度或取消'
