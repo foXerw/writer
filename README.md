@@ -25,7 +25,7 @@
 ### 写作体验
 - **衬线纸感排版**: 思源宋体正文、纸面底色、行高随字号派生；深色/浅色双主题全应用 token 联动（含 Monaco 主题与滚动条配色）
 - **专注模式 / 打字机模式**: 专注时降为轻量头部条去干扰；打字机保持光标居中
-- **VSCode 风格操作面**: 命令面板 (Ctrl+Shift+P)、多文档 Tab（右键关闭族）、可折叠侧边栏、大纲视图、状态栏实时字数、快捷键全可自定义（冲突检测内建）
+- **VSCode 风格操作面**: 命令面板 (Ctrl+Shift+P)、多文档 Tab（右键关闭族）、可折叠侧边栏、大纲视图、顶部工具栏实时字数、快捷键全可自定义（冲突检测内建）
 - **编辑器视图态恢复**: 写作↔图谱来回切换按章配对恢复光标/滚动，绝不把旧章光标复活进他章
 - **整理可取消**: AI 整理/审阅在途期间可一键中止在途请求，已完成部分留存
 - **自动保存**: 按项目配置间隔静默落盘（默认 30s），切章/返回首页/关窗均有 flush 兜底
@@ -58,7 +58,7 @@
 
 ### 统计与 token 分账
 - **写作统计**: CJK 码点口径字数统计（中文不再数成 1）、今日目标进度、活跃时长、streak 与趋势，按项目 `stats.json` 持久化
-- **AI 用量分账**: 每本书 `.ai/usage.jsonl` 按功能（整理/补全/审阅）与模型记录用量（只含计数，永不含正文与密钥），侧栏「AI 用量」按功能/模型汇总实时刷新
+- **AI 用量分账**: 每本书 `.ai/usage.jsonl` 按功能（整理/补全/审阅）与模型记录用量（只含计数，永不含正文与密钥），侧栏「AI 用量」按功能汇总实时刷新
 
 ## 快速开始
 
@@ -115,7 +115,7 @@ perfect-novel/
 │   │   ├── schema.ts             # v2 数据模型 + 校验器（BOOK_FORMAT 逐字对照源）
 │   │   ├── ai-types.ts           # AI 共享类型：设置/掩码视图/patch/用量记录/错误 kind 词表
 │   │   ├── ai-context.ts         # 整理侧分层上下文装配器 + token 估算
-│   │   ├── completionContext.ts  # 补全侧旁路装配器（设定卡投影，M5）
+│   │   ├── completionContext.ts / completionTrigger.ts / entityRefs.ts  # 补全装配器（设定卡投影）/纯触发状态机/实体→章节反查（M5）
 │   │   ├── reviewContext.ts / reviewTypes.ts / reviewConvert.ts  # 审阅装配/意见 schema/转化映射（M6）
 │   │   ├── proposal.ts / organizePrompt.ts / organizeResult.ts    # 提案 schema/整理提示词契约/结果校验
 │   │   └── wordCount.ts / jsonLoose.ts / chapterDoc.ts           # 字数口径/宽容抠 JSON/章节文档
@@ -133,6 +133,7 @@ perfect-novel/
 │       │   └── Workspace/        # 侧栏宿主（SidebarPanel）
 │       ├── pages/                # 页面（Home / Workspace / Settings）
 │       │   └── Workspace/hooks/  # 编排层（useEditorSession / useAutoSave / useCompletion / useOrganize / useReview / useWritingStats …）
+│       ├── stores/               # 状态管理（Zustand：项目最近列表/编辑器/快捷键/设置 四持久化 store）
 │       ├── hooks/                # 自定义钩子（useIPC / useAI / useKeyboard / useMenu / useBookEvents）
 │       ├── services/             # 前端服务（exportService / shortcutService / statsService / entityEvents / 中文错误词表 reviewErrors·proposalErrors·aiErrorText）
 │       └── styles/               # 样式（global.css，token 主题层）

@@ -405,6 +405,13 @@ function ReviewDialog({
           // 未盖章」同款警示文案兜核对——最坏是 UI 保守多疑，绝不留下可重击的陈旧按钮。
           // 下一次打开对话框会 loadLedger 拉新鲜账本自动回正。
           console.error('[ReviewDialog] 转化后账本重读失败:', err)
+          // R1 minor：乐观提示（「已转入提案…」）撤下——同一行绝不同屏既报喜又报忧，
+          // 失败态只留保守警示一嘴（rowNotices 与 rowErrors 各自独立渲染、会叠显）
+          setRowNotices((prev) => {
+            const next = { ...prev }
+            delete next[o.id]
+            return next
+          })
           setOpinions((prev) => ({
             ...prev,
             [o.chapterId]: (prev[o.chapterId] ?? []).map((x) =>
