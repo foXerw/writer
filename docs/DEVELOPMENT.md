@@ -96,8 +96,10 @@
 > 一字未动，M4b 回归零变动）；T2 `completionTrigger.ts` 纯触发状态机（停笔发火 + IME/修订态/
 > 同前缀冷却硬闸门——「不打扰」宪法层）；T3 设置页「写作补全（默认关）」开关（completionEnabled
 > 三态 patch、旧文件迁移默认关）；T4 monaco 单 decoration `after.content` 灰字流式层 + 容器捕获相
-> Tab/Esc 裸键键位 + IME/blur/就绪信号腿（两定律 showIfCollapsed 与 -webkit-text-fill-color 源码级
-> 钉注释；includeComments carry-in 落地）；T5 `useCompletion` 编排（900ms 停笔钟/4s 首字看门狗/
+> Tab/Esc 裸键键位 + IME/blur/就绪信号腿（两定律钉注释口径按 M5 收尾裁定 9：showIfCollapsed =
+> monaco 0.55.1 `textModel.js` 源码级实锤（源码坐标已定位）；-webkit-text-fill-color = 真机 DOM
+> 观察实证（0.55.1 源码坐标未逐行定位，勿引用为源码级实锤）；includeComments carry-in 落地）；
+> T5 `useCompletion` 编排（900ms 停笔钟/4s 首字看门狗/
 > 代际令牌封死迟到复活/错误全 kind 静默+冷却，dismiss 即 cancel 省 token，零新增 IPC）；
 > T6 真 key CDP 总冒烟 + 收尾（冒烟揪出视口底部采纳长灰字后不回显缺陷→`insertAtCursor` 补
 > revealPositionInCenterIfOutsideViewport，修复后 auto 续弹链回归）。

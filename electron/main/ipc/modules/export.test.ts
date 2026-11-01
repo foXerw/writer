@@ -22,7 +22,7 @@ describe('markdownToHtml 空行分段（CRLF 加固回归钉）', () => {
     expect(markdownToHtml('段甲。\n\n段乙。')).toBe('<p>段甲。</p>\n<p>段乙。</p>')
   })
 
-  it('CRLF 章：段数与 LF 同（旧 /\n{2,}/ 会把整章塌成 1 个 <p>）', () => {
+  it('CRLF 段落切分与 LF 一致（修复旧实现把整章塌成 1 个 <p>）', () => {
     const html = markdownToHtml('段甲。\r\n\r\n段乙。\r\n\r\n段丙。')
     expect((html.match(/<p>/g) ?? []).length).toBe(3)
     expect(html).toContain('<p>段乙。</p>')
@@ -34,7 +34,7 @@ describe('markdownToHtml 空行分段（CRLF 加固回归钉）', () => {
     expect(html).toContain('<br/>')
   })
 
-  it('裸 \r 换行单元也参与分段（(?:\\r\\n|\\r|\\n){2,} 口径与 relocateAnchor 一致）', () => {
+  it('裸回车（CR）也作为换行参与分段（口径与 relocateAnchor 一致）', () => {
     const html = markdownToHtml('段甲。\r\r段乙。')
     expect((html.match(/<p>/g) ?? []).length).toBe(2)
   })

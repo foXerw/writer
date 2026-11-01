@@ -563,6 +563,10 @@ update/delete 路径**不注入也不查询**令牌（其幂等来自既有的�
 `.ai/proposals/`，对 `chapters/`、四类实体、`foreshadow.yaml`、`index.json`、`summaries/`
 **零字节**（转提案≠采纳；M6 冒烟含采纳前逐文件 md5 对账证据）。
 
+**已知边界（M6 终审 rec 4）**：同一书多窗口对**同一章**并发 `review:saveRun` 时，派生的意见
+账本按**后写者胜**（last-writer-wins，读改写之间无跨窗口加锁/合并仲裁）——tmp+rename 原子写
+保证任何时刻文件完整不撕裂，且账本是派生数据、重审即可再生，故接受此边界不加锁。
+
 ### 7.8 `proposal:appendChanges` — additive 尾部追加语义（M6 T3）
 
 审阅意见「转化」在**同章已有未消化提案**时不新建文件，而是把映射出的 change 追加进该提案尾部。

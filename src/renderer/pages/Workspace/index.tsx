@@ -228,10 +228,18 @@ function Workspace() {
     void refreshReviewBadge()
   }, [refreshReviewBadge])
 
-  // 跳转执行：目标章非当前章时先 openChapter——selectChapter 以该章对象的磁盘 content
-  // 回灌 editorContent，而对话框对非当前章的锚坐标正是按同一字符串算的（relocateAnchor
-  // 原始 body 坐标系）；随后 value effect 生效（顺带清旧高亮），延一拍再上新高亮。
-  // 当前章即时应用（缓冲=坐标源，零竞态）。
+  // -------------------------------------------------------------------------
+  // 跳转执行（M6 终审 rec 3 整改）：目标章非当前章时先 openChapter——selectChapter 以该章
+  // 对象的磁盘 content 回灌 editorContent，而对话框对非当前章的锚坐标正是按同一字符串算的
+  // （relocateAnchor 原始 body 坐标系）。旧实现在 openChapter 后用固定 150ms 定时器延一拍
+  // 上高亮：赌的是「value effect 已生效」，一旦离章脏缓冲的 flush/渲染排队迟过 150ms，
+  // 高亮就打在陈旧模型上（错 span 短窗）。改 pending-reveal ref：由编辑器值 settle 效应
+  // 消费——同一提交里 MonacoEditor 的 value effect 必先于本效应执行（子先父后），落高亮时
+  // 模型已是新章全文、坐标与模型同源；settle 前用户切往他章则 pending 即刻作废
+  // （卸载随实例自然消亡）。最坏 = 不高亮，绝不错位高亮。坐标门（整数/正序/不越模型长度）
+  // 仍在 revealAndHighlight 实现处，本处零复制。当前章即时应用（缓冲=坐标源，零竞态）。
+  // -------------------------------------------------------------------------
+  const pendingRevealRef = useRef<{ chapterId: string; start: number; end: number } | null>(null)
   const handleReviewReveal = useCallback(
     (chapterId: string, startOffset: number, endOffset: number): void => {
       const target = chapters.find((c) => c.id === chapterId)
@@ -245,10 +253,19 @@ function Workspace() {
       }
       openChapter(target)
       viewStateRef.current = null // 刻意跳章：旧章视图态绝不复活到目标章（同图谱跳章裁定）
-      window.setTimeout(() => editorRef.current?.revealAndHighlight(startOffset, endOffset), 150)
+      pendingRevealRef.current = { chapterId, start: startOffset, end: endOffset }
     },
     [chapters, currentChapter, message, openChapter]
   )
+  // 编辑器值 settle 效应（依赖即「回灌已提交」的信号源）：pending 的目标章若已不是当前章，
+  // 说明等待期间被切走，坐标作废不应用；消费一次即清，绝不残留到下下次打字触发。
+  useEffect(() => {
+    const pending = pendingRevealRef.current
+    if (pending === null) return
+    pendingRevealRef.current = null
+    if (currentChapter?.id !== pending.chapterId) return
+    editorRef.current?.revealAndHighlight(pending.start, pending.end)
+  }, [editorContent, currentChapter])
 
   // save/createChapter 每次渲染刷新镜像 ref（同 useEditorSession 的 flushIfDirtyStable 惯用法）：
   // 供被 memo 的事件回调（命令面板）与异步决议回调（Task 9 冲突弹窗）调用最新闭包，

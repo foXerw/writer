@@ -33,7 +33,7 @@
 //
 // 隐私红线（裁定 9 同款）：parse 失败只 console 记章 id 与输出长度，AI 原文绝不落日志。
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useAI } from '../../../hooks/useAI'
+import { parseKindTaggedError, useAI } from '../../../hooks/useAI'
 import {
   useAiData,
   useAISettings,
@@ -310,6 +310,19 @@ export function useReview(deps: ReviewDeps): ReviewController {
         ).then((requestId) => {
           // 受理（或受理前失败）后才 resolve 出 id：已终态则不再存（陈旧 id 无取消语义）
           if (terminal === null) activeRequestIdRef.current = requestId
+        }).catch((err: unknown) => {
+          // M6 终审 rec 3 保险丝：useAI 契约是「本 promise 不 reject」（受理前失败已解包
+          // kind 归 onError）——但契约一旦在未来重构中破口（promise 直接落拒），没有这条
+          // catch 外层 await 永悬：reviewing 卡死到 reload、取消钮也无从生效。路由与 onError
+          // 同款（kind 解包 → cancelled/ai 终态），且已被终态时绝不二次报错。
+          if (terminal !== null) return
+          const { kind, message } = parseKindTaggedError(String((err as Error)?.message ?? err))
+          console.error('[useReview] chat() promise 意外拒绝（useAI 契约保险丝）:', message)
+          terminal = 'error'
+          cancelledTerminal = kind === 'cancelled'
+          activeRequestIdRef.current = null
+          fireChapterError(chapterId, cancelledTerminal ? 'cancelled' : 'ai', aiErrorToast(kind, message))
+          resolve()
         })
       })
       return terminal === 'done' ? { ok: true, text } : { ok: false, cancelled: cancelledTerminal }

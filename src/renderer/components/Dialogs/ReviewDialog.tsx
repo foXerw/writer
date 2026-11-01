@@ -99,7 +99,7 @@ interface ReviewDialogProps {
   getBufferChapter: (chapterId: string) => { title: string; body: string } | null
   /** 跳转：Workspace 负责（必要时先开章）→ MonacoEditor.revealAndHighlight。 */
   onReveal: (chapterId: string, startOffset: number, endOffset: number) => void
-  /** 在途标志上交（工具栏按钮禁用）；对话框持有 useReview 单实例，Workspace 不重复挂。 */
+  /** 在途标志上交（供 tooltip 文案/开始钮 loading/取消钮显隐——在途**不**禁用工具栏入口）；对话框持有 useReview 单实例，Workspace 不重复挂。 */
   onReviewingChange: (reviewing: boolean) => void
   /** 账本变化（新入/驳回/转化）→ 徽标计数刷新。 */
   onLedgerChanged: () => void
@@ -220,7 +220,7 @@ function ReviewDialog({
     }
   })
 
-  // 在途标志上交（工具栏禁用/取消态）
+  // 在途标志上交（供 tooltip 文案 + 开始钮 loading + 取消钮显隐；工具栏入口在途不禁用，终审 Important 1）
   useEffect(() => {
     onReviewingChange(review.reviewing)
   }, [review.reviewing, onReviewingChange])
@@ -399,7 +399,22 @@ function ReviewDialog({
           const list = await getReviewOpinions(projectPath, o.chapterId)
           setOpinions((prev) => ({ ...prev, [o.chapterId]: list }))
         } catch (err) {
+          // M6 终审 rec 3：提案已落盘、盖章已成功，只是账本**重读**命中——行内还是 open 快照
+          // （陈旧态），转化钮仍在，再点一次=向同一提案重复并入。就地用返回值的 proposalId
+          // 把该行本地翻成 converted（行转只读+提案指针，杜绝重入），并挂「已入提案、账本
+          // 未盖章」同款警示文案兜核对——最坏是 UI 保守多疑，绝不留下可重击的陈旧按钮。
+          // 下一次打开对话框会 loadLedger 拉新鲜账本自动回正。
           console.error('[ReviewDialog] 转化后账本重读失败:', err)
+          setOpinions((prev) => ({
+            ...prev,
+            [o.chapterId]: (prev[o.chapterId] ?? []).map((x) =>
+              x.id === o.id ? { ...x, status: 'converted' as const, proposalId: res.proposalId } : x
+            )
+          }))
+          setRowErrors((prev) => ({
+            ...prev,
+            [o.id]: `已入提案、账本未盖章（提案 ${res.proposalId}）：账本重读失败——已本地标记为已转化，再点转化会重复并入该提案，请刷新核对`
+          }))
         }
       }
       onLedgerChanged()
